@@ -2402,13 +2402,15 @@ function notifGetAll() {
 }
 
 function notifSaveAll(notifs) {
-  // Mesmo raciocínio do try/catch em projSaveAllLocal: notificações nunca são deletadas (só
-  // acumulam), e sem isso um QuotaExceededError aqui impediria até a linha de baixo
-  // (sbPushNotifs) de rodar — perdendo a notificação local E remota, em silêncio.
+  // Mesmo raciocínio do try/catch em projSaveAllLocal (ver warnLocalStorageWriteFailed lá):
+  // notificações nunca são deletadas (só acumulam), e sem isso um QuotaExceededError aqui
+  // impediria até a linha de baixo (sbPushNotifs) de rodar — perdendo a notificação local E
+  // remota, em silêncio.
   try {
     localStorage.setItem(NOTIF_KEY, JSON.stringify(notifs));
   } catch(e) {
     console.warn('localStorage (notifications) write failed — quota exceeded? O sync com o Supabase ainda é tentado.', e);
+    warnLocalStorageWriteFailed();
   }
   sbPushNotifs(notifs); // sincroniza com o Supabase em segundo plano
 }
@@ -2826,6 +2828,19 @@ function projGetAll() {
   catch(e){ return []; }
 }
 
+// Throttle (10s) pro aviso VISÍVEL de falha de localStorage — sem isso, se a cota estiver
+// realmente estourada, o autosave (a cada 150-600ms) tentaria mostrar um toast novo repetidas
+// vezes por segundo, span de notificação sem parar.
+let _lastLocalStorageWarnAt = 0;
+function warnLocalStorageWriteFailed() {
+  const now = Date.now();
+  if(now - _lastLocalStorageWarnAt < 10000) return;
+  _lastLocalStorageWarnAt = now;
+  if(typeof showNotif === 'function') {
+    showNotif('Could not save to this browser\'s local storage (full?). Still trying to sync online, but please back up your work.', 'warn');
+  }
+}
+
 function projSaveAllLocal(projects) {
   // try/catch: localStorage tem uma cota (~5-10MB, varia por navegador) — projetos guardam
   // e-mail HTML + CSV completos de várias línguas, então um catálogo grande o suficiente pode
@@ -2834,11 +2849,13 @@ function projSaveAllLocal(projects) {
   // logo depois em projSaveAll) — ou seja, o autosave falhava por INTEIRO, local E remoto, sem
   // aviso nenhum pra pessoa. Com o catch, o cache local desta aba fica desatualizado (só isso
   // já era o pior caso de qualquer erro de rede tratado no resto do arquivo), mas o save
-  // continua e ainda tenta ir pro Supabase — só loga o aviso pra aparecer no console.
+  // continua e ainda tenta ir pro Supabase. O aviso agora é VISÍVEL (toast), não só console —
+  // uma falha de save que a pessoa nunca fica sabendo é pior que uma falha barulhenta.
   try {
     localStorage.setItem(PROJ_KEY, JSON.stringify(projects));
   } catch(e) {
     console.warn('localStorage (projects) write failed — quota exceeded? O sync com o Supabase ainda é tentado.', e);
+    warnLocalStorageWriteFailed();
   }
 }
 
@@ -2947,6 +2964,20 @@ function releaseAllMyApprovingPresence() {
 }
 
 async function goToDashboard() {
+  // Mesmo problema que o beforeunload já resolve pra fechar/recarregar a aba, só que pra
+  // navegação DENTRO do app: se uma ação recente agendou um autosave (ex: subir um CSV pra
+  // atualizar traduções via applyCsvToEditor, que chama scheduleAutosave()) e a pessoa clica
+  // "Dashboard" antes do debounce de 150/600ms disparar, o timer pendente ficava "solto" —
+  // ainda ia disparar mais tarde, mas só por sorte continuava achando o projeto certo. Faz o
+  // flush NA HORA, igual o handler de beforeunload. TEM que rodar ANTES de projReleaseMine()
+  // logo abaixo — aquela função já zera currentProjectId sozinha no final dela, então checar
+  // "else if(currentProjectId)" DEPOIS dela nunca disparava (achado revisando com testes:
+  // o fix parecia certo lendo o código, mas currentProjectId já tinha virado null antes do
+  // if/else chegar a rodar).
+  if(!_campaign && currentProjectId) {
+    if(_autosaveTimer) { clearTimeout(_autosaveTimer); autosaveProject(); }
+    if(_avAutosaveTimer) { clearTimeout(_avAutosaveTimer); autosaveApprovalState(); }
+  }
   // Sair do projeto libera a trava — sem isso ela ficava presa até o timeout de
   // 3min, e reabrir o mesmo projeto (até na mesma aba, se a página recarregou
   // no meio tempo) achava por engano que ele "já estava aberto em outra aba".
