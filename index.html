@@ -7299,13 +7299,16 @@ function scheduleAutosave() {
   _autosaveTimer = setTimeout(autosaveProject, 150);
 }
 
-// Salva imediatamente (sem esperar o debounce de 600ms) se a pessoa fechar/recarregar
-// a aba enquanto ainda tinha uma edição pendente — evita perder os últimos caracteres digitados.
+// Salva imediatamente (sem esperar o debounce) se a pessoa fechar/recarregar a aba
+// enquanto ainda tinha uma edição pendente — evita perder os últimos caracteres digitados.
 // _avAutosaveTimer (comentários/status de aprovação) também precisa desse flush — sem ele,
 // apagar um comentário de aprovação e fechar a aba dentro da janela de 600ms do debounce
 // nunca chegava a salvar, e o comentário "deletado" reaparecia no próximo carregamento
 // (não é ressurreição via sync, é só a edição que nunca foi persistida).
-window.addEventListener('beforeunload', () => {
+// _campaignAutosaveTimer (edição de tradução de ITEM DE CAMPANHA) faltava aqui até agora —
+// achado real de QA: editar um item de campanha e fechar a aba dentro dos 150ms do debounce
+// perdia a edição, silenciosamente, sem nenhum aviso.
+window.addEventListener('beforeunload', (e) => {
   if(_autosaveTimer) {
     clearTimeout(_autosaveTimer);
     autosaveProject();
@@ -7314,6 +7317,22 @@ window.addEventListener('beforeunload', () => {
     clearTimeout(_avAutosaveTimer);
     if(_campaign) autosaveCampaignApprovalState();
     else autosaveApprovalState();
+  }
+  if(_campaignAutosaveTimer) {
+    clearTimeout(_campaignAutosaveTimer);
+    saveCampaignProject();
+  }
+  // _pendingProjectsPush (ver ghMergeAndPushProjects) fica não-null enquanto o envio pro
+  // Supabase de um save ainda está em voo — isso NÃO é algo que dá pra "esperar terminar"
+  // aqui (navegadores não garantem que uma requisição de rede em andamento complete depois
+  // que a aba começa a fechar). O melhor que dá pra fazer é avisar: se tem um envio ainda
+  // não confirmado (ex: acabou de subir um projeto novo e já foi fechar a aba, ou uma
+  // edição ainda sincronizando), mostra o diálogo nativo do navegador de "tem certeza que
+  // quer sair?" — dá a chance da pessoa esperar mais alguns segundos antes de fechar de
+  // verdade, em vez de perder silenciosamente algo que só existia localmente ainda.
+  if(_pendingProjectsPush) {
+    e.preventDefault();
+    e.returnValue = '';
   }
 });
 
@@ -7337,10 +7356,17 @@ function autosaveProject() {
     p.data.langs = [...S.csv.langs];
     p.data.comments = collectRowComments();
   }
-  p.data.approvalComments = [...S.approvalComments];
-  p.data.approvalDoneByLang = { ...S.approvalDoneByLang };
-  p.data.approvalActivity = [...S.approvalActivity];
-  p.data.approvalDeletedIds = [...S.approvalDeletedIds];
+  // NÃO grava approvalComments/approvalDoneByLang/approvalActivity/approvalDeletedIds aqui.
+  // Essa função salva a cada tecla digitada numa tradução (scheduleAutosave, 150ms) e lê
+  // projGetAll() LOCAL — sem pull nem merge — antes de escrever. Editar tradução nunca muda
+  // esses 4 campos (só ações de aprovação mudam, e essas SEMPRE passam por
+  // autosaveApprovalState()/autosaveCampaignApprovalState(), que fazem pull+merge de
+  // verdade via mergeApprovalState). Se esta função também os escrevesse, qualquer edição de
+  // tradução feita DEPOIS de um approver comentar/verificar/aprovar sobrescrevia esses campos
+  // com a cópia velha de S (desatualizada desde a abertura do projeto), e
+  // mergeProjectsForSave funde por PROJETO INTEIRO usando updatedAt — como esta escrita seta
+  // um updatedAt mais novo, ela vencia e apagava silenciosamente comentários/aprovações de
+  // outra pessoa. Bug real, achado por QA de concorrência.
   if(!_approverMode) {
     p.lockedBy = me.email;
     p.lockedAt = Date.now();
@@ -7405,6 +7431,29 @@ function mergeApprovalState(remoteData, localComments, localActivity, localDoneB
   // logo abaixo de ressuscitar um comentário que alguém excluiu.
   const mergedDeletedIds = [...new Set([...remoteDeletedIds, ...localDeletedIds])];
   const deletedSet = new Set(mergedDeletedIds);
+
+  // Cascata: se um comentário-PAI foi apagado, qualquer resposta dele também precisa contar
+  // como apagada — mesmo que só tenha chegado de outra sessão DEPOIS do check local de "esse
+  // comentário ainda tem resposta?" em deleteApprovalComment (que só olha o array local, não
+  // o que outra pessoa acabou de responder). Sem isso, a resposta virava uma ORFÃ: sobrevivia
+  // ao merge (só o pai estava tombstoned, não ela), mas nunca mais aparecia em lugar nenhum
+  // (a sidebar só itera comentários de nível raiz) nem tinha como ser apagada pela interface
+  // (o botão de apagar de uma resposta só existe dentro do card do pai, que já não existe) —
+  // ficava presa em S.approvalComments/p.data pra sempre, um dado morto e inacessível. Repete
+  // em loop porque uma resposta apagada em cascata pode ela mesma ser pai de outra resposta
+  // (respostas-de-respostas, se algum dia isso existir).
+  const allCandidates = [...remoteComments, ...localComments];
+  let cascaded = true;
+  while(cascaded) {
+    cascaded = false;
+    allCandidates.forEach(c => {
+      if(c.parentId && deletedSet.has(c.parentId) && !deletedSet.has(c.id)) {
+        deletedSet.add(c.id);
+        mergedDeletedIds.push(c.id);
+        cascaded = true;
+      }
+    });
+  }
 
   // Comentários: união por id (exceto os apagados); se o mesmo id existe dos dois
   // lados (ex: eu marquei "resolved" localmente enquanto o servidor já tinha uma
@@ -7513,14 +7562,17 @@ function warnApprovalBlockedByEdit() {
 
 // Se alguém abre a Approval View e, enquanto está lá dentro, o dono começa a editar,
 // a checagem em approverOpenProject (feita só na ENTRADA) não pega esse caso — por
-// isso o realtime (sbOnProjectsChanged) também fecha qualquer composer aberto e avisa.
+// isso o realtime (sbOnProjectsChanged) também avisa aqui. NÃO fecha mais nenhum composer
+// aberto (closeNewPinBox apagava o <textarea>, destruindo silenciosamente um comentário
+// ainda não enviado se essa checagem rodasse bem no meio da pessoa digitando — achado real
+// de QA de concorrência). submitNewPin() já rejeita o "Post" enquanto bloqueado, sem apagar
+// o texto — a pessoa só não consegue enviar até o dono terminar de editar.
 let _editLockWarnedInApproval = false;
 function checkApprovalEditLockLive() {
   if(!document.getElementById('approvalView')?.classList.contains('show')) { _editLockWarnedInApproval = false; return; }
   if(approvalBlockedByEdit()) {
     if(!_editLockWarnedInApproval) {
       _editLockWarnedInApproval = true;
-      closeNewPinBox();
       warnApprovalBlockedByEdit();
     }
   } else {
@@ -9332,8 +9384,12 @@ function closeNewPinBox() {
 }
 
 function submitNewPin() {
-  if(_pendingPin && isLangApproved(S.approvalDoneByLang, _pendingPin.lang)) { closeNewPinBox(); return; }
-  if(approvalBlockedByEdit()) { closeNewPinBox(); warnApprovalBlockedByEdit(); return; }
+  // Nos dois bloqueios abaixo, NÃO fecha a caixa (closeNewPinBox apaga o <textarea> e,
+  // com ele, qualquer texto ainda não enviado, sem chance de recuperação). Só avisa e
+  // mantém a caixa aberta com o texto intacto — se o bloqueio for temporário (dono para
+  // de editar), a pessoa ainda consegue clicar "Post" de novo depois, sem ter perdido nada.
+  if(_pendingPin && isLangApproved(S.approvalDoneByLang, _pendingPin.lang)) { return; }
+  if(approvalBlockedByEdit()) { warnApprovalBlockedByEdit(); return; }
   const ta = document.getElementById('avNewPinText');
   const text = ta ? ta.value.trim() : '';
   if(!text || !_pendingPin) { closeNewPinBox(); return; }
@@ -9417,6 +9473,21 @@ function renderApprovalSidebar() {
   // mora fora daqui (ver HTML), então não é destruído por este innerHTML, mas continuar
   // "aberto" apontando pra uma caixa de resposta que está prestes a sumir ficaria estranho.
   closeMentionDropdown();
+
+  // Preserva uma caixa de RESPOSTA aberta (com texto em digitação) através do rebuild do
+  // innerHTML abaixo. Sem isso: autosaveApprovalState()/autosaveCampaignApprovalState()
+  // chamam esta função ~600ms depois de QUALQUER ação de aprovação (ex: clicar "Verify" num
+  // comentário) — mesmo vindo da MESMA pessoa que, nesse meio-tempo, abriu a caixa de
+  // resposta de OUTRO comentário e começou a digitar. O rebuild reseta toda caixa de resposta
+  // pro estado inicial (display:none, textarea vazio), apagando silenciosamente o texto ainda
+  // não enviado. Achado real de QA de concorrência.
+  let openReplyBox = null;
+  list.querySelectorAll('.av-reply-input-box').forEach(box => {
+    if(box.style.display === 'flex') {
+      openReplyBox = { id: box.id, text: box.querySelector('textarea')?.value || '' };
+    }
+  });
+
   const all = S.approvalComments;
   const topLevel = all.filter(c => !c.parentId).sort((a, b) => b.createdAt - a.createdAt);
   if(countEl) countEl.textContent = all.length ? String(all.length) : '';
@@ -9424,6 +9495,15 @@ function renderApprovalSidebar() {
     ? topLevel.map(c => renderApprovalThreadCard(c, all)).join('')
     : `<div class="empty-state" style="margin:6px;padding:24px 16px;"><p>No comments yet. Select any text in a preview to leave one.</p></div>`;
   renderApprovalDoneBanner();
+
+  if(openReplyBox) {
+    const restored = document.getElementById(openReplyBox.id);
+    if(restored) {
+      restored.style.display = 'flex';
+      const ta = restored.querySelector('textarea');
+      if(ta) { ta.value = openReplyBox.text; ta.focus({preventScroll:true}); }
+    }
+  }
 }
 
 function renderApprovalThreadCard(c, all) {
