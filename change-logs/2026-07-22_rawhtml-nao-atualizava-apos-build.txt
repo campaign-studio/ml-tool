@@ -1,0 +1,73 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-22
+Tema: Projeto reaberto aparecia "sem linha tageada, nada" — S.rawHtml nunca virava a versão tageada
+(continuação de 2026-07-22_dashboard-autosave-flush.txt)
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+Depois da correção anterior (flush do autosave pendente em goToDashboard), o
+usuário testou de novo: subiu o projeto, abriu de novo, e "apareceu sem linha
+tageada, nada" — ou seja, o projeto abre (não dá mais o alerta "nothing to
+reopen"), mas a tabela de linhas vem vazia.
+
+===============================================================================
+CAUSA RAIZ
+===============================================================================
+Arquivo: index.html, função projSaveOnBuild()
+
+Pra um projeto NOVO (não é "continue editing"), a função gera a versão
+tageada do HTML só numa variável LOCAL: `const htmlToSave = buildTaggedHtml();`
+— usada pra gravar `data.html` no projeto salvo. Mas `S.rawHtml` (o estado
+global de verdade, usado pelo resto do app) NUNCA era atualizado — continuava
+com o HTML CRU original, sem nenhuma tag `{%translation%}`.
+
+`autosaveProject()` (chamada em QUALQUER autosave posterior — inclusive o
+flush ao sair pro Dashboard, corrigido no log anterior) grava
+`p.data.html = S.rawHtml` direto, sem condição. Como `S.rawHtml` continuava
+cru, a autosave SEGUINTE ao build inicial sobrescrevia silenciosamente o HTML
+já tageado (recém-salvo) de volta pro cru — mesmo sem a pessoa editar nada,
+só de sair da tela (o que já dispara um autosave, graças à correção
+anterior).
+
+Ao reabrir o projeto depois, `parseSavedProjectHtml(data.html)` procura por
+`{%translation idN%}...{%endtranslation%}` no HTML salvo — como não sobrava
+mais nenhuma tag (foi sobrescrito pelo cru), o resultado é uma lista vazia de
+linhas. Daí o "sem linha tageada, nada".
+
+Importante: esse bug já existia ANTES da correção do goToDashboard — só
+estava "escondido" porque autosaveProject() quase nunca chegava a rodar
+antes da pessoa sair da tela (era exatamente o bug corrigido antes). Corrigir
+aquele primeiro problema fez esse segundo aparecer.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Depois de gerar `htmlToSave` (só pra projeto NOVO, não pra "continue
+editing"), atualiza também `S.rawHtml = htmlToSave` e
+`S.htmlAlreadyTagged = true` — o mesmo estado que um projeto REABERTO já
+tem (via restoreProjectContent). Assim qualquer autosave posterior
+(incluindo o flush do goToDashboard) sempre grava a versão JÁ tageada de
+volta, nunca regride pro cru.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+Ciclo completo, com o arquivo real do usuário, num sandbox Node isolado
+(navegador seguiu indisponível a sessão toda):
+1. Upload + build → confirmado S.htmlAlreadyTagged=true e S.rawHtml já com
+   tags {%translation%}.
+2. Sair pro Dashboard (dispara o autosave, corrigido antes) → confirmado que
+   o HTML GRAVADO continua com as tags intactas (antes desta correção,
+   sumiam nesse passo).
+3. Reabrir o projeto (restoreProjectContent) → as 56 linhas do arquivo real
+   voltam corretamente, batendo com a extração original.
+
+===============================================================================
+NOTA
+===============================================================================
+O painel de preview do navegador ficou indisponível a sessão inteira (mesmo
+problema já registrado no log anterior) — toda a verificação foi por
+execução isolada do código real, não pela interface. Recomendo reproduzir
+visualmente (subir HTML, ir pra Dashboard, reabrir o projeto) assim que
+possível pra confirmar também pela tela.
