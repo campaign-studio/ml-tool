@@ -1,0 +1,123 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-22
+Tema: Performance e escalabilidade (Approval View + Dashboard)
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+Rodar um agente pra ajustar a plataforma pra ficar rápida, saudável e
+escalável.
+
+===============================================================================
+COMO FOI FEITO
+===============================================================================
+O agente rodou isolado num git worktree (cópia separada do repositório), com
+instrução explícita de ser conservador e nunca tocar na lógica de extração/
+tagueamento/CSV (extractStr, buildTaggedHtml, mergeApprovalState, etc. —
+áreas endurecidas com muito custo ao longo desta sessão). O worktree foi
+criado a partir do commit-baseline, ANTES das correções de concorrência/
+autosave feitas depois — ou seja, as mudanças do agente não podiam ser
+copiadas direto por cima do arquivo principal (isso reverteria as correções
+mais recentes). Cada uma das 5 mudanças aplicadas pelo agente foi revisada
+individualmente e reintegrada à mão no arquivo atual, depois testada de novo
+uma por uma.
+
+===============================================================================
+MUDANÇAS APLICADAS (revisadas e reintegradas)
+===============================================================================
+
+1. Removidas 5 chamadas redundantes de renderApprovalDoneBanner()
+   Arquivo: index.html — autosaveCampaignApprovalState, autosaveApprovalState,
+   openApprovalView, markLangApproved, undoLangApproval
+   Todas essas funções chamavam renderApprovalDoneBanner() E TAMBÉM
+   renderApprovalSidebar() — que já chama renderApprovalDoneBanner()
+   internamente no final. Era refazer o mesmo innerHTML duas vezes à toa.
+   Mudança puramente mecânica, sem alteração de comportamento.
+
+2. Busca de projeto no Dashboard agora tem debounce (150ms)
+   Arquivo: index.html, função setDashProjectSearch()
+   renderDashboard() reparse o CSV de CADA projeto (pro badge de progresso) e
+   reconstrói o <iframe srcdoc> de preview de cada card — rodar isso a cada
+   tecla digitada na busca piscava a tela e ficava mais lento quanto mais
+   projetos a pessoa tivesse. Testado: 3 chamadas rápidas em sequência agora
+   viram 1 render só, refletindo o último valor digitado.
+
+3. Os dois pollers de fundo (15s do Dashboard, 20s de "alguém assumiu meu
+   lock") agora pausam enquanto a aba está em segundo plano
+   Arquivo: index.html, perto da linha 2054-2086
+   Com a aba minimizada ou outra aba em foco, ninguém está olhando o
+   Dashboard mesmo — continuar buscando a tabela de projetos inteira a cada
+   15s era tráfego/CPU à toa (fica pior quanto mais gente/projetos tiver no
+   banco, e quanto mais tempo a aba ficar aberta em segundo plano). Foi
+   adicionado um listener de visibilitychange que refaz a checagem NA HORA
+   ao voltar pra aba, então o dado não fica mais desatualizado do que já
+   ficava antes. Testado: confirmado que nenhuma chamada acontece enquanto
+   invisível (16s de espera real), e que exatamente 1 chamada de catch-up
+   acontece ao voltar a ficar visível.
+
+4. Falha ao gravar no localStorage não derruba mais o save inteiro
+   Arquivo: index.html, funções projSaveAllLocal(), notifSaveAll()
+   localStorage tem uma cota (~5-10MB, varia por navegador) — projetos guardam
+   HTML + CSV completos de várias línguas, então um catálogo grande o
+   suficiente pode estourar essa cota. Sem tratamento, um erro aqui
+   interrompia a função ANTES da parte que envia pro Supabase rodar — ou
+   seja, o autosave falhava por INTEIRO (local E remoto) sem nenhum aviso.
+   Agora só loga um aviso no console e deixa o envio pro Supabase ser
+   tentado mesmo assim. Testado: confirmado que o erro não sobe mais pra
+   quem chama a função.
+
+5. Corrigido um padrão O(n²) na lista de comentários da Approval View
+   Arquivo: index.html, funções renderApprovalSidebar(), renderApprovalThreadCard()
+   Pra CADA comentário de nível raiz, o código escaneava TODOS os
+   comentários do projeto de novo (pra achar as respostas daquele
+   comentário) — um custo que cresce em dobro com o total de comentários
+   acumulados. Agora as respostas são agrupadas por comentário-pai numa
+   única passada, antes de desenhar a lista. Mesmo resultado (mesmo
+   agrupamento, mesma ordenação), só mais barato. Testado junto com a
+   correção de "preservar caixa de resposta aberta" (do log de concorrência)
+   pra garantir que as duas continuam funcionando corretas juntas.
+
+===============================================================================
+VERIFICADO, SEM VAZAMENTO (nenhuma mudança necessária)
+===============================================================================
+- avPresenceJoin()/avPresenceLeave() (presença na Approval View) já são
+  pareados corretamente em todo caminho de saída.
+- O canal de realtime do Supabase (_sbChannel) já é um singleton com guarda
+  contra dupla inscrição.
+- Os outros listeners/timers verificados (navegação do dashboard, dropdown de
+  menção, pan/zoom da Approval View, script do seletor de imagem) já são
+  vinculados uma única vez ou vivem dentro de <script> injetado por iframe
+  (destruído junto quando o iframe recarrega).
+
+===============================================================================
+SUGERIDO, NÃO APLICADO (precisa de mais confiança ou é decisão de produto)
+===============================================================================
+- ghPullProjects() busca a tabela `projects` INTEIRA (de todos os usuários) a
+  cada chamada — confirmado que isso é real e vai crescer com o tempo, mas
+  qualquer correção (cache com invalidação, separar consulta "lista" de
+  "detalhe") mexeria em timing/garantias perto da lógica de concorrência que
+  acabou de ser corrigida com cuidado. Vale uma decisão deliberada, não uma
+  mudança apressada.
+- setCampaignOrigin() (edição de texto de origem num item de campanha)
+  reconstrói o <iframe> inteiro a cada tecla — mesma classe de problema da
+  busca do Dashboard, mas a versão "barata" já existente pra edição de
+  tradução (updateCampaignPreviewCell) não cobre o caso de fallback
+  "mostrando o texto de origem enquanto ele está sendo editado". Precisa de
+  mais cuidado pra não regredir esse fallback.
+- langScore() (tela de confirmação de idiomas) reescaneia a lista de linhas
+  3-4 vezes — real, mas de baixa prioridade (essa tela só renderiza uma vez,
+  na configuração inicial do projeto, não durante edição contínua).
+- Tamanho real de um projeto no localStorage não foi medido (bloqueio de
+  permissão impediu consultar o Supabase diretamente pra isso) — a correção
+  #4 acima pelo menos evita que isso falhe em silêncio; medir/limitar de
+  verdade é uma decisão separada.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+Todas as 5 mudanças aplicadas foram testadas diretamente no navegador depois
+da reintegração (contagem de chamadas com debounce, comportamento com
+document.hidden simulado, captura de QuotaExceededError, equivalência do
+agrupamento de respostas) — não só copiadas do worktree sem checar. Commit
+git criado separado do de concorrência, pra manter o histórico claro. Worktree
+do agente removido depois de extrair o que era útil dele.

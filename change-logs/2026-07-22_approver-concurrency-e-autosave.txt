@@ -1,0 +1,189 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-22
+Tema: QA de concorrência na Approval View + garantia de autosave/nada perdido
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+1. Rodar um agente pra verificar erros na área de approver com várias pessoas
+   comentando/editando ao mesmo tempo, fazer QA completo e ajustar o que fosse
+   encontrado.
+2. Rodar um agente pra verificar toda a parte de autosave, possível
+   sobrescrição de texto e tempo de salvar, garantindo que NADA seja perdido
+   (incluindo o último projeto subido).
+3. Rodar um agente pra deixar a plataforma rápida, saudável e escalável
+   (resultado em log separado, ver abaixo).
+
+===============================================================================
+DESCOBERTA IMPORTANTE — AMBIENTE DE TESTE
+===============================================================================
+O preview usado pra testar essas correções está conectado ao Supabase REAL do
+projeto (SB_URL/SB_PUBLISHABLE_KEY são credenciais reais, hardcoded no
+arquivo) — não é um ambiente isolado. Durante os testes, 3 projetos fake
+(__test_mention_proj__, __test_repair_proj__, __test_undo_proj__, de uma
+sessão de trabalho anterior) tinham vazado pro banco real. Foram removidos
+(delete + tombstone em deleted_project_ids) e confirmados limpos. Nenhum
+usuário fake chegou a vazar. Todos os testes DESTA sessão de correções
+rodaram com sbClient() bloqueado (retornando null), impedindo qualquer novo
+vazamento.
+
+Também foi criado version control (git init + commit baseline) neste projeto,
+que não tinha NENHUM histórico até agora — protege contra qualquer edição
+futura que precise ser revertida.
+
+===============================================================================
+BUGS ENCONTRADOS E CORRIGIDOS
+===============================================================================
+
+--- Concorrência entre approvers / dono editando ---
+
+1. [CRÍTICO] autosaveProject() sobrescrevia estado de aprovação sem merge
+   Arquivo: index.html, função autosaveProject()
+   Essa função salva a cada tecla digitada numa tradução (debounce 150ms) e
+   escrevia p.data.approvalComments/approvalDoneByLang/approvalActivity/
+   approvalDeletedIds direto da cópia local (S), sem pull nem merge — ao
+   contrário de autosaveApprovalState(), que já fazia isso corretamente.
+   Qualquer edição de tradução do dono, feita a qualquer momento depois de um
+   approver comentar/verificar/aprovar, apagava esse trabalho silenciosamente
+   (mergeProjectsForSave funde por PROJETO INTEIRO usando updatedAt — a
+   escrita mais recente do dono vencia e levava a cópia velha junto).
+   Correção: removida a escrita desses 4 campos de dentro de autosaveProject().
+   Editar tradução nunca muda esses campos — quem já cuida deles certo é
+   autosaveApprovalState()/autosaveCampaignApprovalState().
+   Verificado: comentário de approver sobrevive a uma edição de tradução do
+   dono, em teste direto.
+
+2. ["Undo" de aprovação revertido sozinho]
+   Arquivo: index.html, funções undoLangApproval(), toggleCampaignBulkApprove(),
+   nova função isLangApproved()
+   undoLangApproval() apagava a chave do idioma (delete) em vez de marcar como
+   desfeita — uma chave ausente é indistinguível de "nunca aprovado" pro merge
+   de concorrência (que só compara timestamps de chaves presentes). Resultado:
+   desfazer uma aprovação era revertido sozinho no autosave seguinte.
+   Correção: undo agora grava {by, at, undone:true} em vez de apagar. Criada
+   isLangApproved(doneByLang, lang) centralizando a checagem "está aprovado de
+   verdade?" nos 9 lugares que liam esse estado como booleano cru (incluindo o
+   equivalente em campanhas, toggleCampaignBulkApprove).
+   Verificado: merge sintético confirma que o undo mais recente vence mesmo
+   com o approve antigo ainda no lado remoto.
+
+3. [Campanhas: overwrite total sem merge nenhum]
+   Arquivo: index.html, função saveCampaignProject()
+   Fazia pull do servidor e sobrescrevia o objeto INTEIRO da campanha, sem
+   mesclar nada — duas pessoas comentando em itens diferentes (ou no mesmo
+   item) da mesma campanha ao mesmo tempo faziam quem salvasse por último
+   apagar o trabalho da outra.
+   Correção: agora funde approvalComments/approvalActivity/approvalDoneByLang/
+   approvalDeletedIds de CADA item contra a versão remota (mesma lógica de
+   mergeApprovalState já usada em projetos avulsos) antes de sobrescrever.
+   autosaveCampaignApprovalState() também passou a sincronizar o resultado do
+   merge de volta pro estado local (S), não só salvar.
+   Verificado: dois comentários (remoto + local) sobrevivem em ambos os itens
+   de uma campanha de teste; um terceiro comentário remoto adicionado entre
+   dois saves também é capturado corretamente.
+
+4. [Resposta órfã sobrevivendo à exclusão do comentário-pai]
+   Arquivo: index.html, função mergeApprovalState()
+   Se alguém apagasse um comentário-raiz sem saber que outra pessoa acabou de
+   responder a ele (resposta ainda não sincronizada localmente), o merge só
+   tombstoneava o pai — a resposta sobrevivia como um comentário órfão,
+   contando no total mas nunca aparecendo em lugar nenhum na tela (a sidebar
+   só lista comentários de nível raiz) e sem botão de apagar acessível (fica
+   dentro do card do pai, que já não existe).
+   Correção: mergeApprovalState() agora cascateia o tombstone — se o pai foi
+   apagado, qualquer resposta dele também conta como apagada.
+   Verificado: cenário exato (resposta chega depois do pai ser apagado
+   localmente) — resposta é corretamente cascateada pro tombstone, não sobra
+   órfã.
+
+5. [Texto de comentário novo destruído pela detecção de lock de edição]
+   Arquivo: index.html, funções checkApprovalEditLockLive(), submitNewPin()
+   Se o dono começasse a editar enquanto um approver estava digitando um
+   comentário novo (ainda não enviado), a detecção do lock (via realtime)
+   fechava a caixa na hora — apagando o texto digitado sem nenhuma chance de
+   recuperação, mesmo que a pessoa tentasse clicar "Post" logo em seguida.
+   Correção: não fecha mais a caixa nesses bloqueios (nem na detecção ao
+   vivo, nem no clique em "Post" enquanto bloqueado) — só avisa. O texto fica
+   intacto na caixa; se o bloqueio for temporário, dá pra tentar enviar de
+   novo depois.
+   Verificado: caixa e texto sobrevivem tanto à detecção ao vivo do lock
+   quanto a um clique em "Post" enquanto bloqueado.
+
+6. [Autosave da própria pessoa apaga resposta que ela mesma está digitando]
+   Arquivo: index.html, função renderApprovalSidebar()
+   autosaveApprovalState()/autosaveCampaignApprovalState() re-renderizam a
+   sidebar inteira ~600ms depois de QUALQUER ação de aprovação (mesmo da
+   MESMA pessoa) — se nesse meio-tempo ela abriu a caixa de resposta de outro
+   comentário e começou a digitar, o rebuild do HTML resetava essa caixa pro
+   estado inicial (fechada, vazia), apagando o texto.
+   Correção: renderApprovalSidebar() agora detecta se há uma caixa de
+   resposta aberta ANTES de reconstruir o HTML, e restaura seu estado (aberta
+   + texto) depois — sem quebrar o caso normal (nenhuma caixa aberta) nem o
+   caso do comentário ter sido apagado no meio do caminho.
+   Verificado: texto sobrevive ao re-render; sem regressão nos dois casos de
+   borda testados.
+
+--- Timing de autosave / "nada é perdido" ---
+
+7. [beforeunload não cobria o autosave de tradução de item de campanha]
+   Arquivo: index.html, handler window.addEventListener('beforeunload', ...)
+   O flush síncrono ao fechar/recarregar a aba cobria _autosaveTimer (edição
+   normal) e _avAutosaveTimer (aprovação), mas nunca mencionava
+   _campaignAutosaveTimer (edição de tradução de item de campanha, debounce
+   150ms) — editar isso e fechar a aba dentro da janela do debounce perdia a
+   edição silenciosamente.
+   Correção: adicionado o flush de _campaignAutosaveTimer ao mesmo handler.
+   Verificado: saveCampaignProject() é chamada corretamente ao disparar
+   beforeunload com esse timer pendente.
+
+8. [Fechar a aba logo após subir um projeto novo podia perder o envio pro banco]
+   Arquivo: index.html, mesmo handler de beforeunload
+   projSaveOnBuild() (chamada ao criar um projeto novo) dispara o push pro
+   Supabase de forma assíncrona e NUNCA esperada por quem chama — é uma
+   limitação real de navegador (não dá pra garantir que uma requisição de
+   rede em andamento complete depois que a aba começa a fechar), mas não
+   havia NENHUM aviso pra pessoa sobre isso.
+   Correção: o handler de beforeunload agora verifica _pendingProjectsPush
+   (variável que já existia, rastreando o envio em voo) e, se ainda não
+   terminou, mostra o diálogo nativo do navegador de "tem certeza que quer
+   sair?" — dá a chance de esperar mais alguns segundos antes de fechar de
+   verdade.
+   Verificado: event.preventDefault() dispara corretamente quando
+   _pendingProjectsPush está pendente.
+
+--- Verificado e confirmado seguro (sem necessidade de correção) ---
+
+- projOpen() (abrir um projeto do Dashboard) já é seguro contra a corrida de
+  "timer de autosave antigo dispara depois de trocar de projeto": o
+  currentProjectId só é reatribuído DEPOIS de dois round-trips de rede
+  (await), e restoreProjectContent() roda de forma síncrona logo em seguida
+  — não existe uma janela onde currentProjectId aponta pro projeto novo mas
+  o estado (S) ainda é do projeto antigo.
+- Duas abas da MESMA pessoa no MESMO projeto já tem um confirm() explícito
+  em projOpen() avisando sobre o risco antes de continuar.
+
+--- Documentado, não corrigido (baixa severidade, não é perda de dado) ---
+
+- Dropdown de @menção pode inserir texto na caixa errada se duas caixas de
+  comentário (nova + resposta) estiverem abertas ao mesmo tempo na MESMA aba
+  — cosmético/confuso, não destrutivo (o texto não some, só vai pro lugar
+  errado), e geralmente se autocorrige na próxima tecla digitada. Mono-
+  usuário, não uma questão de concorrência entre pessoas diferentes.
+- O sistema de comentário "normal" por célula (row.cellComments, diferente
+  da Approval View) não tem merge nem tombstone — é overwrite direto. Fora do
+  escopo pedido (Approval View especificamente); não investigado a fundo se
+  approvers conseguem alcançar essa caixa. Vale uma olhada separada no
+  futuro se isso for relevante.
+- resolvedBy é hoje o único campo mutável de um comentário já criado — o
+  merge depende disso silenciosamente. Não é bug agora, mas é frágil: se no
+  futuro outro campo de um comentário existente virar editável sem atualizar
+  mergeApprovalState(), a mesma classe de bug pode voltar.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+Todas as correções acima foram testadas diretamente no navegador (chamando as
+funções reais do app, reconstruindo os cenários exatos de concorrência
+descritos), não só lidas/inferidas. Nenhum teste desta sessão de correções
+tocou o Supabase real (sbClient bloqueado). Commit git criado após as
+correções (mensagem completa no histórico do repositório).
