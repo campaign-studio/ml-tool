@@ -1,0 +1,85 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-22
+Tema: Projeto novo "sem nada pra reabrir" — autosave pendente nunca era salvo antes de ir pro Dashboard
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+Usuário reportou: sobe um projeto novo (arquivo real: "Eligible_-_Phase_1_-
+_WH__Flow_-_Email_4.html"), sobe um CSV, vai pra tela inicial (Dashboard), e
+recebe o alerta: '"[nome]" was created before this tool started saving full
+project content, so there's nothing to reopen. Please recreate it as a new
+project.' — mesmo o projeto tendo acabado de ser criado.
+
+===============================================================================
+INVESTIGAÇÃO
+===============================================================================
+O painel de preview do navegador ficou travado durante toda a investigação
+(4 reinícios completos, múltiplas ferramentas, todas com timeout de 30s) —
+um problema de infraestrutura à parte, sem relação com o código do app.
+Diante disso, o pipeline de extração/tageamento/salvamento foi testado de
+forma isolada, rodando o JS real do arquivo dentro de um sandbox Node.js
+(sem navegador nenhum), incluindo com o ARQUIVO REAL enviado pelo usuário.
+
+Um teste inicial simples (upload → build → save) funcionou perfeitamente,
+descartando uma quebra geral no pipeline. Isso levou a reconsiderar a
+sequência exata relatada: "subo, subo o CSV, vou pra home" — sugerindo que o
+usuário usa a função de subir um CSV DENTRO do editor (onEditorCsvUpload/
+applyCsvToEditor) depois do upload inicial, não só o fluxo de extração
+automática.
+
+===============================================================================
+CAUSA RAIZ (confirmada por teste, não só leitura de código)
+===============================================================================
+Arquivo: index.html, função goToDashboard()
+
+`applyCsvToEditor()` (chamada ao subir um CSV dentro do editor) agenda um
+autosave via `scheduleAutosave()` — um debounce de 150ms. Se a pessoa clicar
+"Dashboard" antes desses 150ms passarem, `goToDashboard()` NÃO fazia nenhum
+flush desse autosave pendente pra um projeto normal (só fazia pra campanha).
+
+Uma primeira tentativa de correção adicionou esse flush, mas colocada DEPOIS
+da chamada a `projReleaseMine()` — só que essa função já zera
+`currentProjectId = null` sozinha, como efeito colateral de liberar a trava
+de edição. Então o `else if(currentProjectId)` do fix nunca disparava: por
+essa altura, `currentProjectId` já tinha virado null. Isso só foi descoberto
+rodando o cenário de ponta a ponta com instrumentação (console.log) inserida
+diretamente no código dentro do sandbox Node — a leitura do código sozinha
+não deixava esse detalhe óbvio.
+
+Resultado prático: a tradução importada via CSV nunca era persistida se a
+pessoa saísse rápido demais — o `data.csv`/`data.html` salvos continuavam
+refletindo o estado de ANTES do upload do CSV. Isso por si só não gera o
+alerta "nothing to reopen" (a versão anterior ao CSV ainda tem HTML/CSV
+válidos) — mas é a mesma classe de problema (edição perdida silenciosamente
+por navegação rápida) e o ponto mais concreto e verificável encontrado.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Movido o flush do autosave pendente pra ANTES de `projReleaseMine()`, não
+depois — assim `currentProjectId` ainda está válido no momento da checagem.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+- Reproduzido o cenário exato com o ARQUIVO REAL do usuário: upload → build →
+  sobe um CSV com traduções via applyCsvToEditor (150ms de debounce) → chama
+  goToDashboard() IMEDIATAMENTE, sem esperar o debounce. Confirmado por
+  instrumentação que autosaveProject() é chamado corretamente durante
+  goToDashboard() (call count: 1), e que o CSV salvo final contém as
+  traduções importadas (mesmo tamanho que uma chamada direta e correta de
+  autosaveProject() produziria).
+- Testado o cenário SEM nenhum autosave pendente — sem regressão: o projeto
+  ainda é liberado (lock removido) e currentProjectId ainda é limpo
+  corretamente.
+- Confirmado que reabrir o projeto depois mostra html/csv válidos.
+
+===============================================================================
+NOTA
+===============================================================================
+Não foi possível confirmar isso pela interface visual (o painel de preview do
+navegador ficou indisponível a sessão toda) — a verificação foi inteiramente
+por execução isolada do código real do app. Recomendo reproduzir o cenário
+relatado (subir HTML, subir CSV, ir pra Dashboard rápido) depois de atualizar
+a página, pra confirmar visualmente também.
