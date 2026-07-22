@@ -2051,7 +2051,14 @@ let _lockTakeoverShown = false; // evita mostrar o aviso mais de uma vez pra mes
 // do banco e re-renderiza — assim a trava expira sozinha (3min), o "Last edited" atualiza, e
 // travas/aprovações criadas por OUTRA pessoa aparecem aqui mesmo se essa aba já estava aberta
 // antes (sem depender só do realtime, que pode atrasar ou falhar em silêncio).
+// document.hidden: pula o pull/render enquanto a ABA do navegador não está visível (minimizada,
+// outra aba em foco) — ninguém está olhando o Dashboard nesse momento mesmo, então buscar a
+// tabela de projetos inteira a cada 15s seria só tráfego/CPU desperdiçado (pior quanto mais
+// tempo a pessoa deixa a aba aberta em segundo plano, e mais gente/projetos tiver no banco). O
+// listener de 'visibilitychange' logo abaixo garante que, ao voltar pra aba, os dados atualizam
+// na hora em vez de esperar o próximo tick — não fica mais "stale" do que já era antes.
 setInterval(async () => {
+  if(document.hidden) return;
   const dash = document.getElementById('dashboardScreen');
   if(!dash || dash.style.display === 'none') return;
   if(ghConfigured()) await ghPullProjects();
@@ -2060,7 +2067,23 @@ setInterval(async () => {
 
 // Enquanto a pessoa estiver dentro do editor de um projeto, verifica periodicamente
 // se outra pessoa assumiu a edição (trava expirou e alguém abriu antes de você voltar).
-setInterval(checkMyLockTakeover, 20000);
+// Mesmo motivo do document.hidden acima: com a aba em segundo plano ninguém veria o aviso
+// de takeover mesmo, então pular o pull até a aba voltar a ficar visível é só economia.
+setInterval(() => { if(!document.hidden) checkMyLockTakeover(); }, 20000);
+
+// Ao voltar pra esta aba depois de um tempo em segundo plano (ver os dois setInterval acima,
+// que pulam o trabalho enquanto document.hidden), refaz na hora a checagem que ficou pausada —
+// sem isso, dar uma olhada na aba logo após voltar podia mostrar dado com até 15-20s de atraso
+// (a espera normal do próximo tick do poll) em vez de tão fresco quanto antes desta otimização.
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden) return;
+  const dash = document.getElementById('dashboardScreen');
+  if(dash && dash.style.display !== 'none') {
+    if(ghConfigured()) ghPullProjects().then(renderDashboardIfChanged);
+  }
+  const appBody = document.getElementById('appBody');
+  if(appBody && appBody.style.display !== 'none') checkMyLockTakeover();
+});
 
 async function checkMyLockTakeover() {
   if(_lockTakeoverShown || !currentProjectId) return;
@@ -2374,7 +2397,14 @@ function notifGetAll() {
 }
 
 function notifSaveAll(notifs) {
-  localStorage.setItem(NOTIF_KEY, JSON.stringify(notifs));
+  // Mesmo raciocínio do try/catch em projSaveAllLocal: notificações nunca são deletadas (só
+  // acumulam), e sem isso um QuotaExceededError aqui impediria até a linha de baixo
+  // (sbPushNotifs) de rodar — perdendo a notificação local E remota, em silêncio.
+  try {
+    localStorage.setItem(NOTIF_KEY, JSON.stringify(notifs));
+  } catch(e) {
+    console.warn('localStorage (notifications) write failed — quota exceeded? O sync com o Supabase ainda é tentado.', e);
+  }
   sbPushNotifs(notifs); // sincroniza com o Supabase em segundo plano
 }
 
@@ -2792,7 +2822,19 @@ function projGetAll() {
 }
 
 function projSaveAllLocal(projects) {
-  localStorage.setItem(PROJ_KEY, JSON.stringify(projects));
+  // try/catch: localStorage tem uma cota (~5-10MB, varia por navegador) — projetos guardam
+  // e-mail HTML + CSV completos de várias línguas, então um catálogo grande o suficiente pode
+  // estourar essa cota. Sem isso, um QuotaExceededError aqui (setItem) subia sem tratamento e
+  // interrompia a função ANTES da linha seguinte no chamador (ghMergeAndPushProjects, chamado
+  // logo depois em projSaveAll) — ou seja, o autosave falhava por INTEIRO, local E remoto, sem
+  // aviso nenhum pra pessoa. Com o catch, o cache local desta aba fica desatualizado (só isso
+  // já era o pior caso de qualquer erro de rede tratado no resto do arquivo), mas o save
+  // continua e ainda tenta ir pro Supabase — só loga o aviso pra aparecer no console.
+  try {
+    localStorage.setItem(PROJ_KEY, JSON.stringify(projects));
+  } catch(e) {
+    console.warn('localStorage (projects) write failed — quota exceeded? O sync com o Supabase ainda é tentado.', e);
+  }
 }
 
 // Faz merge POR PROJETO (usando updatedAt) contra o que está no localStorage agora, em vez
@@ -2976,9 +3018,17 @@ function setDashFolderFilter(name) {
 }
 
 let _dashProjectSearch = '';
+// Debounced (150ms, mesmo valor usado no autosave de tradução) — renderDashboard() reconstrói
+// o innerHTML inteiro das 3 listas e reparse o CSV de CADA projeto pra calcular o badge de
+// progresso (projTranslationStats -> parseBrazeCsv), além de recriar o <iframe srcdoc> de
+// preview de cada card. Sem o debounce, isso rodava por INTEIRO a cada tecla digitada na
+// busca — o custo cresce com o número de projetos da pessoa, e ficava pior (e mais "piscante",
+// pelos iframes recarregando) quanto mais projetos ela tivesse.
+let _dashSearchTimer = null;
 function setDashProjectSearch(text) {
   _dashProjectSearch = text;
-  renderDashboard();
+  clearTimeout(_dashSearchTimer);
+  _dashSearchTimer = setTimeout(renderDashboard, 150);
 }
 
 // ── Renomear/apagar uma pasta inteira de uma vez — antes só dava pra mover projeto
@@ -7413,8 +7463,9 @@ async function autosaveCampaignApprovalState() {
     }
   }
   if(document.getElementById('approvalView')?.classList.contains('show')) {
+    // renderApprovalSidebar() já chama renderApprovalDoneBanner() internamente no fim
+    // (ver definição) — chamar nos dois lugares só refazia o mesmo innerHTML 2x à toa.
     renderApprovalSidebar();
-    renderApprovalDoneBanner();
     renderApprovalActivityFeed();
     approvalLangs().langs.forEach(l => renderApprovalPins(l));
   }
@@ -7533,8 +7584,8 @@ async function autosaveApprovalState() {
 
   // Re-renderiza pra refletir o que veio do merge (ex: comentário de outra pessoa).
   if(document.getElementById('approvalView')?.classList.contains('show')) {
+    // renderApprovalSidebar() já chama renderApprovalDoneBanner() internamente no fim.
     renderApprovalSidebar();
-    renderApprovalDoneBanner();
     renderApprovalActivityFeed();
     approvalLangs().langs.forEach(l => renderApprovalPins(l));
   }
@@ -8777,8 +8828,8 @@ function openApprovalView() {
   const sub = document.getElementById('avSubtitle');
   if(sub) sub.textContent = S.csv.name || '';
   renderApprovalGrid();
+  // renderApprovalSidebar() já chama renderApprovalDoneBanner() internamente no fim.
   renderApprovalSidebar();
-  renderApprovalDoneBanner();
   renderApprovalActivityFeed();
   avPresenceJoin();
 }
@@ -9490,9 +9541,20 @@ function renderApprovalSidebar() {
 
   const all = S.approvalComments;
   const topLevel = all.filter(c => !c.parentId).sort((a, b) => b.createdAt - a.createdAt);
+  // Agrupa as respostas por parentId numa única passada por `all` — antes, renderApprovalThreadCard
+  // fazia um all.filter() (varredura completa de TODOS os comentários) pra CADA comentário de
+  // topo, um O(topLevel × all) que cresce em dobro com o total de comentários acumulados no
+  // projeto. Mesmo resultado (mesmo agrupamento, mesma ordenação por createdAt logo abaixo),
+  // só monta o agrupamento uma vez em vez de refazer a varredura por card.
+  const repliesByParent = new Map();
+  all.forEach(r => {
+    if(!r.parentId) return;
+    if(!repliesByParent.has(r.parentId)) repliesByParent.set(r.parentId, []);
+    repliesByParent.get(r.parentId).push(r);
+  });
   if(countEl) countEl.textContent = all.length ? String(all.length) : '';
   list.innerHTML = topLevel.length
-    ? topLevel.map(c => renderApprovalThreadCard(c, all)).join('')
+    ? topLevel.map(c => renderApprovalThreadCard(c, repliesByParent.get(c.id) || [])).join('')
     : `<div class="empty-state" style="margin:6px;padding:24px 16px;"><p>No comments yet. Select any text in a preview to leave one.</p></div>`;
   renderApprovalDoneBanner();
 
@@ -9506,13 +9568,15 @@ function renderApprovalSidebar() {
   }
 }
 
-function renderApprovalThreadCard(c, all) {
+// `replies` chega pré-agrupado por parentId (ver repliesByParent em renderApprovalSidebar) —
+// só falta ordenar (mesmo critério de sempre: mais antiga primeiro).
+function renderApprovalThreadCard(c, replies) {
   const me = authCurrentUser();
   const isAuthor = !!(me && c.author.toLowerCase() === me.email.toLowerCase());
   const isOwner = isCurrentProjectOwner();
   const resolved = c.resolvedBy && c.resolvedBy.length > 0;
   const iVerified = !!(me && c.resolvedBy.includes(me.email.toLowerCase()));
-  const replies = all.filter(r => r.parentId === c.id).sort((a, b) => a.createdAt - b.createdAt);
+  replies = replies.slice().sort((a, b) => a.createdAt - b.createdAt);
   const verifyBtn = !isAuthor
     ? `<button class="av-verify-btn ${iVerified ? 'checked' : ''}" onclick="event.stopPropagation();toggleApprovalVerify('${c.id}')">✓ ${iVerified ? 'Verified' : 'Verify'}</button>`
     : '';
@@ -9702,9 +9766,8 @@ function markLangApproved(lang) {
   S.approvalDoneByLang[lang] = { by: me.email, at: Date.now() };
   logApprovalActivity('approved', lang, null);
   renderFrameApproveSlot(lang);
-  renderApprovalDoneBanner();
   renderApprovalActivityFeed();
-  renderApprovalSidebar();
+  renderApprovalSidebar(); // já chama renderApprovalDoneBanner() internamente no fim
   closeNewPinBox();
   scheduleApprovalAutosave();
   if(p && p.owner && p.owner.toLowerCase() !== me.email.toLowerCase()) {
@@ -9726,9 +9789,8 @@ function undoLangApproval(lang) {
   S.approvalDoneByLang[lang] = { by: me.email, at: Date.now(), undone: true };
   logApprovalActivity('undone', lang, null);
   renderFrameApproveSlot(lang);
-  renderApprovalDoneBanner();
   renderApprovalActivityFeed();
-  renderApprovalSidebar();
+  renderApprovalSidebar(); // já chama renderApprovalDoneBanner() internamente no fim
   scheduleApprovalAutosave();
   if(p && p.owner && p.owner.toLowerCase() !== me.email.toLowerCase()) {
     notifAdd(p.owner, me.email, `${me.email} undid the approval on ${langDisplayName(lang)} on "${projectName}" — it needs another look.`, { projectId: currentProjectId });
