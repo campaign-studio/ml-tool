@@ -1,0 +1,67 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-22
+Tema: Caixa de novo comentário abrindo longe da seleção em zoom alto
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+"Quando o zoom tá MUITO próximo, o box não abre junto da seleção. Abre meio
+distante. Melhor deixar como está dentro do comentário, com overlay, por
+cima. Do que esse pop box"
+
+===============================================================================
+CAUSA RAIZ
+===============================================================================
+Arquivo: index.html, funções onFrameSelection() e openNewPinBox()
+
+A caixa de novo comentário (.av-newpin-box) era posicionada via left/top em
+pixels, como position:absolute, dentro de .av-frame-viewport — que vive
+dentro de #avCanvas, o container que tem transform:scale() aplicado pelo
+controle de zoom (applyAvTransform).
+
+O ponto x/y usado pra posicionar a caixa vinha de
+getBoundingClientRect().width/height (espaço de TELA, já com o zoom
+aplicado) multiplicado pela porcentagem do clique. Só que um left/top em
+pixels aplicado a um elemento DENTRO de um ancestral com scale() é resolvido
+no espaço de coordenadas LOCAL daquele ancestral (antes do transform), não
+no espaço de tela. Os dois espaços só coincidem por acaso quando o zoom está
+em 100% — em qualquer outro nível, o descompasso entre "onde o cálculo
+pensa que está" e "onde a tela realmente desenha" cresce na proporção do
+zoom. Por isso o problema piorava exatamente quando o zoom estava "muito
+próximo".
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Trocada a estratégia de posicionamento, do mesmo jeito que já tinha sido
+feito pro dropdown de @menção antes nesta sessão (mesmo motivo, mesmo
+padrão):
+
+- A caixa deixou de ser position:absolute dentro do viewport do frame e
+  passou a ser position:fixed, anexada direto no <body> — fora do container
+  que tem o transform de zoom.
+- A posição agora é calculada com coordenadas de TELA de verdade
+  (getBoundingClientRect().left/top + a porcentagem do clique), não mais um
+  valor relativo ao viewport.
+- z-index ajustado pra 9000 — acima do #approvalView (8000, senão a caixa
+  ficaria escondida atrás do canvas) e abaixo do dropdown de @menção (9998,
+  pra ele continuar aparecendo por cima quando aberto a partir do textarea
+  desta caixa).
+
+O CONTEÚDO da caixa (citação, texto, botão "Post", botão de cancelar) não
+mudou nada — só o mecanismo de posicionamento, exatamente como foi pedido.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+- Simulado zoom de 250% ("muito próximo") com pan aplicado: a caixa abriu a
+  ~12px do ponto de seleção real (a distância é o deslocamento vertical
+  intencional de sempre, não um erro) — antes da correção, esse
+  descompasso cresceria proporcionalmente ao zoom.
+- Confirmado que em zoom normal (100%) o comportamento continua idêntico ao
+  de antes (sem regressão).
+- Confirmado o novo z-index: Approval View (8000) < caixa (9000) < dropdown
+  de menção (9998).
+- Refeito o teste de @menção dentro da caixa (marcar alguém, ver o texto
+  inserido, caixa sobrevivendo) com a nova arquitetura de posicionamento —
+  continua funcionando igual.
