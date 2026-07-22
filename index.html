@@ -5660,6 +5660,21 @@ function projSaveOnBuild(wasImport) {
 
   // Continue editing: S.rawHtml já é o HTML tageado (vindo do upload). New project: precisa gerar a versão tageada agora.
   const htmlToSave = wasImport ? S.rawHtml : buildTaggedHtml();
+  if(!wasImport) {
+    // ESSENCIAL: S.rawHtml precisa virar a versão TAGEADA a partir daqui, não só a variável
+    // local htmlToSave. autosaveProject() (chamado em QUALQUER autosave posterior — inclusive
+    // só de sair pro Dashboard, ver goToDashboard) grava p.data.html = S.rawHtml direto; se
+    // S.rawHtml continuasse com o HTML cru original (sem as tags {%translation%}), a PRÓXIMA
+    // vez que autosaveProject() rodasse — nem precisa editar nada, só a pessoa sair da tela
+    // já dispara isso — sobrescrevia silenciosamente o HTML já tageado, recém-salvo aqui, de
+    // volta pro cru. Reabrir o projeto depois mostrava "0 linhas tageadas": parseSavedProjectHtml
+    // procura por {%translation idN%}...{%endtranslation%} no HTML salvo, e não sobrava
+    // nenhuma tag pra encontrar. htmlAlreadyTagged precisa ir junto, senão um futuro rebuild
+    // (ex: adicionar mais um idioma-alvo e clicar "Build" de novo) tentava re-tagear em cima
+    // do que já está tageado, criando tags aninhadas.
+    S.rawHtml = htmlToSave;
+    S.htmlAlreadyTagged = true;
+  }
   const data = {
     html: htmlToSave,
     htmlName: S.filename,
