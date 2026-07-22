@@ -826,7 +826,12 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
 .av-pin:hover{transform:translate(-50%,-100%) rotate(45deg) scale(1.12);}
 .av-pin.resolved{background:var(--green);}
 .av-pin.hl{outline:3px solid rgba(59,130,246,.6);outline-offset:1px;}
-.av-newpin-box{position:absolute;z-index:10;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:10px;width:240px;}
+/* position:fixed + z-index acima de #approvalView (8000) de propósito — vive fora do
+   container transformado (#avCanvas tem transform:scale() pro zoom), coordenadas calculadas
+   em JS a partir de getBoundingClientRect() (ver openNewPinBox/onFrameSelection). Abaixo de
+   #mentionDropdown (9998) pra o dropdown de @menção continuar aparecendo por cima quando
+   aberto a partir do textarea desta caixa. */
+.av-newpin-box{position:fixed;z-index:9000;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:10px;width:240px;}
 .av-newpin-quote{font-size:11px;font-style:italic;color:var(--text2);background:var(--s2);border-left:2.5px solid var(--accent);padding:5px 8px;border-radius:0 6px 6px 0;margin-bottom:7px;max-height:60px;overflow-y:auto;}
 .av-comment-quote{font-size:11px;font-style:italic;color:var(--text2);background:var(--surface);border-left:2.5px solid var(--accent);padding:5px 8px;border-radius:0 6px 6px 0;margin-bottom:6px;}
 .av-edit-btn{font-size:10.5px;font-weight:700;color:var(--text3);background:none;border:none;cursor:pointer;font-family:var(--sans);padding:0;}
@@ -9364,12 +9369,15 @@ function onFrameSelection(data) {
   const vp = document.getElementById('avVp-' + cssSafeLang(data.lang));
   if(!vp) return;
   const rect = vp.getBoundingClientRect();
-  const x = rect.width * (data.xPct / 100);
-  const y = rect.height * (data.yPct / 100);
+  // Coordenadas de TELA de verdade (getBoundingClientRect já reflete o zoom/transform atual do
+  // canvas) — não mais coordenadas locais de vp. A caixa agora é position:fixed (ver
+  // openNewPinBox), então precisa da posição real na tela, somando rect.left/top.
+  const screenX = rect.left + rect.width * (data.xPct / 100);
+  const screenY = rect.top + rect.height * (data.yPct / 100);
   // Selecionar só precisa apontar QUAL linha — a citação mostrada e o botão de editar sempre
   // trabalham com a linha INTEIRA, não só o pedacinho de texto que a pessoa arrastou o mouse por cima.
   const quote = data.rowId ? currentRowText(data.rowId, data.lang) : data.text;
-  openNewPinBox(vp, x, y, data.xPct, data.yPct, data.lang, quote, data.rowId);
+  openNewPinBox(vp, screenX, screenY, data.xPct, data.yPct, data.lang, quote, data.rowId);
 }
 
 // Texto atual de uma linha, num idioma: a tradução se já existir, senão o texto de origem
@@ -9382,14 +9390,24 @@ function currentRowText(rowId, lang) {
   return isOrig ? row.src : (row.translations[lang] || row.src || '');
 }
 
-function openNewPinBox(vp, x, y, xPct, yPct, lang, quote, rowId) {
+function openNewPinBox(vp, screenX, screenY, xPct, yPct, lang, quote, rowId) {
   closeNewPinBox();
   _pendingPin = { lang, xPct, yPct, quote: quote || '', rowId: rowId || null };
   const box = document.createElement('div');
   box.className = 'av-newpin-box';
   box.id = 'avNewPinBox';
-  box.style.left = Math.max(4, x) + 'px';
-  box.style.top = (y + 12) + 'px';
+  // position:fixed com coordenadas de TELA (ver CSS .av-newpin-box) — não mais position:
+  // absolute relativo a vp. vp vive dentro de #avCanvas, que tem transform:scale() aplicado
+  // pro zoom (ver applyAvTransform) — um left/top em px num descendente de um ancestral com
+  // scale() é resolvido no espaço de coordenadas LOCAL (pré-transform) daquele ancestral, mas
+  // screenX/screenY vêm de getBoundingClientRect() (espaço de TELA, pós-transform). Em zoom
+  // 100% os dois espaços coincidem por acaso, mas quanto mais zoom, maior o descompasso — a
+  // caixa abria cada vez mais longe do ponto clicado de verdade, na proporção do zoom (esse
+  // era o bug: "quando o zoom tá muito próximo, o box abre meio distante da seleção").
+  // position:fixed + coordenadas de tela elimina esse descompasso — a caixa sempre abre bem
+  // ao lado de onde a pessoa selecionou, em qualquer nível de zoom.
+  box.style.left = Math.max(4, screenX) + 'px';
+  box.style.top = (screenY + 12) + 'px';
   const esc = s => String(s || '').replace(/</g, '&lt;');
   // Mesma estrutura dos outros comentários do app (thread do CSV builder e sidebar da Approval
   // View): linha textarea+botão lado a lado (.av-reply-input-box), não textarea com uma linha
@@ -9414,17 +9432,11 @@ function openNewPinBox(vp, x, y, xPct, yPct, lang, quote, rowId) {
     </div>
   `;
   box.onclick = e2 => e2.stopPropagation();
-  vp.appendChild(box);
-  // preventScroll: true é ESSENCIAL aqui — #avCanvasViewport tem overflow:hidden, mas isso
-  // não impede o navegador de ajustar seu scrollTop/scrollLeft sozinho pra "revelar" o
-  // elemento que acabou de ganhar foco (overflow:hidden ainda é uma scroll container pra
-  // fins de foco, só não deixa a PESSOA rolar manualmente). O app já faz seu próprio pan/zoom
-  // via transform em #avCanvas — o navegador não sabe disso e calcula a posição do textarea
-  // em coordenadas de layout SEM considerar esse transform, então "acha" que o textarea está
-  // fora da área visível (mesmo quando não está) e força um scroll próprio em cima do pan já
-  // aplicado. Como .av-zoom-controls/.av-hscroll moram no MESMO container (só posicionados
-  // via position:absolute), esse scroll extra arrasta os dois juntos — era isso que fazia a
-  // barra de zoom "subir" sempre que a caixa de comentário ganhava foco.
+  // Body-level de propósito (mesmo padrão do #mentionDropdown) — não é mais filho de vp, que
+  // vive dentro do container transformado (#avCanvas). Isso também é o que elimina o próprio
+  // risco de scroll indesejado ao focar (#avCanvasViewport, com overflow:hidden, não é mais
+  // ancestral deste elemento), mas preventScroll:true continua aqui por segurança/consistência.
+  document.body.appendChild(box);
   setTimeout(() => document.getElementById('avNewPinText')?.focus({preventScroll:true}), 0);
 }
 
