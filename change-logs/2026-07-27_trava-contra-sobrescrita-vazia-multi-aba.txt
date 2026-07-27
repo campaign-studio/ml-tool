@@ -1,0 +1,107 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-27
+Tema: Projeto sumia (csv/langs vazios) depois de subir um CSV e dar refresh — causa raiz é
+falta de proteção contra a mesma pessoa com o mesmo projeto aberto em mais de uma aba
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+Usuário reportou: "quando eu subo um CSV, tá dando bug no salvamento. Se eu atualizo a
+página, some todas as linhas e etc." Durante a investigação, também reportou "acabou de
+rolar o erro" (um erro apareceu na tela enquanto isso acontecia).
+
+===============================================================================
+INVESTIGAÇÃO
+===============================================================================
+Antes de mexer em qualquer código, foi confirmado que o bug era REAL consultando
+diretamente a tabela `projects` do Supabase real (leitura, sem nenhuma escrita): o
+projeto "Eligible_-_Phase_1_-_WH__Flow_-_Email_1" (id p_1785188862799) tinha sido criado
+às 21:47:42 e regravado às 21:59:21 — 11 minutos depois — com `data.csv = ""`,
+`data.langs = []` e o HTML salvo SEM nenhuma tag {%translation%} (ou seja, a versão CRUA,
+não a tageada). Isso confirma que o projeto foi criado corretamente e, minutos depois,
+alguma coisa gravou por cima um estado vazio.
+
+Hipóteses testadas e DESCARTADAS (cada uma com teste direto, não só leitura de código):
+1. Corrida push/pull do Supabase (ghPullProjects sobrescrevendo com dado desatualizado
+   enquanto um push ainda está em voo) — testado com um cliente Supabase FALSO controlado
+   (upsert lento de propósito, pull disparado no meio) — a proteção via
+   _pendingProjectsPush funcionou corretamente, sem perda.
+2. applyCsvToEditor corrompendo S.csv.rows/langs diretamente — lido por completo: TODO
+   caminho de erro (CSV sem colunas de idioma, 0 ids batendo) retorna ANTES de chamar
+   scheduleAutosave(), e o caminho de sucesso só atualiza translations de linhas
+   existentes, nunca mexe no array de rows/langs em si.
+3. buildCSV() zerando idiomas ao voltar/mexer na tela de Targets — lido por completo: o
+   branch incremental (quando já existem rows) só ADICIONA idiomas novos, nunca remove os
+   existentes.
+4. Build inicial com 0 idiomas selecionados — descartado: o botão "Next" da tela de
+   Targets fica desabilitado com S.targets.length===0, front-end impede esse caminho.
+5. currentProjectId "grudado" de um projeto anterior contaminando um novo upload (bug já
+   conhecido e corrigido em projCreate(), que zera currentProjectId antes de entrar no
+   wizard) — confirmado que esse é o ÚNICO ponto de entrada no wizard, então esse caminho
+   específico já está protegido.
+6. Reabertura (restoreProjectContent) falhando ao reconstruir S.csv a partir de dados BONS
+   — testado com o payload REAL de um projeto irmão íntegro (30 linhas, 10 idiomas): tudo
+   reconstruído perfeitamente, sem discrepância.
+
+Perguntado ao usuário: (a) havia mais de uma aba/janela aberta na hora? Resposta: SIM.
+(b) o que a mensagem de erro dizia? Resposta: "No language columns were found" — esse
+erro específico (de applyCsvToEditor) é inofensivo por si só (bloqueia e não salva nada),
+mas a confirmação de múltiplas abas abertas aponta pra causa raiz real: NADA no app impede
+duas abas da MESMA pessoa com o MESMO projeto aberto — se uma delas estiver com o estado
+em memória (S.csv) desatualizado ou vazio (aba antiga parada numa versão anterior da
+página, ou que carregou o projeto num momento diferente) e salvar por último, ela
+sobrescreve silenciosamente a aba com o trabalho de verdade. autosaveProject() e
+projSaveOnBuild() nunca verificavam se estavam prestes a apagar conteúdo já salvo.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Arquivo: index.html
+
+Trava de segurança nova (isStaleEmptyOverwrite / warnStaleEditorState, perto de
+projSaveAllLocal): se S.csv.rows.length === 0 no momento de salvar, mas o projeto já tem
+conteúdo salvo (p.data.csv não vazio), a gravação é ABORTADA — csv/html/langs NÃO são
+tocados — e aparece um aviso (toast) pedindo pra recarregar a aba e checar se o projeto
+não está aberto em outro lugar também. Aplicada em dois pontos:
+1. autosaveProject() — antes de gravar p.data.csv/html/langs/comments.
+2. projSaveOnBuild() — antes de sobrescrever um projeto EXISTENTE (currentProjectId já
+   setado).
+
+Isso não resolve a causa raiz mais profunda (a ferramenta ainda não tem um lock real
+entre abas), mas elimina o sintoma mais grave: perda silenciosa e total do conteúdo já
+salvo. Na pior hipótese agora, o autosave falha (com aviso visível) em vez de apagar
+tudo sem avisar.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real (não sandbox), com sbClient bloqueado:
+1. Criado um projeto de teste com conteúdo salvo válido (csv/langs/html reais).
+2. Simulado o estado de aba "travada" (S.csv.rows=[], S.csv.langs=[]) com
+   currentProjectId ainda apontando pro projeto bom.
+3. Chamado autosaveProject() — confirmado que o csv/langs salvos NÃO mudaram (idênticos
+   antes/depois) e que o aviso disparou (_lastStaleEditorWarnAt atualizado, showNotif
+   chamado).
+4. Chamado projSaveOnBuild(false) no mesmo cenário — mesmo resultado: nada sobrescrito.
+5. Testado o caminho NORMAL (S.csv.rows populado, uma tradução de verdade editada) —
+   confirmado que autosaveProject() salva normalmente, sem regressão nenhuma.
+6. Limpo todo o projeto/usuário de teste do localStorage depois.
+
+===============================================================================
+PENDÊNCIA — PROJETO REAL AINDA QUEBRADO EM PRODUÇÃO
+===============================================================================
+O projeto "Eligible_-_Phase_1_-_WH__Flow_-_Email_1" (p_1785188862799) continua com
+csv/langs vazios no Supabase real — a trava nova PREVINE que isso aconteça de novo, mas
+não recupera retroativamente o que já foi perdido (não há histórico de versões
+acessível). O HTML cru original ainda está salvo (42829 caracteres, sem tags) — dá pra
+re-tagear e reconstruir a ESTRUTURA do projeto, mas qualquer tradução que já existia
+antes da sobrescrita não é recuperável. Combinado com o usuário: decidir se recria o
+projeto do zero (reupload do HTML original) ou outra abordagem.
+
+===============================================================================
+NOTA
+===============================================================================
+A causa raiz exata (qual sequência específica entre as duas abas causou a gravação
+vazia) não foi 100% reproduzida passo a passo — mas a trava adicionada protege contra o
+RESULTADO (perda de dados), independente do mecanismo exato de disparo, o que atende
+diretamente o pedido original do usuário de garantir que nada seja perdido.

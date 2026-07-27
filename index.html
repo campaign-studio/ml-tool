@@ -2841,6 +2841,28 @@ function warnLocalStorageWriteFailed() {
   }
 }
 
+// Trava de segurança contra perda silenciosa de dados: uma sessão de edição normal NUNCA
+// deveria ter S.csv.rows vazio enquanto currentProjectId aponta pra um projeto que já tem
+// conteúdo salvo (csv/html reais) — isso só acontece se o estado em memória desta aba está
+// desatualizado/corrompido (ex: a mesma pessoa com o mesmo projeto aberto em duas abas — uma
+// delas com S ainda vazio ou rodando uma versão antiga da página — e essa aba "vence" o
+// autosave). Achado real: um projeto criado e tageado corretamente apareceu, minutos depois,
+// salvo com csv:"" e langs:[] — sem essa checagem, autosaveProject()/projSaveOnBuild()
+// gravavam esse estado vazio por cima do projeto bom, sem nenhum aviso, e só se percebia ao
+// dar reload e ver "sem linha tageada, nada".
+let _lastStaleEditorWarnAt = 0;
+function isStaleEmptyOverwrite(p) {
+  return S.csv.rows.length === 0 && !!(p && p.data && p.data.csv);
+}
+function warnStaleEditorState() {
+  const now = Date.now();
+  if(now - _lastStaleEditorWarnAt < 10000) return;
+  _lastStaleEditorWarnAt = now;
+  if(typeof showNotif === 'function') {
+    showNotif('This tab looks out of sync with the saved project (0 rows in memory) — nothing was saved just now. Please reload this tab before continuing, and check that this project isn\'t also open in another tab.', 'warn');
+  }
+}
+
 function projSaveAllLocal(projects) {
   // try/catch: localStorage tem uma cota (~5-10MB, varia por navegador) — projetos guardam
   // e-mail HTML + CSV completos de várias línguas, então um catálogo grande o suficiente pode
@@ -5691,6 +5713,7 @@ function projSaveOnBuild(wasImport) {
   if(currentProjectId) {
     const p = projects.find(x => x.id === currentProjectId);
     if(p) {
+      if(isStaleEmptyOverwrite(p)) { warnStaleEditorState(); return; }
       // NÃO sobrescreve p.name aqui — projeto já existente já tem um nome (seja o
       // original do CSV, seja um que a pessoa renomeou no Dashboard). Sobrescrever
       // incondicionalmente apagava renomeações toda vez que o wizard salvava de novo
@@ -7448,6 +7471,7 @@ function autosaveProject() {
   // Approvers só têm permissão de escrever os comentários/status de aprovação — nunca o
   // CSV/HTML, e nunca disputam o lock de edição (que é de quem está de fato traduzindo).
   if(!_approverMode) {
+    if(isStaleEmptyOverwrite(p)) { warnStaleEditorState(); return; }
     p.data.csv = buildCsvStringForSave();
     // S.rawHtml já vem reparado (ver repairTaggedHtmlDefaults, chamado em
     // restoreProjectContent) se este projeto tinha sido tageado antes da correção do
