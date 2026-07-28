@@ -3468,7 +3468,7 @@ function switchCampaignTab(type) {
   renderCampaignMain();
 }
 
-// "Empresta" o S global só pra gerar o preview (buildPreviewHtml/annotateConditionals/
+// "Empresta" o S global só pra gerar o preview (buildPreviewHtml/resolveConditionalBranch/
 // renderFooterPlaceholder dependem dele) — a grade em si lê e escreve direto em item.rows,
 // não depende de S. Isso evita duplicar todo o motor de tagueamento/preview de e-mail.
 // Também carrega o estado de aprovação (comentários/aprovado-por-idioma) do item pra
@@ -4442,11 +4442,10 @@ function projPreviewHtml(p) {
   if(!p.data || !p.data.html) return null;
   let html = p.data.html.replace(/\{%translation\s+\S+?%\}/g, '').replace(/\{%endtranslation%\}/g, '');
   html = replaceLiquidPlaceholders(html);
-  // Mesma tag discreta com quebra de linha usada nos outros previews — sem isso,
-  // {% if/else/endif %} cru aparecia na miniatura do card, podendo até juntar
-  // conteúdo que devia estar em blocos separados numa linha só. injectCondStyle traz
-  // o CSS da tag pra dentro deste iframe — sem ele a tag aparece sem estilo nenhum.
-  return injectCondStyle(annotateConditionals(renderFooterPlaceholder(html)));
+  // Resolve sempre pro branch "if" (ver resolveConditionalBranch) — sem isso,
+  // {% if/else/endif %} cru aparecia na miniatura do card. injectCondStyle traz o CSS
+  // do aviso de footer não-selecionável pra dentro deste iframe.
+  return injectCondStyle(resolveConditionalBranch(renderFooterPlaceholder(html), 'if'));
 }
 
 function projPreviewBoxHtml(p) {
@@ -5223,7 +5222,7 @@ function resetAll() {
   S.csv = { name:'', rows:[], langs:[] };
   S.selImgs = new Set();
   S.vLang = null;
-  S.condBranch = 'both';
+  S.condBranch = 'if';
   S.approvalComments = [];
   S.approvalDoneByLang = {};
   S.approvalActivity = [];
@@ -6642,10 +6641,10 @@ function refreshViewerImgPick() {
   if(!imgs.length){
     if(_imgPickHtml === S.rawHtml) return; // já carregado
     _imgPickHtml = S.rawHtml;
-    // annotateConditionals troca {% if/else/endif %} pela tag discreta com quebra de
-    // linha — sem isso, essa marcação Liquid crua ficava visível e podia até juntar
-    // conteúdo que devia estar em blocos separados numa linha só, quebrando o layout.
-    const html = injectCondStyle(annotateConditionals(renderFooterPlaceholder(S.rawHtml.replace(/\{%translation\s+\S+?%\}/g,'').replace(/\{%endtranslation%\}/g,''))));
+    // Resolve sempre pro branch "if" (ver resolveConditionalBranch) — sem isso, essa
+    // marcação Liquid crua ficava visível e podia até juntar conteúdo que devia estar
+    // em blocos separados numa linha só, quebrando o layout.
+    const html = injectCondStyle(resolveConditionalBranch(renderFooterPlaceholder(S.rawHtml.replace(/\{%translation\s+\S+?%\}/g,'').replace(/\{%endtranslation%\}/g,'')), 'if'));
     const iframe = document.getElementById('vf');
     if(iframe){
       const old = iframe.src;
@@ -6668,12 +6667,9 @@ function refreshViewerImgPick() {
   // renderFooterPlaceholder ANTES do loop de wrap de imagens logo abaixo — os <img> do
   // footer de exemplo não vêm de S.strings, então o loop nunca tenta torná-los clicáveis.
   html = renderFooterPlaceholder(html);
-  // Mesma tag discreta com quebra de linha do preview principal pros marcadores
+  // Resolve sempre pro branch "if" (ver resolveConditionalBranch) pros marcadores
   // {% if/else/endif %} — antes ficava cru aqui, podendo juntar conteúdo numa linha só.
-  // injectCondStyle traz o CSS da tag pra dentro deste iframe (o CSS da página pai não
-  // atravessa), senão a tag aparecia sem estilo nenhum — só texto puro, sem o visual
-  // de badge igual no preview principal.
-  html = injectCondStyle(annotateConditionals(html));
+  html = injectCondStyle(resolveConditionalBranch(html, 'if'));
 
   // Wrap each detected <img> with a clickable overlay. Rastreia por onde já
   // procuramos PRA CADA src — sem isso, duas linhas com o MESMO src (logo/ícone
@@ -7887,10 +7883,13 @@ function renderFooterPlaceholder(html) {
 
 // Toggle SÓ de teste/visualização (não muda o HTML tageado, nem o CSV — só o preview em
 // tela): o preview normalmente nunca avalia a condição de um {% if/elsif/else %} de verdade,
-// só mostra os dois lados em sequência com uma etiqueta (annotateConditionals). Isso resolve
-// manualmente cada bloco if/elsif/else/endif (e unless/endunless), escolhendo UM branch —
-// 'if' pega sempre o primeiro (o if/unless), 'else' pega sempre o último (o else, se existir;
-// senão cai pro último elsif; senão cai pro próprio if). Suporta blocos aninhados via recursão.
+// então isso resolve manualmente cada bloco if/elsif/else/endif (e unless/endunless),
+// escolhendo UM branch — 'if' pega sempre o primeiro (o if/unless), 'else' pega sempre o
+// último (o else, se existir; senão cai pro último elsif; senão cai pro próprio if).
+// Suporta blocos aninhados via recursão. 'if' é sempre o padrão do projeto.
+// Cada branch escolhido vem com uma tag discreta (IF/ELSE) logo ACIMA do texto — não mostra
+// o outro branch (só existia no modo "Both", removido), mas deixa claro que aquele trecho é
+// conteúdo condicional, e qual lado está sendo mostrado.
 function resolveConditionalBranch(html, mode){
   const TAG_RE = /\{%[-\s]*(if|elsif|else|endif|unless|endunless)\b([^%]*)%\}/gi;
   const tokens = [];
@@ -7917,7 +7916,10 @@ function resolveConditionalBranch(html, mode){
     return { out, stop: null };
   }
   // Já consumiu o {% if %}/{% unless %} de abertura — resolve até o {% endif/endunless %}
-  // correspondente e devolve só o texto do branch escolhido pelo "mode".
+  // correspondente e devolve o texto do branch escolhido pelo "mode", com a tag IF/ELSE
+  // prefixada (própria etiqueta do "mode", não do nome real do branch — bate com o que a
+  // pessoa clicou no toggle, mesmo num "else" que na verdade caiu de volta pro if por falta
+  // de um {% else %} de verdade).
   function parseIfBlock(){
     const branches = [];
     let stop = null;
@@ -7929,44 +7931,27 @@ function resolveConditionalBranch(html, mode){
       break; // endif/endunless, ou acabou sem fechar (HTML malformado) — desiste aqui
     }
     if(stop === 'endif' || stop === 'endunless') i++;
-    if(mode === 'if') return branches[0];
-    return branches.length > 1 ? branches[branches.length - 1] : branches[0];
+    const chosen = mode === 'if' ? branches[0] : (branches.length > 1 ? branches[branches.length - 1] : branches[0]);
+    const label = mode === 'else' ? 'ELSE' : 'IF';
+    return `<br class="mlt-cond-br"><span class="mlt-cond-tag">${label}</span><br class="mlt-cond-br">${chosen}`;
   }
 
   return parseSequence().out;
 }
 
-// Substitui {% if %}/{% elsif %}/{% else %}/{% endif %} (e {% unless %}/{% endunless %})
-// por uma tag de texto discreta bem no lugar onde a marcação estava — só a palavra-chave
-// (IF/ELSIF/ELSE/ENDIF/UNLESS/ENDUNLESS), sem a condição nem nenhum texto a mais.
-function annotateConditionals(html){
-  const re = /\{%[-\s]*(if|elsif|else|endif|unless|endunless)\b([^%]*)%\}/gi;
-  let out = '', last = 0, m;
-  while((m = re.exec(html))){
-    const kind = m[1].toLowerCase();
-    out += html.slice(last, m.index);
-    last = m.index + m[0].length;
-    // <br> força quebra ANTES e DEPOIS sempre — sem isso, uma tag no meio de conteúdo
-    // que devia estar em blocos separados (ex: entre linhas de uma tabela) juntava tudo
-    // numa linha só e estragava o layout do preview.
-    out += `<br class="mlt-cond-br"><span class="mlt-cond-tag">${kind.toUpperCase()}</span><br class="mlt-cond-br">`;
-  }
-  out += html.slice(last);
-  return out;
-}
-
-// CSS da tag de if/else/unless (.mlt-cond-tag/.mlt-cond-br) — precisa ser injetada DENTRO
-// de cada documento de iframe que usa annotateConditionals(), já que o CSS da página pai
-// não atravessa pra dentro de um iframe com seu próprio HTML (srcdoc/blob). Usada tanto no
-// preview principal quanto no preview da tela de selecionar imagens — mesmo visual nos dois.
+// CSS da tag if/else (.mlt-cond-tag/.mlt-cond-br, ver resolveConditionalBranch) e do aviso
+// "Footer preview — not selectable" — precisa ser injetada DENTRO de cada documento de
+// iframe que usa esses blocos, já que o CSS da página pai não atravessa pra dentro de um
+// iframe com seu próprio HTML (srcdoc/blob). Usada no preview principal, no preview da tela
+// de selecionar imagens e na miniatura do Dashboard — mesmo visual nos três.
 function injectCondStyle(html){
-  const condStyle = `<style>
+  const style = `<style>
 .mlt-cond-tag{display:inline-block;font-size:9px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;padding:1px 5px;margin:0 2px;border-radius:3px;font-family:-apple-system,sans-serif;color:#8a8a82;background:#e8e8e5;border:1px solid #d8d8d2;white-space:nowrap;vertical-align:middle;}
 .mlt-footer-block, .mlt-footer-block *{pointer-events:none!important;cursor:not-allowed!important;user-select:none!important;}
 .mlt-footer-block{position:relative;}
 .mlt-footer-block::before{content:"Footer preview — not selectable";position:absolute;top:6px;left:50%;transform:translateX(-50%);background:rgba(20,20,40,.72);color:#fff;font:700 9px/1 -apple-system,sans-serif;letter-spacing:.03em;text-transform:uppercase;padding:4px 9px;border-radius:20px;pointer-events:none;z-index:20;white-space:nowrap;}
 </style>`;
-  return html.includes('</head>') ? html.replace('</head>', condStyle + '</head>') : condStyle + html;
+  return html.includes('</head>') ? html.replace('</head>', style + '</head>') : style + html;
 }
 
 // Builds the final rendered HTML string for a given lang (or the origin, when lang is falsy/matches origin).
@@ -8046,7 +8031,7 @@ function buildPreviewHtml(lang){
   html=html.replace(/\{%[-\s]*comment[-\s]*%\}[\s\S]*?\{%[-\s]*endcomment[-\s]*%\}/gi, '');
 
   html=renderFooterPlaceholder(html);
-  html = (S.condBranch && S.condBranch !== 'both') ? resolveConditionalBranch(html, S.condBranch) : annotateConditionals(html);
+  html = resolveConditionalBranch(html, S.condBranch === 'else' ? 'else' : 'if');
   // Strip {% assign partner_X_id = ... %} tags only — purely declarative, never visible
   html=html.replace(/\{%[-\s]*assign\s+partner_\d+_id\s*=[^%]*?%\}/g, '');
 

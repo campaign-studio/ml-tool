@@ -1,0 +1,80 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-28
+Tema: Remover a opção "Both" do toggle de preview if/else, deixando só If/Else (padrão: If)
+— mantendo uma tag discreta indicando qual branch está sendo mostrado
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+"Tem como refatorar toda essa parte? Deixar tudo organizado pra que isso não ocorra mais?"
+[...] "Quero que retire a parte de 'Both' de todo o projeto, e deixe apenas a parte
+If/Else. E deixe sempre tagueado como if." Depois, ajuste fino: "Quero que ainda exiba a
+tag no texto, acima, o que é if/else pfvr." (manter uma indicação visual de qual branch
+está sendo mostrado, só que sem exibir o outro lado — isso só existia no modo "Both").
+
+===============================================================================
+MAPEAMENTO
+===============================================================================
+Arquivo: index.html. O toggle se chama S.condBranch ('both'/'if'/'else') e aparecia em
+dois lugares: o preview principal do editor (.cb-btn/setCondBranch) e o topo de cada
+frame na Approval View (.av-cb-btn/setApprovalCondBranch) — os dois lêem/escrevem o
+MESMO S.condBranch.
+
+'both' acionava annotateConditionals(): trocava CADA {% if/elsif/else/endif %} por uma
+etiqueta (IF/ELSIF/ELSE/ENDIF/UNLESS/ENDUNLESS) e mostrava os DOIS lados em sequência.
+'if'/'else' acionavam resolveConditionalBranch(): resolvia o texto pra UM branch só, sem
+nenhuma marcação. Encontrados 4 pontos usando annotateConditionals() incondicionalmente
+(fora do toggle): a miniatura do card no Dashboard (projPreviewHtml) e a tela de
+selecionar imagens (refreshViewerImgPick, 2 ocorrências) — todos sempre mostravam "os dois
+lados", independente do S.condBranch.
+
+===============================================================================
+MUDANÇA
+===============================================================================
+1. Removido o botão "Both" dos dois toggles (editor principal e Approval View) — só
+   restam "If"/"Else".
+2. Default de S.condBranch trocado de 'both' pra 'if' nos dois pontos que o
+   inicializam (S global e resetAll()).
+3. Os 4 pontos que chamavam annotateConditionals() incondicionalmente (miniatura do
+   Dashboard, tela de imagens) passaram a chamar resolveConditionalBranch(html, 'if') —
+   agora todo preview do projeto, em qualquer tela, é consistente com o padrão do
+   projeto (se algum dia alguém trocar pra "Else" no editor, só o preview do editor/
+   Approval View reflete isso — as miniaturas/tela de imagens continuam fixas em "if",
+   já que não têm toggle próprio).
+4. O preview principal (buildPreviewHtml) e a Approval View (que reusa buildPreviewHtml)
+   passaram a sempre chamar resolveConditionalBranch(html, condBranch==='else'?'else':
+   'if') — nunca mais "both".
+5. annotateConditionals() removida por completo (ficou sem nenhum chamador).
+6. Ajuste fino pedido depois: resolveConditionalBranch() agora prefixa o branch
+   escolhido com uma tag discreta (IF ou ELSE, reaproveitando o visual .mlt-cond-tag que
+   annotateConditionals() usava) bem ACIMA do texto resolvido — diferente do modo "Both"
+   antigo (que marcava CADA palavra-chave if/elsif/else/endif em sequência, mostrando os
+   dois lados), aqui só o branch efetivamente exibido ganha UMA tag, no início do bloco.
+   injectCondStyle() (o injetor de CSS pro iframe) manteve o nome e voltou a incluir o
+   CSS de .mlt-cond-tag, já que essa necessidade voltou.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+Pela UI de verdade (não só chamada direta de função), com sbClient bloqueado:
+1. Criado projeto de teste com HTML contendo {% if custom_attribute.${is_premium} ==
+   true %}...{% else %}...{% endif %}, subido via onFile() (mesmo caminho do input real).
+2. Confirmado, no DOM: só 2 botões (.cb-btn) — "If" (ativo por padrão) e "Else" — nenhum
+   "Both".
+3. Preview mostrou, por padrão, a tag "IF" acima de "You have premium access, enjoy!"
+   (branch se).
+4. Clicado "Else" na tela de verdade (não via função) — preview trocou pra mostrar a tag
+   "ELSE" acima de "Upgrade to premium for more features.", com "Else" agora marcado como
+   ativo no toggle.
+5. Confirmado por leitura de código que a Approval View (buildApprovalFrameHtml) chama o
+   MESMO buildPreviewHtml() já testado — herda o mesmo comportamento sem precisar de
+   verificação separada.
+6. Limpo projeto/usuário de teste do localStorage depois.
+
+===============================================================================
+NOTA
+===============================================================================
+Pedido tratado em duas partes na mesma sessão: primeiro a remoção "seca" do Both (sem
+nenhuma indicação visual de conditional), depois o próprio usuário pediu de volta uma
+tag discreta indicando o branch — o resultado final combina as duas coisas (só se
+escolhe um lado, mas ele vem identificado).
