@@ -8089,6 +8089,7 @@ function buildPreviewHtml(lang){
         ? `${row.openTag}${placeholder}${row.closeTag}`
         : placeholder;
       let searchFrom = 0, pos = -1;
+      const protectedRanges = computeProtectedRanges(html);
       while(searchFrom < html.length){
         const p = html.indexOf(key, searchFrom);
         if(p === -1) break;
@@ -8105,11 +8106,8 @@ function buildPreviewHtml(lang){
         // Skip se estiver dentro de um {% ... %} ainda aberto (ex: dentro da condição de um
         // {% if %}) — mesma proteção do buildTaggedHtml, pro preview não marcar a posição
         // errada quando a palavra também aparece como sintaxe Liquid antes do texto real.
-        const beforeNoCss = stripClosedSkippedBlocks(before);
-        const bracketOpens = (beforeNoCss.match(/\{%/g)||[]).length;
-        const bracketCloses = (beforeNoCss.match(/%\}/g)||[]).length;
-        if(bracketOpens > bracketCloses){ searchFrom = p + key.length; continue; }
-        if(isInsideSkippedTag(before)){ searchFrom = p + key.length; continue; }
+        if(isInsideOpenLiquidTag(before)){ searchFrom = p + key.length; continue; }
+        if(isPosProtected(p, protectedRanges)){ searchFrom = p + key.length; continue; }
         pos = p; break;
       }
       if(pos === -1){ previewMissed.push(row); return; }
@@ -8384,62 +8382,96 @@ function setCondBranch(mode, btn){
 // inteiro — sem isso, uma palavra comum (ex: "and") que também aparece dentro de um <style>
 // (tipo num @media query) podia casar com essa ocorrência ERRADA em vez da linha de conteúdo
 // real, já que <style>/<script> não tem tratamento especial nessa busca linear.
-function isInsideSkippedTag(before) {
-  // Comentários HTML de verdade (não os condicionais do Outlook, tratados à parte logo
-  // abaixo) podem conter QUALQUER texto solto, incluindo menções literais tipo "remove this
-  // <style> block" (nota de dev explicando o código) — sem remover o comentário antes, essa
-  // frase conta como uma abertura de <style> real, desbalanceando styleOpens/styleCloses pro
-  // resto do documento inteiro e fazendo isInsideSkippedTag() achar (errado) que TODO texto
-  // daí em diante ainda está "dentro" de um bloco de estilo nunca fechado. Achado real: um
-  // comentário assim no meio do e-mail fazia buildTaggedHtml() perder quase todas as linhas
-  // de tradução depois dele, uma atrás da outra.
-  const beforeNoComments = before.replace(/<!--[\s\S]*?-->/g, '');
-  const styleOpens = (beforeNoComments.match(/<style[\s>]/gi)||[]).length;
-  const styleCloses = (beforeNoComments.match(/<\/style>/gi)||[]).length;
-  const scriptOpens = (beforeNoComments.match(/<script[\s>]/gi)||[]).length;
-  const scriptCloses = (beforeNoComments.match(/<\/script>/gi)||[]).length;
-  // O comentário condicional de Outlook (o bloco que só ele lê) esconde o conteúdo de todo
-  // mundo EXCETO o Outlook real — texto ali dentro nunca aparece pra quem de fato lê o
-  // e-mail. A variante "downlevel-revealed" (negação do mso) é o oposto: visível pra todo
-  // mundo, só o Outlook não vê — e não conta como "escondido" aqui, mesma distinção já
-  // usada em extractStr(). Sem isso, a busca posicional do buildTaggedHtml() podia
-  // tagueiar a cópia ERRADA de um texto que existe duplicado (ex: um botão com fallback
-  // VML só-Outlook + a versão HTML/CSS real, ambos com o MESMO texto visível) — a tag ia
-  // parar dentro do bloco que ninguém nunca vê, e a tradução nunca aparecia pra ninguém,
-  // nem no preview (o elemento fica dentro de um comentário HTML de verdade, então nem o
-  // navegador cria um nó real pra ele).
-  // Construído via concatenação (não como regex literal direto) pelo mesmo motivo do
-  // "<scr"+"ipt>" usado no resto do arquivo: escrever a sequência "menor-que + exclamação
-  // + traço + traço" de uma vez, dentro de uma tag <script> real, engana o parser de HTML
-  // do navegador (que não sabe o que é um comentário/regex de JS) e o deixa "preso" num
-  // modo de comentário HTML pelo resto do arquivo — foi exatamente esse bug que apareceu
-  // aqui na primeira tentativa desta função.
-  //
-  // Varredura SEQUENCIAL (não uma contagem agregada de "quantos abrem" menos "quantos
-  // fecham") — um e-mail real costuma ter VÁRIOS blocos <!--[if mso]>/<!--[if !mso]>
-  // intercalados (ex: cada botão se se-if/elsif/else duplicado em VML-só-Outlook + HTML
-  // real), e só contar totais no fim confunde qual abertura pertence a qual fechamento.
-  // Processa os marcadores NA ORDEM em que aparecem, com um contador de profundidade real
-  // — mesma lógica, passo a passo, que o extractStr() já usa nos tokens.
-  const msoMarkerRe = new RegExp('<!' + '--\\[if[^>]*>|<!\\[endif\\]', 'gi');
-  let msoHiddenDepth = 0, mm;
-  msoMarkerRe.lastIndex = 0;
-  while((mm = msoMarkerRe.exec(before))){
-    const tok = mm[0];
-    if(/^<!\[endif\]/i.test(tok)){ msoHiddenDepth = Math.max(0, msoHiddenDepth-1); continue; }
-    if(/!mso\]>$/i.test(tok)) continue; // downlevel-revealed — visível, não conta como oculto
-    msoHiddenDepth++;
+// Varre o HTML numa ÚNICA passada sequencial — mesmo tokenizador e mesma lógica de
+// profundidade que extractStr() já usa pra decidir o que pular — e devolve os trechos
+// [start,end) que NUNCA podem receber uma tag {%translation%}: o CONTEÚDO de
+// <script>/<style>/<pre>/<code>/<noscript>/<svg> (código/CSS/markup, nunca texto
+// traduzível) e blocos condicionais do Outlook (<!--[if mso]>...<![endif]-->, exceto a
+// variante "downlevel-revealed" <!--[if !mso]>, que é visível pra todo mundo).
+//
+// Substitui a antiga isInsideSkippedTag()/stripClosedSkippedBlocks(), que recontava
+// "quantos <style>/<script> abriram" do ZERO do documento a cada posição candidata — uma
+// contagem cumulativa É FRÁGIL por natureza: qualquer menção solta a "<style>" ou
+// "<script>" em QUALQUER lugar antes (mais comumente dentro de um comentário HTML comum,
+// tipo uma nota de dev dizendo "remove this <style> block") desbalanceava a contagem pro
+// resto do documento INTEIRO, fazendo toda linha depois daquele ponto parecer "ainda
+// dentro de um bloco não fechado" e ser silenciosamente descartada do export (bug real,
+// achado num projeto de verdade — 10 de 11 linhas sumiam do tageamento por causa de UMA
+// frase assim no meio do e-mail).
+//
+// Aqui, como o tokenizador separa comentários (<!-- ... -->) como um token PRÓPRIO, isolado
+// — igual extractStr() já faz — o texto de dentro de um comentário comum nunca chega a ser
+// examinado feito nome de tag. A classe inteira desse bug fica impossível, não só o caso
+// específico já visto.
+function computeProtectedRanges(html) {
+  const SKIP_PAIR = /^(script|style|pre|code|noscript|svg)$/i;
+  const ranges = [];
+  const tokens = html.split(/(<!--[\s\S]*?-->|<[^>]*>)/g);
+  let pos = 0, msoDepth = 0, msoStart = -1, skipDepth = 0, skipStart = -1;
+  for(const tok of tokens){
+    const tokStart = pos;
+    pos += tok.length;
+    if(!tok || tok[0] !== '<') continue;
+
+    // Mesma ordem e mesma distinção de extractStr(): downlevel-revealed é visível (não
+    // conta como oculto). Um <!--[if mso]>...<![endif]--> auto-contido no MESMO token tem
+    // efeito líquido zero na PROFUNDIDADE (extractStr só precisa disso, pra não travar
+    // msoDepth) — mas o CONTEÚDO desse token continua escondido de verdade, e ainda
+    // precisa entrar como range protegido; extractStr não precisa fazer isso porque ele
+    // nunca olha pra dentro de um token de comentário de qualquer jeito.
+    if(/<!--\[if\s+!mso\]>/i.test(tok)) continue;
+    if(/<!--\[if/i.test(tok) && /<!\[endif\]/i.test(tok)){ ranges.push([tokStart, tokStart + tok.length]); continue; }
+    if(/<!--\[if/i.test(tok)){
+      if(msoDepth === 0) msoStart = tokStart;
+      msoDepth++;
+      continue;
+    }
+    if(/<!\[endif\]/i.test(tok)){
+      msoDepth = Math.max(0, msoDepth - 1);
+      if(msoDepth === 0 && msoStart !== -1){ ranges.push([msoStart, tokStart + tok.length]); msoStart = -1; }
+      continue;
+    }
+    if(/^<!--/.test(tok)) continue; // comentário HTML comum — já isolado, nada a fazer
+    if(msoDepth > 0) continue;
+
+    const nameM = tok.match(/^<\/?([a-zA-Z][a-zA-Z0-9-]*)/);
+    if(!nameM) continue;
+    const tagName = nameM[1];
+    const isClose = tok[1] === '/';
+    const isSelfClose = tok.endsWith('/>');
+    if(!SKIP_PAIR.test(tagName)) continue;
+
+    if(!isClose && !isSelfClose){
+      if(skipDepth === 0) skipStart = tokStart;
+      skipDepth++;
+    } else if(isClose){
+      skipDepth = Math.max(0, skipDepth - 1);
+      if(skipDepth === 0 && skipStart !== -1){ ranges.push([skipStart, tokStart + tok.length]); skipStart = -1; }
+    }
   }
-  return styleOpens > styleCloses || scriptOpens > scriptCloses || msoHiddenDepth > 0;
+  // Bloco nunca fechado até o fim do documento (HTML malformado) — protege até o final em
+  // vez de deixar um range sem fim que quebraria a checagem de posição.
+  if(msoDepth > 0 && msoStart !== -1) ranges.push([msoStart, html.length]);
+  if(skipDepth > 0 && skipStart !== -1) ranges.push([skipStart, html.length]);
+  return ranges.sort((a,b) => a[0]-b[0]);
 }
 
-// CSS legitimamente produz "%}" por coincidência (ex: "width:100%}" — um valor percentual bem
-// na frente do fechamento de uma regra), o que bagunça a contagem de "{% ... %}" ainda aberto
-// usada pra achar onde uma linha de verdade deve ser tagueada. Remove os blocos de estilo/
-// script JÁ FECHADOS antes de contar — assim CSS nunca conta como abertura/fechamento de
-// tag Liquid.
-function stripClosedSkippedBlocks(text) {
-  return text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+function isPosProtected(pos, ranges){
+  for(const [start,end] of ranges){
+    if(start > pos) break; // ranges vêm ordenados — nenhum range depois pode conter pos
+    if(pos < end) return true;
+  }
+  return false;
+}
+
+// "before" termina bem no meio de um {% ... %} ainda sem fechar (ex: a palavra "and" também
+// aparece como operador booleano dentro de {% if x and y %}) — olha só a ÚLTIMA ocorrência
+// de cada marcador antes de "pos", não uma contagem cumulativa desde o início do documento:
+// um {% ou %} qualquer de uma tag JÁ fechada bem antes não pode mais "vazar" e confundir uma
+// posição bem mais à frente (mesma classe de fragilidade que motivou trocar
+// isInsideSkippedTag() por computeProtectedRanges() acima).
+function isInsideOpenLiquidTag(before){
+  return before.lastIndexOf('{%') > before.lastIndexOf('%}');
 }
 
 /* ═══════════ HTML EXPORT MODAL ═══════════ */
@@ -8467,6 +8499,7 @@ function buildTaggedHtml() {
     // {%translation idN%}{{custom_attribute.${x} | default: 'y'}}{%endtranslation%}
     if((r.isLiquidFull || r.isLiquidDefault) && r.liquidToken){
       const key = r.liquidToken;
+      const protectedRanges = computeProtectedRanges(tagged);
       let searchFrom = 0, tagged_ok = false;
       while(searchFrom < tagged.length){
         const pos = tagged.indexOf(key, searchFrom);
@@ -8480,11 +8513,8 @@ function buildTaggedHtml() {
         const opens  = (before.match(/\{%translation [^%]+?%\}/g)||[]).length;
         const closes = (before.match(/\{%endtranslation%\}/g)||[]).length;
         if(opens > closes){ searchFrom = pos + key.length; continue; }
-        const beforeNoCss = stripClosedSkippedBlocks(before);
-        const bracketOpens = (beforeNoCss.match(/\{%/g)||[]).length;
-        const bracketCloses = (beforeNoCss.match(/%\}/g)||[]).length;
-        if(bracketOpens > bracketCloses){ searchFrom = pos + key.length; continue; }
-        if(isInsideSkippedTag(before)){ searchFrom = pos + key.length; continue; }
+        if(isInsideOpenLiquidTag(before)){ searchFrom = pos + key.length; continue; }
+        if(isPosProtected(pos, protectedRanges)){ searchFrom = pos + key.length; continue; }
         tagged = tagged.slice(0, pos) + `{%translation ${r.id}%}${key}{%endtranslation%}` + tagged.slice(pos + key.length);
         tagged_ok = true;
         break;
@@ -8511,6 +8541,7 @@ function buildTaggedHtml() {
     const replacement = r.isStyle
       ? `${r.openTag}{%translation ${r.id}%}${srcCurly}{%endtranslation%}${r.closeTag}`
       : `{%translation ${r.id}%}${srcCurly}{%endtranslation%}`;
+    const protectedRanges = computeProtectedRanges(tagged);
     let searchFrom = 0, tagged_ok = false;
     while(searchFrom < tagged.length){
       const pos = tagged.indexOf(key, searchFrom);
@@ -8534,11 +8565,8 @@ function buildTaggedHtml() {
       // operador booleano dentro de uma condição podia casar com essa ocorrência ERRADA (a
       // primeira do documento), colocando a tag de tradução DENTRO da sintaxe do Liquid e
       // quebrando o parser do Braze ("endtranslation is not a valid delimiter for if tags").
-      const beforeNoCss = stripClosedSkippedBlocks(before);
-      const bracketOpens = (beforeNoCss.match(/\{%/g)||[]).length;
-      const bracketCloses = (beforeNoCss.match(/%\}/g)||[]).length;
-      if(bracketOpens > bracketCloses){ searchFrom = pos + key.length; continue; }
-      if(isInsideSkippedTag(before)){ searchFrom = pos + key.length; continue; }
+      if(isInsideOpenLiquidTag(before)){ searchFrom = pos + key.length; continue; }
+      if(isPosProtected(pos, protectedRanges)){ searchFrom = pos + key.length; continue; }
       tagged = tagged.slice(0, pos) + replacement + tagged.slice(pos + key.length);
       tagged_ok = true;
       break;

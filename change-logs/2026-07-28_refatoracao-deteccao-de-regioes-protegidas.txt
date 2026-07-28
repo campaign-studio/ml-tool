@@ -1,0 +1,109 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-28
+Tema: Refatoração — trocar a contagem cumulativa de marcadores (frágil, já causou bug real)
+por um tokenizador de uma passada só, unificado entre export e preview
+(continuação de 2026-07-28_comentario-html-quebrava-contagem-de-style.txt)
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+Depois da correção pontual do bug do comentário "<style>", o usuário pediu pra ir além do
+remendo local: "Tem como refatorar toda essa parte? Deixar tudo organizado pra que isso não
+ocorra mais? [...] editar todo o regex e regras de maneira com que os futuros projetos
+evitem esses tipos de erros?"
+
+===============================================================================
+MAPEAMENTO (antes de mexer em qualquer coisa)
+===============================================================================
+Achado que a MESMA lógica de "conta quantos <style>/<script> abriram e quantos {%/%}
+apareceram, do início do documento até aqui" estava DUPLICADA em TRÊS lugares:
+1. buildTaggedHtml() — ramo de Liquid (isLiquidFull/isLiquidDefault)
+2. buildTaggedHtml() — ramo de texto puro/estilo (isStyle/outerKey)
+3. buildPreviewHtml() — o preview AO VIVO no editor, com o comentário explícito "mesma
+   proteção do buildTaggedHtml"
+
+Ou seja, o MESMO bug do log anterior (comentário com "<style>" escrito por extenso
+confundindo a contagem) também podia estragar o PREVIEW, não só o export — só não tinha
+sido visto ainda nesse caso específico.
+
+Em contraste, extractStr() (a extração original de strings) NUNCA sofria desse problema,
+porque usa uma arquitetura bem diferente: tokeniza o HTML inteiro numa passada só
+(html.split(/(<!--[\s\S]*?-->|<[^>]*>)/g)), separando comentários como um token PRÓPRIO e
+isolado — o texto de dentro de um comentário nunca chega a ser examinado feito nome de
+tag, porque o token INTEIRO já foi identificado como "comentário" antes disso.
+
+===============================================================================
+REFATORAÇÃO
+===============================================================================
+Arquivo: index.html
+
+1. Novo: computeProtectedRanges(html) — varre o HTML numa única passada, com o MESMO
+   tokenizador e a MESMA lógica passo-a-passo de profundidade que extractStr() já usa
+   (mesma distinção pra comentário condicional do Outlook — <!--[if mso]>/<!--[if !mso]>
+   — e mesmo conjunto de tags "pra pular por dentro": script/style/pre/code/noscript/svg,
+   agora unificado — antes só script/style eram cobertos). Devolve uma lista de trechos
+   [start,end) que nunca podem virar tag de tradução.
+
+2. Novo: isPosProtected(pos, ranges) — checagem simples de "essa posição cai dentro de
+   algum desses trechos?", O(número de trechos), não mais uma recontagem do documento
+   inteiro a cada tentativa.
+
+3. Novo: isInsideOpenLiquidTag(before) — substitui a contagem cumulativa de "{%" vs "%}"
+   (que sofria da MESMA fragilidade: um {%/%} solto em QUALQUER lugar antes, já fechado,
+   podia "vazar" e confundir uma posição bem mais à frente) por uma checagem local: só
+   compara a ÚLTIMA ocorrência de cada marcador antes da posição candidata
+   (lastIndexOf('{%') > lastIndexOf('%}')), então nada de muito antes no documento pode
+   mais interferir numa posição atual.
+
+4. Removidas: isInsideSkippedTag() e stripClosedSkippedBlocks() — as duas funções antigas,
+   ad-hoc, que causavam a fragilidade. Nenhuma outra parte do código dependia delas.
+
+5. Atualizados os TRÊS pontos que faziam essa checagem (os dois ramos de
+   buildTaggedHtml() e o de buildPreviewHtml()) pra usar as novas funções
+   compartilhadas — eliminando a duplicação de código, não só o bug.
+
+Ganho colateral: como computeProtectedRanges() faz UMA passada linear (O(tamanho do
+HTML)) em vez de recontar do zero a cada posição candidata dentro do loop de busca, isso
+também é mais rápido que antes pra HTMLs grandes/com muitas linhas repetidas.
+
+===============================================================================
+BUG ENCONTRADO E CORRIGIDO DURANTE A PRÓPRIA VERIFICAÇÃO
+===============================================================================
+Testando com um caso sintético (texto duplicado dentro de um <!--[if mso]> E fora dele,
+o cenário que o código original já se preocupava em proteger), a PRIMEIRA versão da
+refatoração tagueou a cópia ERRADA — a de DENTRO do bloco escondido do Outlook — porque
+o tratamento de "<!--[if mso]>...<![endif]--> auto-contido no MESMO token" só zerava a
+profundidade (correto) mas esquecia de registrar o trecho como protegido (incorreto).
+Corrigido antes de qualquer commit — nenhuma versão com essa regressão chegou a ser usada.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+Todos os testes abaixo rodados no navegador real, contra dados/arquivos REAIS (nunca
+sintéticos isolados como único critério), com sbClient bloqueado (nenhuma escrita no
+Supabase):
+
+1. Projeto real "Post Summer _ Wave 1 _ Non Paid" (o que motivou o log anterior, já
+   corrigido pelo usuário) — extração + tageamento do zero: 14 de 14 linhas.
+2. Projeto real "Eligible_-_Phase_1_-_Non_WH__Flow_-_Email_1" (10 idiomas, complexo) —
+   34 de 34 linhas.
+3. Arquivo real do usuário "Eligible_-_Phase_1_-_WH__Flow_-_Email_4.html" (MSO completo,
+   if/elsif/else aninhado, merge tags com ${} aninhado, texto duplicado de propósito) —
+   56 de 56 linhas — mesmo total já validado antes desta sessão de refatoração, ZERO
+   regressão.
+4. Caso sintético: comentário mencionando "<script>" como texto solto (mesma classe do
+   bug do "<style>", tag diferente) — corretamente ignorado.
+5. Caso sintético: o MESMO texto duplicado dentro de um <!--[if mso]> E fora dele — a tag
+   fica na cópia CERTA (fora do bloco escondido), nunca na de dentro — confirmado lendo o
+   HTML tageado resultante diretamente, não só contando linhas.
+6. buildPreviewHtml() (preview ao vivo) testado com o projeto real de 34 linhas/10
+   idiomas — 34 marcadores data-tid gerados, sem erro.
+
+===============================================================================
+NOTA
+===============================================================================
+Uma quarta checagem (contagem de "{%translation ...%}" vs "{%endtranslation%}", pra não
+taguear duas vezes em cima de uma tag já inserida por uma linha anterior NESTA MESMA
+chamada) continua usando contagem cumulativa, sem alteração — o risco ali é bem menor
+(colidiria só se o e-mail tivesse, como texto de verdade, algo parecido com a própria
+sintaxe de tag deste app) e não estava implicada em nenhum bug encontrado.
