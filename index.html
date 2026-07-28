@@ -8385,10 +8385,19 @@ function setCondBranch(mode, btn){
 // (tipo num @media query) podia casar com essa ocorrência ERRADA em vez da linha de conteúdo
 // real, já que <style>/<script> não tem tratamento especial nessa busca linear.
 function isInsideSkippedTag(before) {
-  const styleOpens = (before.match(/<style[\s>]/gi)||[]).length;
-  const styleCloses = (before.match(/<\/style>/gi)||[]).length;
-  const scriptOpens = (before.match(/<script[\s>]/gi)||[]).length;
-  const scriptCloses = (before.match(/<\/script>/gi)||[]).length;
+  // Comentários HTML de verdade (não os condicionais do Outlook, tratados à parte logo
+  // abaixo) podem conter QUALQUER texto solto, incluindo menções literais tipo "remove this
+  // <style> block" (nota de dev explicando o código) — sem remover o comentário antes, essa
+  // frase conta como uma abertura de <style> real, desbalanceando styleOpens/styleCloses pro
+  // resto do documento inteiro e fazendo isInsideSkippedTag() achar (errado) que TODO texto
+  // daí em diante ainda está "dentro" de um bloco de estilo nunca fechado. Achado real: um
+  // comentário assim no meio do e-mail fazia buildTaggedHtml() perder quase todas as linhas
+  // de tradução depois dele, uma atrás da outra.
+  const beforeNoComments = before.replace(/<!--[\s\S]*?-->/g, '');
+  const styleOpens = (beforeNoComments.match(/<style[\s>]/gi)||[]).length;
+  const styleCloses = (beforeNoComments.match(/<\/style>/gi)||[]).length;
+  const scriptOpens = (beforeNoComments.match(/<script[\s>]/gi)||[]).length;
+  const scriptCloses = (beforeNoComments.match(/<\/script>/gi)||[]).length;
   // O comentário condicional de Outlook (o bloco que só ele lê) esconde o conteúdo de todo
   // mundo EXCETO o Outlook real — texto ali dentro nunca aparece pra quem de fato lê o
   // e-mail. A variante "downlevel-revealed" (negação do mso) é o oposto: visível pra todo

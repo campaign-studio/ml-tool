@@ -1,0 +1,88 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-28
+Tema: Aviso "N linha(s) não foram encontradas no HTML" — comentário de dev com a palavra
+"<style>" escrita por extenso quebrava o tageamento de quase todo o resto do documento
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+Usuário mostrou um print do editor do projeto real "Post Summer _ Wave 1 _ Non Paid"
+(11 linhas na tabela) com o aviso: "10 linha(s) não foram encontradas no HTML e ficaram
+sem tradução no export — veja o console para detalhes." Perguntou o que era esse erro.
+
+===============================================================================
+INVESTIGAÇÃO
+===============================================================================
+Consultado o projeto real no Supabase (leitura). Encontradas até DUAS entradas com o
+mesmo nome (p_1785241978981 e p_1785242572777) — o HTML salvo de ambas tinha só 1 de
+11-13 linhas com tag {%translation%} de verdade; o resto ficou como texto cru.
+
+Primeiro descartado que fosse incompatibilidade HTML×extração: rodada uma extração NOVA
+(extractStr()) direto em cima do HTML salvo e tentado tagear de novo (buildTaggedHtml())
+— mesmo assim, só 4 de 13 linhas eram tageadas. Ou seja, o bug era determinístico e
+reproduzível, não uma dessincronia pontual de um save antigo.
+
+Feito um diagnóstico linha a linha, reproduzindo o loop interno de buildTaggedHtml(): o
+texto de TODAS as linhas existe no HTML (indexOf encontra), mas a maioria era rejeitada
+pela checagem "isInsideSkippedTag" com o motivo "inside-skipped-tag (style/script/mso)".
+
+Causa raiz encontrada (index.html, isInsideSkippedTag()): a função conta quantas vezes
+"<style" e "</style>" aparecem no texto ANTES da posição candidata, pra saber se ainda
+está "dentro" de um bloco <style> não fechado. No HTML real do usuário, por volta da
+posição 5035, existe um COMENTÁRIO de desenvolvedor (nota explicando o template):
+
+  "...to the full email template, remove this <style> block — the main
+  template already defines .stack-col..."
+
+A contagem ingênua (via regex simples sobre o texto inteiro) não sabe que isso está
+DENTRO de um comentário HTML — conta a palavra "<style>" ali como se fosse uma tag de
+verdade sendo aberta. Como não existe um "</style>" correspondente pra essa ocorrência
+(é só uma frase, não uma tag real), a contagem "abertos > fechados" fica permanentemente
+1 a mais do que devia, do meio do documento em diante — fazendo TODA linha depois desse
+ponto parecer "ainda dentro de um <style> aberto" e ser pulada, uma atrás da outra.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Arquivo: index.html, função isInsideSkippedTag()
+
+Antes de contar "<style"/"</style>"/"<script"/"</script>", remove primeiro qualquer
+comentário HTML de verdade (<!-- ... -->) do texto sendo analisado. Isso evita que uma
+frase qualquer dentro de um comentário (nota de dev, código comentado, etc.) seja
+confundida com uma tag real. A checagem de comentário condicional do Outlook (MSO), que
+já tratava esse caso à parte com sua própria lógica de profundidade, não foi alterada —
+continua rodando sobre o texto original, sem essa remoção.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, usando o HTML salvo do projeto real (leitura via Supabase, nenhuma
+escrita): extração fresca (extractStr) + reconstrução de S.csv.rows + buildTaggedHtml().
+- ANTES da correção: 4 de 13 linhas tageadas.
+- DEPOIS da correção: 13 de 13 linhas tageadas.
+Também comparado, linha a linha, o motivo de rejeição de cada tentativa (script de
+diagnóstico reproduzindo o loop interno) — confirmado que a rejeição por
+"bracket-imbalance"/"inside-skipped-tag" desaparece para todas as linhas depois da
+correção.
+
+===============================================================================
+PENDÊNCIA — PROJETOS JÁ SALVOS COM TAGEAMENTO INCOMPLETO
+===============================================================================
+Os dois projetos reais "Post Summer _ Wave 1 _ Non Paid" continuam com o HTML PARCIALMENTE
+tageado salvo no Supabase (a correção não reprocessa retroativamente o que já foi salvo).
+Como o usuário estava com o projeto aberto e ativo no próprio navegador no momento desta
+investigação, o reparo foi deixado para acontecer naturalmente pelo próprio fluxo do
+usuário: dar reload na aba (pra carregar o código corrigido) e clicar em "Copy Tagged
+HTML"/"Download" de novo — isso roda buildTaggedHtml() do zero com a lógica corrigida e
+deve tagear as 13 linhas corretamente. Optou-se por não escrever diretamente no Supabase
+por cima de um projeto que a pessoa tinha aberto e em uso no momento (risco de conflito
+com o que ela estivesse fazendo ao mesmo tempo — ver log anterior sobre múltiplas abas).
+
+===============================================================================
+NOTA
+===============================================================================
+Esse mesmo bug pode afetar qualquer outro projeto cujo HTML de origem tenha um
+comentário de desenvolvedor mencionando "<style>" (ou "<script>") como texto solto. Não
+foi feita uma varredura em todos os projetos salvos — se o mesmo aviso aparecer em outro
+projeto, a correção já se aplica: basta reabrir/re-exportar depois que a página recarregar
+com o código novo.
