@@ -1695,8 +1695,7 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
           </button>
         </div>
         <div class="sp-wrap" id="condBranchWrap" title="Só teste de visualização — não afeta o HTML tageado nem o CSV">
-          <button class="cb-btn active" onclick="setCondBranch('both',this)">Both</button>
-          <button class="cb-btn" onclick="setCondBranch('if',this)">If</button>
+          <button class="cb-btn active" onclick="setCondBranch('if',this)">If</button>
           <button class="cb-btn" onclick="setCondBranch('else',this)">Else</button>
         </div>
       </div>
@@ -5010,10 +5009,9 @@ const S = {
   vLang: null,
   vSize: 'full',
   // Toggle SÓ de teste/visualização (não afeta o HTML tageado nem o CSV exportado) — deixa
-  // escolher manualmente qual branch de um {% if/else %} aparece no preview, já que hoje o
-  // preview não avalia a condição de verdade, só mostra tudo em sequência com uma etiqueta.
-  // 'both' = comportamento atual (mostra os dois lados, com a etiqueta IF/ELSE/ENDIF).
-  condBranch: 'both',
+  // escolher manualmente qual branch de um {% if/else %} aparece no preview, já que o preview
+  // não avalia a condição de verdade. 'if' é sempre o padrão (primeiro branch/if/unless).
+  condBranch: 'if',
   // Approval — Figma-style pin comments over the per-country preview grid.
   // Each: {id, lang, xPct, yPct, text, author, createdAt, resolvedBy:[]}
   approvalComments: [],
@@ -5861,7 +5859,10 @@ function restoreProjectContent(data, readOnly) {
   (function reAddMissingImages(){
     if(!S.rawHtml) return;
     const already = new Set(S.strings.filter(s => s.isImg).map(s => s.src));
-    const tokens = S.rawHtml.split(/(<!--[\s\S]*?-->|<[^>]*>)/g);
+    // Exige letra/"/"/"!" logo após "<" (ver o mesmo tokenizador em extractStr) — sem isso um
+    // "<3"/"<=" solto dentro de uma condição Liquid vira "tag" e engole a próxima tag real
+    // (podendo esconder um <img> daqui).
+    const tokens = S.rawHtml.split(/(<!--[\s\S]*?-->|<\/?[a-zA-Z!][^>]*>)/g);
     let idSeed = S.strings.length + 1;
     for(const tok of tokens){
       if(!/^<img[\s>]/i.test(tok)) continue;
@@ -6116,7 +6117,15 @@ function extractStr() {
   // antes de tokenizar, o texto interno parecia conteúdo normal e virava linha
   // traduzível por engano, mesmo sendo só anotação pra quem mantém o template.
   const rawForExtraction = S.rawHtml.replace(/\{%[-\s]*comment[-\s]*%\}[\s\S]*?\{%[-\s]*endcomment[-\s]*%\}/gi, '');
-  const tokens = rawForExtraction.split(/(<!--[\s\S]*?-->|<[^>]*>)/g);
+  // O 2º grupo da alternativa exige uma LETRA (ou "/"/"!") logo após o "<" — sem isso, um "<"
+  // qualquer virava início de tag pro tokenizador, mesmo sem ser HTML de verdade. Achado real:
+  // uma condição Liquid comparando quantidade com "<3" (ex: "{{...user_family_member_count}}
+  // <3 or ...") tinha o "<3" interpretado como abertura de tag — o tokenizador só fecha essa
+  // "tag" no PRÓXIMO ">" que encontrar, que era o de um <style> de verdade logo depois,
+  // engolindo a tag <style> inteira junto. Sem reconhecer o <style> como tag, skipDepth nunca
+  // incrementava, e o CSS de dentro dele virava linha traduzível por engano (viu-se um bloco
+  // de @media inteiro aparecer como "linha 10" no CSV de um projeto real).
+  const tokens = rawForExtraction.split(/(<!--[\s\S]*?-->|<\/?[a-zA-Z!][^>]*>)/g);
 
   for(let ti=0; ti<tokens.length; ti++){
     const tok=tokens[ti];
@@ -8406,7 +8415,9 @@ function setCondBranch(mode, btn){
 function computeProtectedRanges(html) {
   const SKIP_PAIR = /^(script|style|pre|code|noscript|svg)$/i;
   const ranges = [];
-  const tokens = html.split(/(<!--[\s\S]*?-->|<[^>]*>)/g);
+  // Exige letra/"/"/"!" logo após "<" (mesmo motivo do tokenizador em extractStr — evita que
+  // um "<3"/"<=" solto numa condição Liquid engula a próxima tag real).
+  const tokens = html.split(/(<!--[\s\S]*?-->|<\/?[a-zA-Z!][^>]*>)/g);
   let pos = 0, msoDepth = 0, msoStart = -1, skipDepth = 0, skipStart = -1;
   for(const tok of tokens){
     const tokStart = pos;
@@ -9319,8 +9330,7 @@ function renderApprovalGrid() {
           ${isOrig ? '<span class="av-frame-origin-badge">origin</span>' : ''}
           <span class="av-frame-count" style="display:none;">0</span>
           <span class="av-cb-toggle" title="Só teste de visualização — não afeta o HTML/CSV">
-            <button class="av-cb-btn ${(!S.condBranch||S.condBranch==='both')?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch('both')">Both</button>
-            <button class="av-cb-btn ${S.condBranch==='if'?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch('if')">If</button>
+            <button class="av-cb-btn ${(!S.condBranch||S.condBranch==='if')?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch('if')">If</button>
             <button class="av-cb-btn ${S.condBranch==='else'?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch('else')">Else</button>
           </span>
           <span class="av-frame-approve-slot" id="avApproveSlot-${cssSafeLang(lang)}"></span>

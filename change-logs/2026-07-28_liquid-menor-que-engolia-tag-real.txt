@@ -1,0 +1,79 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-28
+Tema: CSS de dentro de um <style> aparecia como linha traduzível (ex: "id10" mostrando um
+bloco @media inteiro) — uma condição Liquid com "<3" enganava o tokenizador
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+Usuário reportou, no meio da sessão: "O id 10 dentro do último e-mail ta mostrando o CSS,
+e não era pra mostrar."
+
+===============================================================================
+INVESTIGAÇÃO
+===============================================================================
+Confirmado no projeto real "Post Summer _ Wave 1 _ Non Paid": a linha id10 tinha como
+conteúdo um bloco inteiro de CSS (`@media (max-width:620px) { .stack-col {...} }`).
+Isso é DIFERENTE do bug do log anterior (comentário confundindo o tageamento) — aqui o
+problema é na EXTRAÇÃO em si: extractStr() nunca deveria criar uma linha a partir de
+dentro de um <style>...</style> (SKIP_PAIR já cobre isso há muito tempo).
+
+Localizado o HTML real ao redor da posição onde o CSS vira linha: uma seção condicional
+de família, escondida atrás de
+
+  {% if {{custom_attribute.${client_fm_condition_enabled}}} == true and
+  {{custom_attribute.${user_type}}} == "b2b2c" and
+  {{custom_attribute.${user_family_member_count}}} <3 or ... %}
+
+  <style>
+    @media (max-width:620px) { .stack-col {...} }
+  </style>
+
+A condição usa "<3" (menor que 3) pra comparar quantidade de membros da família. O
+tokenizador que separa o HTML em texto/tag/comentário (usado por extractStr(),
+computeProtectedRanges() e a re-detecção de imagens em restoreProjectContent()) usa a
+regex `<[^>]*>` pra reconhecer QUALQUER coisa entre "<" e o PRÓXIMO ">" como uma tag —
+sem exigir que pareça uma tag de verdade. Testado isoladamente: o "<3" vira o início de
+uma "tag" que só fecha no PRÓXIMO ">" que aparecer — que era o do <style> de verdade
+logo depois! O tokenizador engolia "<3 ... %}\n\n<style>" inteiro como UM token só, nunca
+reconhecia "style" como nome de tag (o regex de nome de tag exige uma LETRA logo após o
+"<", e aqui vinha um "3"), então skipDepth nunca incrementava — o CSS de dentro virava
+texto normal, extraído como linha traduzível.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Arquivo: index.html — 3 pontos que usam o mesmo tokenizador (extractStr(),
+computeProtectedRanges() — adicionada nesta sessão — e a re-detecção de imagens dentro
+de restoreProjectContent()).
+
+Regex do tokenizador (`/(<!--[\s\S]*?-->|<[^>]*>)/g`) trocada pra exigir uma LETRA (ou
+"/" pra tag de fechamento, ou "!" pra comentário/doctype) logo depois do "<":
+`/(<!--[\s\S]*?-->|<\/?[a-zA-Z!][^>]*>)/g`. Com isso, um "<" seguido de dígito, espaço,
+"=" ou qualquer coisa que não pareça o início de uma tag de verdade NUNCA é tratado como
+tal — cobre não só o "<3" já visto, mas qualquer comparação Liquid parecida
+(ex: "<=", ou um "<N" com outro número).
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, com sbClient bloqueado (nenhuma escrita no Supabase):
+1. Isolado o trecho exato "<3 or {{...}} == blank %}\n\n<style>...<table>real</table>"
+   num teste à parte — confirmado que o tokenizador ANTIGO engolia o <style> inteiro
+   dentro do token do "<3", e o NOVO reconhece <style>/<table> corretamente como tags
+   próprias.
+2. Reextraído o projeto real "Post Summer _ Wave 1 _ Non Paid" (o mesmo que o usuário
+   reportou) direto do HTML salvo no Supabase: ANTES da correção, 1 das linhas era o
+   bloco de CSS; DEPOIS, 13 strings extraídas, nenhuma contendo "@media"/"stack-col" —
+   confirmado item por item.
+3. Reexecutados os 3 testes de regressão já estabelecidos nesta sessão (mesmo projeto,
+   "Non_WH Email_1" com 10 idiomas, e o arquivo real "Email_4.html") — todos continuam
+   100% tageados, sem nenhuma linha a mais nem a menos.
+
+===============================================================================
+NOTA
+===============================================================================
+Esse bug é INDEPENDENTE dos dois anteriores (comentário confundindo contagem; falta de
+proteção contra sobrescrita vazia) — afeta a EXTRAÇÃO de strings, não o tageamento nem o
+autosave. Como o tokenizador é compartilhado entre 3 funções, a correção foi aplicada
+nas 3 de uma vez, e não só na extração onde o sintoma apareceu.
