@@ -1,0 +1,66 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-29
+Tema: "Edit Tagged HTML" movido pra dentro do editor de CSV (não mais uma tela separada
+na home) — e um bug real de dessincronia encontrado/corrigido no caminho de campanha
+(continuação de 2026-07-29_edit-tagged-html-manual.txt)
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+"A parte do edit tagged HTML é dentro do CSV, não ali na home." — reposicionar a entrada
+da funcionalidade: em vez de um botão na navbar levando a uma tela de busca separada, o
+botão deve ficar DENTRO do editor de CSV de cada projeto/item (perto de "Copy Tagged
+HTML"/"Download"), já que quem quer corrigir o HTML tageado já está olhando o projeto
+certo — não precisa de uma busca à parte.
+
+===============================================================================
+MUDANÇA
+===============================================================================
+Arquivo: index.html
+
+1. Removidos: botão da navbar, tela de finder (busca/filtro entre TODOS os projetos) e
+   as funções que só existiam pra ela (getEditableHtmlTargets, renderEditHtmlFinderList,
+   setEditHtmlSearch/LangFilter/ApprovalFilter/Sort, renderEditHtmlLangFilterOptions).
+2. Adicionado: botão "Edit Tagged HTML" no toolbar do editor de CSV do projeto avulso
+   (ao lado de "Copy Tagged HTML") e no toolbar do editor de item de campanha (ao lado
+   de "Download CSV") — cada um chama uma função nova que já sabe qual projeto/item está
+   aberto (openTaggedHtmlEditorForCurrentProject/openTaggedHtmlEditorForCampaignItem),
+   sem precisar de nenhuma busca.
+3. "Back" no editor agora volta pra tela de onde a pessoa veio (editor normal do
+   projeto ou tela da campanha), guardado em _editHtmlReturnTo — antes voltava pro
+   finder, que não existe mais.
+4. Mantidas sem alteração: a lógica de validação, salvar/reverter, histórico de uma
+   versão, e o log de atividade — só mudou COMO se chega até o editor.
+
+===============================================================================
+BUG ENCONTRADO E CORRIGIDO DURANTE A VERIFICAÇÃO
+===============================================================================
+Testando o caminho de item de CAMPANHA especificamente: salvar uma edição manual
+gravava certinho no localStorage (via projGetAll()/projSaveAll(), que relêem um array
+fresco), mas o objeto `_campaign` — que a TELA da campanha usa pra renderizar enquanto
+está aberta — é uma cópia em memória SEPARADA, carregada quando a campanha foi aberta.
+Sem sincronizar os dois, salvar a correção e clicar "Back" mostrava a campanha ainda
+com o HTML e o log de atividade ANTIGOS — a correção existia no banco, mas sumia da
+tela até um reload manual da página.
+
+Corrigido com syncTaggedHtmlIntoLiveCampaign(): depois de salvar/reverter, se o alvo é
+um item da campanha ATUALMENTE aberta, atualiza rawHtml/taggedHtmlBeforeManualEdit/
+approvalActivity direto no objeto _campaign também — não só no array persistido.
+Não afeta projetos avulsos (que não têm esse objeto "vivo" separado — o editor normal
+já lê/escreve direto no que importa via S, sem essa duplicação).
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+Ponta a ponta, na UI real, com sbClient bloqueado:
+1. Projeto avulso: botão "Edit Tagged HTML" confirmado no toolbar certo (visualmente e
+   por clique real — usando o preset "desktop" de resize, depois de descobrir que um
+   resize manual pra um tamanho customizado bagunçava a correspondência clique↔coordenada
+   da ferramenta de teste, não do app). Abriu, editou, salvou, "Back" voltou pro editor
+   normal corretamente.
+2. Item de campanha: MESMO teste — primeira tentativa expôs o bug de dessincronia acima
+   (confirmado lendo _campaign.items[0] diretamente e vendo que não refletia o save).
+   Corrigido, testado de novo: HTML editado, backup, e a entrada de atividade agora
+   aparecem corretamente em _campaign.items[0] logo após salvar, e a tela da campanha
+   (preview) mostra o texto editado imediatamente ao voltar — confirmado por screenshot.
+3. Projeto/usuário de teste limpos do localStorage ao final.

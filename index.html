@@ -999,47 +999,12 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
   </div>
 </div>
 
-<!-- ═══ Edit Tagged HTML — finder. Correção manual pontual do HTML já tageado (projetos
-     avulsos e itens de campanha) — não passa pelo tokenizador de novo, não mexe em
-     aprovação. Ver openEditHtmlFinder()/openTaggedHtmlEditor() mais abaixo. ═══ -->
-<div id="editHtmlFinderScreen" style="display:none;position:fixed;inset:48px 0 0 0;background:var(--bg);z-index:500;overflow-y:auto;">
-  <div class="dash-shell">
-    <div class="dash-head">
-      <div style="display:flex;align-items:center;">
-        <h1 class="dash-title">Edit Tagged HTML</h1>
-      </div>
-    </div>
-    <p style="color:var(--text2);font-size:13px;margin:-10px 0 20px;max-width:640px;">Find a project or campaign item to manually fix its already-tagged HTML — for correcting a specific error found after tagging. This does not re-run extraction, and does not reset or require re-approval.</p>
-
-    <div class="dash-section">
-      <div class="dash-section-head">
-        <div class="sec-lbl" style="margin-bottom:0;">Results</div>
-        <div class="dash-sort" id="editHtmlSort">
-          <button class="dash-sort-btn active" onclick="setEditHtmlSort('updated', this)">Last edited</button>
-          <button class="dash-sort-btn" onclick="setEditHtmlSort('name', this)">Name</button>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
-        <div class="dash-search-wrap">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5"/></svg>
-          <input type="text" id="editHtmlSearchInput" class="dash-search-input" placeholder="Search by name…" oninput="setEditHtmlSearch(this.value)">
-        </div>
-        <select id="editHtmlLangFilter" class="dash-folder-select" onchange="setEditHtmlLangFilter(this.value || null)">
-          <option value="">All languages</option>
-        </select>
-        <select id="editHtmlApprovalFilter" class="dash-folder-select" onchange="setEditHtmlApprovalFilter(this.value || null)">
-          <option value="">Any approval status</option>
-          <option value="none">Nothing approved yet</option>
-          <option value="some">Some languages approved</option>
-          <option value="all">All languages approved</option>
-        </select>
-      </div>
-      <div id="editHtmlResultsList" style="display:flex;flex-direction:column;gap:10px;"></div>
-    </div>
-  </div>
-</div>
-
-<!-- ═══ Edit Tagged HTML — editor. Textarea direto sobre o HTML já tageado. ═══ -->
+<!-- ═══ Edit Tagged HTML — editor. Correção manual pontual do HTML já tageado (projeto
+     avulso ou item de campanha) — aberto direto de dentro do editor de CSV de cada um
+     (botão no toolbar), nunca de uma busca separada: quando a pessoa quer corrigir isso,
+     ela já está olhando o projeto/item certo. Não passa pelo tokenizador de novo, não mexe
+     em aprovação. Ver openTaggedHtmlEditorForCurrentProject()/openTaggedHtmlEditorForCampaignItem()
+     mais abaixo. Textarea direto sobre o HTML já tageado. ═══ -->
 <div id="editHtmlEditorScreen" style="display:none;position:fixed;inset:48px 0 0 0;background:var(--bg);z-index:500;overflow-y:auto;">
   <div class="dash-shell">
     <div class="dash-head" style="align-items:flex-start;">
@@ -1177,6 +1142,10 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
             <button class="tbtn csv" onclick="dlItemCSV()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
               Download CSV
+            </button>
+            <button class="tbtn" onclick="openTaggedHtmlEditorForCampaignItem()" title="Manually fix a specific error in the already-tagged HTML — for emergency corrections, does not re-run extraction and does not affect approval">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+              Edit Tagged HTML
             </button>
           </div>
         </div>
@@ -1524,10 +1493,6 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
       Dashboard
     </button>
-    <button id="editHtmlNavBtn" class="navlink" onclick="openEditHtmlFinder()" title="Manually fix already-tagged HTML for a specific project/item">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
-      Edit Tagged HTML
-    </button>
     <span id="syncStatus" title="Cloud sync status" style="display:inline-flex;align-items:center;gap:5px;padding:6px 10px;font-size:11px;color:rgba(255,255,255,.65);">
       <span id="syncDot" style="width:7px;height:7px;border-radius:50%;background:#9a9a90;flex-shrink:0;"></span>
       Sync
@@ -1721,6 +1686,10 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
             <button class="tbtn html" id="btnDlHtml" onclick="openHtmlModal()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
               Copy Tagged HTML
+            </button>
+            <button class="tbtn" onclick="openTaggedHtmlEditorForCurrentProject()" title="Manually fix a specific error in the already-tagged HTML — for emergency corrections, does not re-run extraction and does not affect approval">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+              Edit Tagged HTML
             </button>
             <div class="dl-dropdown-wrap">
               <button class="tbtn csv" onclick="event.stopPropagation();toggleDlDropdown()">
@@ -3116,14 +3085,13 @@ async function goToDashboard() {
   }
   document.getElementById('campaignScreen').style.display = 'none';
   document.getElementById('appBody').style.display = 'none';
-  document.getElementById('editHtmlFinderScreen').style.display = 'none';
   document.getElementById('editHtmlEditorScreen').style.display = 'none';
   _editHtmlCurrentTarget = null;
+  _editHtmlReturnTo = null;
   document.getElementById('dashboardScreen').style.display = 'block';
   document.getElementById('hdrBar').style.display = 'none';
   document.getElementById('hdrProgress').style.width = '0%';
   document.getElementById('dashBtn').classList.add('active');
-  document.getElementById('editHtmlNavBtn').classList.remove('active');
   if(ghConfigured()) {
     const syncEl = document.getElementById('dashSyncStatus');
     if(syncEl) syncEl.textContent = 'Syncing…';
@@ -4650,50 +4618,12 @@ function enterWizardForProject() {
    depois da correção, por pedido explícito.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-let _editHtmlSearch = '';
-let _editHtmlLangFilter = '';
-let _editHtmlApprovalFilter = '';
-let _editHtmlSortMode = 'updated';
 let _editHtmlCurrentTarget = null; // { projectId, itemId, loadedHtml } — setado ao abrir o editor
+let _editHtmlReturnTo = null; // 'project' | 'campaign' — pra onde fechar o editor volta
 
-// Devolve, achatado numa lista só, todo projeto avulso e todo item de campanha que TEM um
-// HTML já tageado pra corrigir — lidos direto de projGetAll() (sem depender de S).
-function getEditableHtmlTargets() {
-  const typeLabel = { email: 'Email', inapp: 'In-app', push: 'Push' };
-  const out = [];
-  projGetAll().forEach(p => {
-    if(p.kind === 'campaign') {
-      (p.items || []).forEach(item => {
-        if(!item.rawHtml) return; // ex: push não tem HTML — nada pra corrigir aqui
-        out.push({
-          projectId: p.id, itemId: item.id,
-          name: `${p.name} — ${item.name || typeLabel[item.type] || item.type}`,
-          kindLabel: typeLabel[item.type] || 'Item',
-          langs: item.langs || [],
-          approvalDoneByLang: item.approvalDoneByLang || {},
-          updatedAt: item.updatedAt || p.updatedAt || 0,
-          hasManualEditBackup: !!item.taggedHtmlBeforeManualEdit,
-        });
-      });
-    } else {
-      if(!p.data || !p.data.html) return; // projeto legado sem conteúdo salvo — nada pra abrir
-      out.push({
-        projectId: p.id, itemId: null,
-        name: p.name,
-        kindLabel: 'Project',
-        langs: p.data.langs || [],
-        approvalDoneByLang: p.data.approvalDoneByLang || {},
-        updatedAt: p.updatedAt || 0,
-        hasManualEditBackup: !!p.data.taggedHtmlBeforeManualEdit,
-      });
-    }
-  });
-  return out;
-}
-
-// Acha o MESMO alvo de novo, sempre lendo projGetAll() fresco na hora — usado tanto ao abrir
-// o editor quanto (de novo, separadamente) ao salvar, pra nunca trabalhar em cima de uma
-// cópia desatualizada.
+// Acha o alvo (projeto avulso ou item de campanha) sempre lendo projGetAll() fresco na
+// hora — usado tanto ao abrir o editor quanto (de novo, separadamente) ao salvar, pra
+// nunca trabalhar em cima de uma cópia desatualizada.
 function findEditableHtmlTarget(projectId, itemId) {
   const projects = projGetAll();
   const p = projects.find(x => x.id === projectId);
@@ -4712,82 +4642,22 @@ function approvalSummaryText(approvalDoneByLang, langs) {
   return `${approved.length} of ${langs.length} language${langs.length===1?'':'s'} approved`;
 }
 
-function openEditHtmlFinder() {
-  document.getElementById('dashboardScreen').style.display = 'none';
-  document.getElementById('campaignScreen').style.display = 'none';
-  document.getElementById('appBody').style.display = 'none';
-  document.getElementById('editHtmlEditorScreen').style.display = 'none';
-  document.getElementById('hdrBar').style.display = 'none';
-  document.getElementById('editHtmlFinderScreen').style.display = 'block';
-  document.getElementById('dashBtn').classList.remove('active');
-  document.getElementById('editHtmlNavBtn').classList.add('active');
-  renderEditHtmlLangFilterOptions();
-  renderEditHtmlFinderList();
+// Chamado pelo botão "Edit Tagged HTML" no toolbar do editor de CSV normal (projeto
+// avulso) — a pessoa já está olhando o projeto certo, então abre direto pra ele, sem
+// nenhuma busca no meio.
+function openTaggedHtmlEditorForCurrentProject() {
+  if(!currentProjectId) return;
+  _editHtmlReturnTo = 'project';
+  openTaggedHtmlEditor(currentProjectId, null);
 }
 
-function renderEditHtmlLangFilterOptions() {
-  const sel = document.getElementById('editHtmlLangFilter');
-  if(!sel) return;
-  const prev = sel.value;
-  const allLangs = [...new Set(getEditableHtmlTargets().flatMap(t => t.langs))].sort();
-  sel.innerHTML = `<option value="">All languages</option>` +
-    allLangs.map(l => `<option value="${escHtml(l)}">${escHtml(langDisplayName(l) || l)}</option>`).join('');
-  sel.value = allLangs.includes(prev) ? prev : '';
-}
-
-function setEditHtmlSearch(text) { _editHtmlSearch = text; renderEditHtmlFinderList(); }
-function setEditHtmlLangFilter(lang) { _editHtmlLangFilter = lang || ''; renderEditHtmlFinderList(); }
-function setEditHtmlApprovalFilter(mode) { _editHtmlApprovalFilter = mode || ''; renderEditHtmlFinderList(); }
-function setEditHtmlSort(mode, btn) {
-  _editHtmlSortMode = mode;
-  document.querySelectorAll('#editHtmlSort .dash-sort-btn').forEach(b => b.classList.remove('active'));
-  if(btn) btn.classList.add('active');
-  renderEditHtmlFinderList();
-}
-
-function renderEditHtmlFinderList() {
-  const list = document.getElementById('editHtmlResultsList');
-  if(!list) return;
-  let targets = getEditableHtmlTargets();
-
-  const term = _editHtmlSearch.trim().toLowerCase();
-  if(term) targets = targets.filter(t => t.name.toLowerCase().includes(term));
-  if(_editHtmlLangFilter) targets = targets.filter(t => t.langs.includes(_editHtmlLangFilter));
-  if(_editHtmlApprovalFilter) {
-    targets = targets.filter(t => {
-      const approved = t.langs.filter(l => isLangApproved(t.approvalDoneByLang, l)).length;
-      if(_editHtmlApprovalFilter === 'none') return approved === 0;
-      if(_editHtmlApprovalFilter === 'all') return t.langs.length > 0 && approved === t.langs.length;
-      if(_editHtmlApprovalFilter === 'some') return approved > 0 && approved < t.langs.length;
-      return true;
-    });
-  }
-
-  targets.sort((a, b) => _editHtmlSortMode === 'name'
-    ? a.name.localeCompare(b.name)
-    : (b.updatedAt || 0) - (a.updatedAt || 0));
-
-  if(!targets.length) {
-    list.innerHTML = `<div class="empty-state"><p>No matching project or campaign item found.</p></div>`;
-    return;
-  }
-
-  list.innerHTML = targets.map(t => `
-    <div class="proj-row">
-      <div class="proj-body">
-        <div class="proj-info">
-          <div class="proj-header">
-            <div class="proj-name">${escHtml(t.name)} <span class="lang-chip">${escHtml(t.kindLabel)}</span>${t.hasManualEditBackup ? ' <span class="lang-chip" title="Has a manual edit that can be reverted">Manually edited</span>' : ''}</div>
-          </div>
-          <div class="proj-meta">${t.updatedAt ? 'Last edited ' + relativeTime(t.updatedAt) : ''} · ${escHtml(approvalSummaryText(t.approvalDoneByLang, t.langs))}</div>
-          ${t.langs.length ? `<div class="proj-badges">${t.langs.map(l => `<span class="lang-chip">${escHtml(langDisplayName(l) || l)}</span>`).join('')}</div>` : ''}
-        </div>
-      </div>
-      <div class="proj-actions">
-        <button class="btn-go" onclick="openTaggedHtmlEditor('${t.projectId}', ${t.itemId ? `'${t.itemId}'` : 'null'})">Edit Tagged HTML</button>
-      </div>
-    </div>
-  `).join('');
+// Idem, pro botão dentro do editor de um item de campanha específico.
+function openTaggedHtmlEditorForCampaignItem() {
+  if(!_campaign || _campaignItemIndex < 0) return;
+  const item = (_campaign.items || [])[_campaignItemIndex];
+  if(!item) return;
+  _editHtmlReturnTo = 'campaign';
+  openTaggedHtmlEditor(_campaign.id, item.id);
 }
 
 function openTaggedHtmlEditor(projectId, itemId) {
@@ -4797,7 +4667,8 @@ function openTaggedHtmlEditor(projectId, itemId) {
   const html = item ? item.rawHtml : p.data.html;
   _editHtmlCurrentTarget = { projectId, itemId, loadedHtml: html };
 
-  document.getElementById('editHtmlFinderScreen').style.display = 'none';
+  if(_editHtmlReturnTo === 'campaign') document.getElementById('campaignScreen').style.display = 'none';
+  else { document.getElementById('appBody').style.display = 'none'; document.getElementById('hdrBar').style.display = 'none'; }
   document.getElementById('editHtmlEditorScreen').style.display = 'block';
   document.getElementById('editHtmlEditorTitle').textContent = item ? `${p.name} — ${item.name || item.type}` : p.name;
   const langs = item ? (item.langs || []) : (p.data.langs || []);
@@ -4811,9 +4682,16 @@ function openTaggedHtmlEditor(projectId, itemId) {
 }
 
 function closeTaggedHtmlEditor() {
-  _editHtmlCurrentTarget = null;
   document.getElementById('editHtmlEditorScreen').style.display = 'none';
-  openEditHtmlFinder();
+  if(_editHtmlReturnTo === 'campaign') {
+    document.getElementById('campaignScreen').style.display = 'flex';
+    renderCampaignMain(); // recarrega o grid/preview com o rawHtml fresco (pode ter mudado)
+  } else {
+    document.getElementById('appBody').style.display = '';
+    document.getElementById('hdrBar').style.display = '';
+  }
+  _editHtmlCurrentTarget = null;
+  _editHtmlReturnTo = null;
 }
 
 // Conta aberturas/fechamentos de um par de marcadores literais (não regex) — usado tanto
@@ -4895,6 +4773,27 @@ function pushManualHtmlEditActivity(target, type) {
   });
 }
 
+// performSaveTaggedHtmlEdit/revertTaggedHtmlEditClick relêem projGetAll() fresco e salvam
+// nesse array — mas se o alvo é um item de CAMPANHA, a tela da campanha continua
+// renderizando a partir de _campaign, um objeto em memória SEPARADO (carregado quando a
+// campanha foi aberta). Sem sincronizar os dois, salvar uma correção aqui e clicar "Back"
+// mostrava a campanha ainda com o HTML ANTIGO — a correção existia no banco, mas sumia da
+// tela até um reload. Mantém _campaign.items[...] em dia com o que acabou de ser gravado.
+function syncTaggedHtmlIntoLiveCampaign(projectId, itemId, rawHtml, taggedHtmlBeforeManualEdit, newActivityEntry) {
+  if(!itemId || !_campaign || _campaign.id !== projectId) return;
+  const liveItem = (_campaign.items || []).find(it => it.id === itemId);
+  if(!liveItem) return;
+  liveItem.rawHtml = rawHtml;
+  liveItem.taggedHtmlBeforeManualEdit = taggedHtmlBeforeManualEdit;
+  // A entrada de atividade foi gravada no ARRAY do item fresco de findEditableHtmlTarget
+  // (target.approvalActivity), não neste objeto vivo — sem replicar aqui também, ela some
+  // da sidebar de aprovação até a próxima vez que a campanha for recarregada do zero.
+  if(newActivityEntry) {
+    if(!Array.isArray(liveItem.approvalActivity)) liveItem.approvalActivity = [];
+    liveItem.approvalActivity.unshift(newActivityEntry);
+  }
+}
+
 function performSaveTaggedHtmlEdit(force) {
   if(!_editHtmlCurrentTarget) return;
   const { projectId, itemId, loadedHtml } = _editHtmlCurrentTarget;
@@ -4917,6 +4816,7 @@ function performSaveTaggedHtmlEdit(force) {
   pushManualHtmlEditActivity(target, 'manual_html_edit');
   p.updatedAt = Date.now();
   projSaveAll(projects);
+  syncTaggedHtmlIntoLiveCampaign(projectId, itemId, newHtml, currentStoredHtml, target.approvalActivity[0]);
 
   _editHtmlCurrentTarget.loadedHtml = newHtml;
   document.getElementById('editHtmlRevertBtn').style.display = '';
@@ -4934,12 +4834,12 @@ function revertTaggedHtmlEditClick() {
   const backup = target.taggedHtmlBeforeManualEdit;
   if(!backup) { showNotif('No manual edit to revert.', 'warn'); return; }
 
-  const currentHtml = item ? item.rawHtml : p.data.html;
   if(item) item.rawHtml = backup; else p.data.html = backup;
   target.taggedHtmlBeforeManualEdit = null;
   pushManualHtmlEditActivity(target, 'manual_html_edit_reverted');
   p.updatedAt = Date.now();
   projSaveAll(projects);
+  syncTaggedHtmlIntoLiveCampaign(projectId, itemId, backup, null, target.approvalActivity[0]);
 
   document.getElementById('editHtmlTextarea').value = backup;
   _editHtmlCurrentTarget.loadedHtml = backup;
