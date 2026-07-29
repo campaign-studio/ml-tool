@@ -1135,9 +1135,9 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
               Approve copies
             </button>
-            <button class="tbtn upload" onclick="openItemCsvModal()">
+            <button class="tbtn upload" onclick="openItemCsvModal()" title="Upload a filled-in CSV/XLSX to update the translations already in this item">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V3m0 0l-4 4m4-4l4 4"/></svg>
-              Upload CSV
+              Upload CSV/XLSX
             </button>
             <button class="tbtn csv" onclick="dlItemCSV()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
@@ -1710,7 +1710,7 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
             </div>
             <button class="tbtn upload" onclick="document.getElementById('editorCsvInput').click()" title="Upload a filled-in CSV/XLSX to update the translations already in this project">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V3m0 0l-4 4m4-4l4 4"/></svg>
-              Update from CSV
+              Update from CSV/XLSX
             </button>
             <input type="file" id="editorCsvInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="onEditorCsvUpload(this.files[0])">
             <button class="tbtn" id="btnApprove" onclick="openApprovalView()" style="border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;">

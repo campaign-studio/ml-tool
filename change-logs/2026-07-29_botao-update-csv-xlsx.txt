@@ -1,0 +1,42 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-29
+Tema: Confirmado que "Update from CSV" já aceita XLSX — botões renomeados pra deixar isso
+explícito
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+"Preciso que a ferramenta aceite o update from CSV também aceite XLXS, eu acho que já
+aceita mas preciso confirmar. Caso aceite, preciso que mude o botão."
+
+===============================================================================
+CONFIRMAÇÃO
+===============================================================================
+Já aceitava, nos dois lugares onde existe esse upload:
+- Editor de projeto avulso: onEditorCsvUpload() + input#editorCsvInput
+  (accept=".csv,.xlsx,.xls").
+- Editor de item de campanha: onItemCsvFile() + input#itemCsvInput (mesmo accept).
+
+Os dois já detectam a extensão .xlsx/.xls e usam o SheetJS (XLSX.read +
+sheet_to_csv) pra converter a planilha em texto CSV antes de processar — o resto do
+fluxo (casar por id, atualizar translations) é idêntico ao de um .csv puro.
+
+===============================================================================
+MUDANÇA
+===============================================================================
+Arquivo: index.html — só o texto visível dos botões, nenhuma mudança de lógica:
+- "Update from CSV" → "Update from CSV/XLSX" (toolbar do editor de projeto avulso).
+- "Upload CSV" → "Upload CSV/XLSX" (toolbar do editor de item de campanha), com o
+  mesmo title explicativo que o botão do projeto avulso já tinha.
+O modal de upload do item de campanha já dizia "Select CSV or XLSX" no botão interno —
+não precisou de ajuste.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, com sbClient bloqueado: gerado um arquivo .xlsx de verdade em
+memória (via SheetJS, a mesma biblioteca que o app já carrega), com uma tradução pra
+uma linha real de um projeto de teste. Upload feito via onEditorCsvUpload() com esse
+arquivo .xlsx (não um .csv renomeado) — confirmado que a tradução foi lida e aplicada
+corretamente na célula certa. Confirmado visualmente (screenshot) que os dois botões
+mostram o texto novo. Projeto/usuário de teste limpos do localStorage ao final.
