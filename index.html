@@ -3287,7 +3287,12 @@ function renderDashboard() {
   renderDashFolders(mine);
   const byFolder = _dashFolderFilter ? mine.filter(p => p.folder === _dashFolderFilter) : mine;
   const searchTerm = _dashProjectSearch.trim().toLowerCase();
+  // A busca era aplicada SÓ na lista "Projects I started" — "Shared with me", "To approve"
+  // e as campanhas (Projetos) abaixo ficavam de fora, mesmo tendo uma única barra de busca
+  // pra tela inteira. Agora filtra as quatro listas do mesmo jeito.
   const mineFiltered = searchTerm ? byFolder.filter(p => (p.name || '').toLowerCase().includes(searchTerm)) : byFolder;
+  const sharedFiltered = searchTerm ? shared.filter(p => (p.name || '').toLowerCase().includes(searchTerm)) : shared;
+  const toApproveFiltered = searchTerm ? toApprove.filter(p => (p.name || '').toLowerCase().includes(searchTerm)) : toApprove;
 
   const emptyMine = searchTerm
     ? `<div class="empty-state"><p>No projects match "${escHtml(_dashProjectSearch.trim())}"${_dashFolderFilter ? ' in this folder' : ''}.</p></div>`
@@ -3297,17 +3302,23 @@ function renderDashboard() {
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
     <p>No projects yet.<br>Click "New project" to start one.</p>
   </div>`;
-  const emptyShared = `<div class="empty-state">
+  const emptyShared = searchTerm
+    ? `<div class="empty-state"><p>No shared projects match "${escHtml(_dashProjectSearch.trim())}".</p></div>`
+    : `<div class="empty-state">
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 014-4h6a4 4 0 014 4v2"/><path d="M17 11l2 2 4-4"/></svg>
     <p>Nothing shared with you yet.</p>
   </div>`;
+  const emptyToApprove = `<div class="empty-state"><p>No projects to approve match "${escHtml(_dashProjectSearch.trim())}".</p></div>`;
   document.getElementById('myProjectsList').innerHTML = mineFiltered.length ? mineFiltered.map(p => projRowHtml(p, true)).join('') : emptyMine;
-  document.getElementById('sharedProjectsList').innerHTML = shared.length ? shared.map(p => projRowHtml(p, false)).join('') : emptyShared;
+  document.getElementById('sharedProjectsList').innerHTML = sharedFiltered.length ? sharedFiltered.map(p => projRowHtml(p, false)).join('') : emptyShared;
 
+  // A seção "To approve" continua aparecendo/sumindo com base no total SEM filtro (existe
+  // algo pra aprovar ou não) — só o CONTEÚDO dentro dela respeita a busca, senão a seção
+  // inteira sumia ao digitar uma busca que não bate com nada nela, parecendo um bug.
   const toApproveSection = document.getElementById('toApproveSection');
   if(toApproveSection) toApproveSection.style.display = toApprove.length ? '' : 'none';
   const toApproveList = document.getElementById('toApproveProjectsList');
-  if(toApproveList) toApproveList.innerHTML = toApprove.map(p => projRowHtml(p, false)).join('');
+  if(toApproveList) toApproveList.innerHTML = toApproveFiltered.length ? toApproveFiltered.map(p => projRowHtml(p, false)).join('') : emptyToApprove;
 
   if(me.role === 'admin') renderDashUserList();
 }
@@ -3336,7 +3347,15 @@ function renderCampaignsList() {
     list.innerHTML = `<div class="empty-state"><p>No projects yet.<br>Click "New project" above to group emails, in-apps and pushes together.</p></div>`;
     return;
   }
-  list.innerHTML = sortDashProjects(mine).map(campaignRowHtml).join('');
+  // Mesma barra de busca do topo da tela (dashProjectSearch) — antes só filtrava "Projects
+  // I started", deixando as campanhas sempre com a lista inteira, sem respeitar a busca.
+  const searchTerm = _dashProjectSearch.trim().toLowerCase();
+  const filtered = searchTerm ? mine.filter(p => (p.name || '').toLowerCase().includes(searchTerm)) : mine;
+  if(!filtered.length) {
+    list.innerHTML = `<div class="empty-state"><p>No projects match "${escHtml(_dashProjectSearch.trim())}".</p></div>`;
+    return;
+  }
+  list.innerHTML = sortDashProjects(filtered).map(campaignRowHtml).join('');
 }
 
 function campaignRowHtml(p) {

@@ -1,0 +1,43 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-29
+Tema: Barra de busca do Dashboard só filtrava "Projects I started" — agora filtra tudo
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+"A barra de pesquisa que temos hoje, só filtra os projetos que eu criei. Preciso que
+seja para tudo."
+
+===============================================================================
+CAUSA
+===============================================================================
+Arquivo: index.html, renderDashboard()/renderCampaignsList()
+
+A busca (_dashProjectSearch, uma única caixa no topo da tela) só era aplicada à lista
+"Projects I started" (mineFiltered). As outras três seções da MESMA tela contínua —
+"Shared with me", "To approve" e "Projetos" (campanhas) — eram sempre renderizadas com
+a lista inteira, sem checar o termo de busca nenhuma vez.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Aplicado o mesmo filtro (nome do projeto contém o termo buscado, case-insensitive) às
+outras três listas:
+- "Shared with me": nova mensagem de vazio específica pra busca sem resultado
+  ("No shared projects match...").
+- "To approve": a SEÇÃO continua aparecendo/sumindo com base no total sem filtro (existe
+  algo pra aprovar ou não) — só o conteúdo dentro dela respeita a busca, pra não sumir a
+  seção inteira e parecer bug ao digitar algo que não bate com nada ali.
+- "Projetos" (campanhas, renderCampaignsList()): agora também lê _dashProjectSearch e
+  filtra antes de renderizar, com sua própria mensagem de "nenhum resultado" separada da
+  de "nenhuma campanha criada ainda".
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, com sbClient bloqueado: criados 8 projetos de teste (2 por
+categoria — "Projects I started", "Shared with me", "To approve", campanhas — um com
+"Alpha" no nome, outro com "Zeta"). Buscando "alpha": confirmado que as quatro seções
+mostram só o item "Alpha..." e escondem o "Zeta..." correspondente. Limpando a busca:
+confirmado que as quatro seções voltam a mostrar os dois itens (sem regressão).
+Dados de teste limpos do localStorage ao final.
