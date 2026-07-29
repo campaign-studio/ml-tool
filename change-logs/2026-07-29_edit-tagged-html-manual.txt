@@ -1,0 +1,98 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-29
+Tema: Nova área "Edit Tagged HTML" — correção manual pontual do HTML já tageado
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+Adicionar uma área pra corrigir manualmente erros encontrados no HTML já tageado (sem
+reprocessar/reextrair o HTML original): uma tela de busca (finder) pra achar o projeto ou
+item de campanha certo, e um editor de texto direto sobre o HTML tageado, com botão de
+Salvar. A edição não pode resetar nem exigir nova aprovação, mesmo que o item já estivesse
+aprovado — só precisa ficar registrada no log de atividade já existente.
+
+Antes de implementar, foi pedido um plano cobrindo: estrutura de busca/filtro do finder,
+onde/como salvar (sobrescreve ou mantém histórico), validação básica antes de salvar, e
+edge cases (duas pessoas editando ao mesmo tempo; edição que remove uma tag sem querer).
+Plano aprovado pelo usuário antes de qualquer código.
+
+===============================================================================
+DECISÃO DE MODELO (esclarecida antes do plano)
+===============================================================================
+O HTML tageado é ÚNICO por projeto/item de campanha, não por idioma — quem varia por
+idioma é o CSV. O finder localiza por projeto/campanha (com filtro por idiomas que o
+projeto TEM), não por "projeto+idioma" como registros separados.
+
+===============================================================================
+O QUE FOI IMPLEMENTADO
+===============================================================================
+Arquivo: index.html
+
+1. Duas telas novas (editHtmlFinderScreen/editHtmlEditorScreen), independentes do editor
+   normal e de S/currentProjectId — leem/escrevem direto em projGetAll()/projSaveAll(),
+   sem carregar nada no estado global do wizard. Isso evita qualquer interação com o
+   editor normal ou sua trava de edição.
+2. Finder: busca por nome, filtro por idioma (dropdown com todos os idiomas usados em
+   qualquer projeto) e por status de aprovação (nenhum/alguns/todos aprovados), ordenação
+   por data ou nome. Cobre projetos avulsos (p.data.html) e itens de campanha
+   (item.rawHtml) numa lista só.
+3. Editor: textarea direto sobre o HTML, com aviso explícito de que a edição NÃO muda
+   status de aprovação. Botão Salvar e botão "Revert last manual edit" (só aparece se
+   existir uma versão anterior salva).
+4. Histórico: só a versão IMEDIATAMENTE anterior à edição manual mais recente é guardada
+   (data.taggedHtmlBeforeManualEdit / item.taggedHtmlBeforeManualEdit) — não um histórico
+   ilimitado, dado o custo real de espaço/egress de guardar múltiplas cópias de HTML de
+   30-50KB (viemos de um bloqueio real de cota do Supabase esta semana).
+5. Validação antes de salvar (avisa, não bloqueia sem escape — é correção de emergência):
+   contagem balanceada de {%translation%}/{%endtranslation%}, ids de tradução que
+   sumiram comparando antes/depois, e balanceamento de {% if/elsif/else/endif %}/
+   {% unless/endunless %}. Erros mostram um modal de confirmação com "Salvar mesmo
+   assim" — nunca travam incondicionalmente.
+6. Atividade: nova entrada no MESMO array approvalActivity já usado pela Approval View
+   (tipos 'manual_html_edit'/'manual_html_edit_reverted'), com quem/quando — sem
+   qualquer alerta ou bloqueio visível pra quem já aprovou antes.
+7. Edge case de duas pessoas editando ao mesmo tempo: ao salvar, relê o estado ATUAL
+   (não a cópia carregada quando o editor abriu) e, se alguém mudou o mesmo HTML nesse
+   meio tempo, confirma antes de sobrescrever.
+8. Edge case adicional, achado durante o planejamento (não pedido explicitamente, mas
+   real): se alguém tiver o editor NORMAL aberto (com S.rawHtml desatualizado) enquanto
+   a correção manual acontece em outra aba/pessoa, o autosave normal SEMPRE gravava
+   S.rawHtml de volta incondicionalmente — apagando a correção manual sem ninguém
+   perceber. Corrigido com um snapshot (S._rawHtmlSnapshotAtLoad, setado em
+   restoreProjectContent/projSaveOnBuild): se nada mudou o HTML NESTA sessão mas o
+   valor salvo já é diferente do snapshot, autosaveProject() preserva a versão mais nova
+   em vez de sobrescrever. Não foi necessário o mesmo tratamento pra itens de campanha:
+   confirmado lendo o código que item.rawHtml nunca é resincronizado a partir de S
+   durante a edição normal (só rows/translations são), então esse risco específico não
+   existe nesse caminho.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+Ponta a ponta, no navegador real, via UI de verdade (não só chamada direta de função),
+com sbClient bloqueado:
+1. Projeto de teste real (if/else + merge tag) criado pela UI, 1 idioma aprovado.
+2. Finder mostrou o projeto certo, com "1 of 1 language approved" e o chip do idioma.
+3. Editor abriu com o HTML tageado real; edição válida (trocar um texto) salva
+   corretamente — aprovação continuou intacta (mesmo timestamp de antes), backup da
+   versão anterior criado, entrada de atividade 'manual_html_edit' registrada.
+4. Edição que removeu 2 tags de tradução: modal de aviso apareceu citando os ids certos
+   (id2, id3). "Cancel" não salvou nada. "Save anyway" salvou mesmo com o aviso,
+   aprovação continuou intacta.
+5. "Revert last manual edit": restaurou exatamente a versão anterior (tags de volta,
+   texto de volta), backup limpo, aprovação intacta, atividade 'manual_html_edit_reverted'
+   registrada.
+6. Edge case da aba desatualizada: simulado abrir o editor normal, uma edição externa
+   mudando o HTML salvo, e então o autosave da aba "desatualizada" — confirmado que a
+   edição externa sobrevive (autosave não a apagou). Testado também o caminho SEM
+   interferência externa, confirmando que autosave normal continua gravando
+   corretamente (sem regressão).
+7. Filtros do finder (busca por nome, status de aprovação "all"/"none") testados e
+   retornando os resultados certos.
+8. Projeto/usuário de teste limpos do localStorage ao final.
+
+===============================================================================
+NOTA
+===============================================================================
+Nenhum dado real do Supabase foi tocado — toda a verificação rodou com sbClient
+bloqueado, usando um projeto de teste local.
