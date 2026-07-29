@@ -2313,6 +2313,12 @@ async function ghMergeAndPushProjects(localProjects) {
 }
 
 // Busca todos os projetos do banco e atualiza o cache local.
+// Marca a hora do último pull completo bem-sucedido NESTA aba (só em memória — reseta a
+// cada reload, o que força um primeiro pull completo por sessão, uma baseline segura).
+// ghPullProjects() usa isso pra só buscar projetos ATUALIZADOS desde então, em vez do
+// payload inteiro (html+csv) de TODO projeto, toda vez — ver comentário abaixo.
+let _lastProjectsPullAt = null;
+
 async function ghPullProjects() {
   const sb = sbClient();
   if(!sb) return false;
@@ -2324,8 +2330,23 @@ async function ghPullProjects() {
   // sem isso, esta aba só sabia dos projetos que ELA MESMA marcou como deletados,
   // e podia ressuscitar um projeto deletado por outra pessoa/aba.
   await withTimeout(pullDeletedProjectIds(), 8000, 'pullDeletedProjectIds');
+  // Guarda o instante ANTES da consulta (não depois) — cobre com segurança qualquer
+  // escrita que aconteça enquanto a consulta ainda está em voo, ao custo de reler um
+  // punhado de linhas que já tínhamos (barato) em vez de arriscar perder uma atualização
+  // (caro: exigiria detectar e reparar depois).
+  const pullStartedAt = new Date().toISOString();
   try {
-    const { data, error } = await withTimeout(sb.from('projects').select('id,payload'), 8000, 'select projects');
+    // Pull incremental: só busca projetos com updated_at mais recente que o último pull
+    // completo desta aba — sem isso, CADA poll (Dashboard a cada 15s, checkMyLockTakeover
+    // a cada 20s, todo evento do Realtime) baixava o payload INTEIRO — html+csv de TODO
+    // projeto — mesmo quando nada tinha mudado. Achado real: esse padrão sozinho consumiu
+    // 19GB de egress num mês (cota do plano gratuito: 5GB), derrubando o acesso ao banco
+    // pra todo mundo. mergeProjectsForSave() já preserva localmente qualquer projeto que
+    // não vier nesta resposta (ver o loop final lá), então um pull parcial funciona
+    // corretamente — não precisa da tabela inteira pra saber "o resto continua igual".
+    let query = sb.from('projects').select('id,payload');
+    if(_lastProjectsPullAt) query = query.gt('updated_at', _lastProjectsPullAt);
+    const { data, error } = await withTimeout(query, 8000, 'select projects');
     if(error) throw error;
     const projects = (data || []).map(r => r.payload).filter(Boolean);
     // Faz o MESMO merge por projeto (updatedAt) que projSaveAll usa — sem isso, um pull
@@ -2335,6 +2356,7 @@ async function ghPullProjects() {
     // acima (que só cobre o push ainda em voo, não a defasagem de leitura logo depois).
     const merged = mergeProjectsForSave(projects);
     localStorage.setItem(PROJ_KEY, JSON.stringify(merged));
+    _lastProjectsPullAt = pullStartedAt;
     setSyncDot('on');
     return true;
   } catch(e) {

@@ -1,0 +1,78 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-29
+Tema: Supabase bloqueou o acesso por estourar a cota de egress do plano gratuito (5GB) —
+19.384 MB usados (388%) — causa raiz: pull completo de TODOS os projetos em todo poll
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+Usuário reportou: "O banco de dados parou por causa de algum uso que ultrapassou." O
+painel de Usage do Supabase mostrou Egress em 19.384 MB / 5 GB (388%) — todos os outros
+itens (tamanho do banco, realtime, storage) normais/baixos. O usuário não podia aprovar
+aumento de plano/spend cap na hora.
+
+===============================================================================
+INVESTIGAÇÃO
+===============================================================================
+ghPullProjects() — que busca TODOS os projetos com select('id,payload') (payload inclui
+o HTML e CSV completos de cada projeto, tipicamente 20-50KB cada) — é chamado por:
+- Poller do Dashboard a cada 15s (enquanto a tela estiver visível)
+- Poller de checkMyLockTakeover a cada 20s (enquanto dentro do editor)
+- Todo evento do Realtime (sbOnProjectsChanged, debounce de 250ms)
+- Dezenas de outras ações pontuais (abrir pasta, deletar projeto, etc.)
+
+Ou seja: MESMO SEM NENHUMA MUDANÇA, o payload inteiro de TODO projeto salvo era
+rebaixado repetidamente, várias vezes por minuto, por aba aberta, por pessoa. Com um
+catálogo de ~15-20 projetos reais (cada um com HTML+CSV de dezenas de KB), isso soma
+rápido — plausivelmente a causa direta de bater 19GB no mês.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Arquivo: index.html, função ghPullProjects()
+
+Adicionada uma variável de módulo _lastProjectsPullAt (só em memória — reseta a cada
+reload, garantindo que a PRIMEIRA busca de cada sessão seja sempre completa, uma
+baseline segura). A partir da segunda busca em diante, a consulta ganha um filtro
+`.gt('updated_at', _lastProjectsPullAt)` — só traz projetos que mudaram DE VERDADE desde
+o último pull bem-sucedido desta aba. _lastProjectsPullAt é atualizado pro instante em
+que a consulta COMEÇOU (não terminou) — cobre com segurança qualquer escrita que
+aconteça enquanto a consulta ainda está em voo, ao custo de reler um punhado de linhas
+que já tínhamos (barato) em vez de arriscar perder uma atualização (caro).
+
+Nenhuma mudança em mergeProjectsForSave() foi necessária: essa função já preservava
+localmente qualquer projeto que NÃO viesse na lista recebida (era assim que já lidava
+com "outra aba salvou algo que esta aba não tinha lido ainda") — o mesmo comportamento
+serve perfeitamente pra um pull PARCIAL/incremental, sem nenhum ajuste.
+
+Deleções continuam cobertas do jeito que já era: pullDeletedProjectIds() (tabela
+separada, pequena, sempre puxada por inteiro) não foi tocada — uma linha DELETADA nunca
+apareceria num filtro por updated_at de qualquer forma, então a lógica de tombstone
+continua sendo o único e correto caminho pra isso.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+Como o Supabase real estava bloqueado (402, exceed_egress_quota) no momento da correção,
+a verificação foi feita com um cliente Supabase FALSO e controlado (array em memória,
+suportando .select().gt() encadeado), no navegador real:
+1. Pull 1 (sessão nova): sem filtro nenhum, busca os 2 projetos de teste — confirmado
+   que a baseline completa continua acontecendo normalmente.
+2. Pull 2 (nada mudou): filtro presente (gt updated_at), 0 linhas retornadas — e
+   confirmado que os 2 projetos CONTINUAM no localStorage (preservados pelo merge, não
+   apagados por um pull vazio).
+3. Simulado um projeto mudando remotamente (updated_at e payload atualizados no array
+   falso) — Pull 3: filtro correto (usando o timestamp do pull anterior), retornou
+   EXATAMENTE o projeto que mudou, e o resultado final no localStorage tinha o projeto A
+   intacto e o projeto B com o novo conteúdo — confirmando que o pull incremental
+   detecta mudanças reais sem perder nem sobrescrever o que não mudou.
+
+===============================================================================
+PENDÊNCIA
+===============================================================================
+Essa correção reduz drasticamente o consumo DAQUI PRA FRENTE, mas não desbloqueia a
+restrição JÁ ATIVA no projeto Supabase atual (isso exige ação do dono da conta —
+aguardar o reset mensal da cota, ou ajustar plano/spend cap, ou migrar pra um projeto
+novo — decisão fora do escopo deste log). Recomendado ao usuário verificar a data de
+reset da cota e se o SQL Editor do painel ainda funciona (indicativo de que dá pra
+exportar os dados mesmo com a API pública bloqueada).
