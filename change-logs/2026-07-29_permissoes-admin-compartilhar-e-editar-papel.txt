@@ -1,0 +1,87 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-29
+Tema: Admin pode compartilhar qualquer projeto + botão de editar papel na área de Membros
+(novo papel: superadmin)
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+1) Admins (papel de conta) podem compartilhar QUALQUER projeto — inclusive um que não é
+   deles, só compartilhado com eles — não só o dono.
+2) Na área de Membros, um botão/controle pra trocar o papel de cada pessoa (no mínimo
+   promover member→admin), seguindo hierarquia: quem está acima promove.
+
+Decisões confirmadas com o usuário antes de implementar:
+- Criar o papel 'superadmin' (não existia; só havia 'admin'/'member').
+- Hierarquia SIMPLIFICADA: qualquer admin promove qualquer member (sem rastrear "quem criou
+  quem" — esse dado não existe no código e não foi adicionado).
+- Admin que compartilha projeto de outro só ADICIONA, não REMOVE (remover fica com dono/
+  superadmin).
+
+===============================================================================
+MUDANÇAS
+===============================================================================
+Arquivo: index.html
+
+Papéis (novo modelo de 3 níveis: member < admin < superadmin):
+- AUTH_DEFAULT_USERS: hiago.branco@gympass.com semeado como 'superadmin' (antes 'admin') —
+  precisa existir ao menos 1 superadmin, senão ninguém gerencia a camada de admins.
+- Helpers novos: isAdminOrAbove(role), isSuperadmin(role), roleLabel(r). Os checks inline
+  `role === 'admin'` (menu Members, gate do renderDashUserList, sufixo do perfil) trocados
+  por isAdminOrAbove pra o superadmin também enxergar tudo.
+
+Request 1 — compartilhamento:
+- canShareProject(p) = é dono OU isAdminOrAbove(me.role). canRemoveFromProject(p) = é dono
+  OU superadmin (admin não-dono NÃO remove).
+- projRowHtml: botão "Share with your team" agora aparece quando canShareProject (antes só
+  isOwner) — então admin vê o botão também em "Shared with me"/"To approve".
+- openShareModal: o ✕ de remover só é renderizado quando canRemoveFromProject.
+- setMemberRole: guard REAL adicionado (antes não tinha nenhum — era trava só de UI):
+  adicionar/trocar exige canShareProject; remover (role null) exige canRemoveFromProject.
+  Bloqueia até chamada direta pelo console.
+
+Request 2 — editar papel na área de Membros:
+- canChangeUserRole(actor, target) e allowedRoleTargets(actor, target) implementam a matriz:
+  ninguém muda o próprio papel; superadmin muda qualquer um; admin só mexe em quem é
+  'member' hoje e só até 'admin' (nunca superadmin, nunca outro admin); member não gerencia.
+- renderDashUserList: o badge estático de papel virou um <select> inline quando
+  canChangeUserRole é true (opções gatadas por allowedRoleTargets); pra quem não pode
+  gerenciar aquela linha (ex: admin olhando outro admin, ou a própria linha), continua badge
+  estático.
+- dashSetUserRole(email, newRole): mutador novo, re-checa a permissão contra dados FRESCOS
+  (não confia no que a UI mostrou) antes de gravar; notifica a pessoa.
+- Formulário "Add member": a opção 'Superadmin' só aparece pra superadmin (injetada no
+  render); dashAddUser guarda por baixo (um não-superadmin tentando criar superadmin cai
+  pra 'member').
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado:
+1. Matriz de permissão (canChangeUserRole/allowedRoleTargets) — todos os cruzamentos
+   super/admin/member × super/admin/member, incluindo auto-alteração: resultados exatos
+   (superadmin muda todos menos a si; admin só members até admin; member ninguém).
+2. Sharing (canShareProject/canRemoveFromProject): admin não-dono → pode compartilhar, não
+   pode remover; dono → ambos; superadmin → ambos; member comum → nenhum.
+3. Mutadores aplicando de verdade (não só a UI): admin promove member→admin OK; admin
+   tentando criar superadmin → bloqueado (fica member); admin tentando rebaixar outro admin
+   → bloqueado; member tentando mudar papel → bloqueado; superadmin auto-rebaixar →
+   bloqueado. setMemberRole: member comum tentando se auto-adicionar a um projeto →
+   bloqueado (sharedWith intacto); admin adiciona OK; admin tentando remover → bloqueado;
+   dono remove OK.
+4. UI: como superadmin, própria linha = badge, outras = select member/admin/superadmin;
+   como admin, própria linha e a do superadmin = badge, members = select member/admin,
+   formulário Add sem opção superadmin. Botão Share aparece no card "Shared with me" pra
+   admin. Confirmado por screenshot (Share modal de admin mostra Editor sem ✕ + pode
+   adicionar).
+5. Dados de teste limpos ao final (users re-semeia no próximo load).
+
+===============================================================================
+NOTA IMPORTANTE (produção)
+===============================================================================
+A mudança de semente (hiago → superadmin) só vale pra instalação NOVA/local — quando a
+tabela `users` já existe no Supabase e é sincronizada (sbPullUsers), o valor do banco vence
+e hiago continuaria 'admin'. Pra promover alguém a superadmin em produção de verdade, é
+preciso rodar a troca com a ferramenta já apontando pro banco (ou um UPDATE direto na
+tabela users). Como o Supabase está bloqueado agora (cota de egress), isso fica pendente
+pra quando o acesso voltar.

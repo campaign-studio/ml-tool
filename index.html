@@ -1929,11 +1929,45 @@ function departmentTagHtml(key) {
 const AUTH_USERS_KEY = 'mlt_users_v1';
 
 // Admin inicial — troque o e-mail/senha abaixo antes de compartilhar o arquivo.
+// Papéis de conta, em ordem de poder: member < admin < superadmin.
+// - member: usa a ferramenta, não gerencia gente.
+// - admin: enxerga a área de Membros, adiciona/promove MEMBROS a admin, e pode
+//   compartilhar QUALQUER projeto (não só os que criou).
+// - superadmin: pode tudo que o admin pode, e mais: mexer no papel de admins
+//   (promover a superadmin, rebaixar) — o único que gerencia a camada de admins.
+// Precisa existir ao menos UM superadmin semeado, senão nunca daria pra gerir admins.
 const AUTH_DEFAULT_USERS = [
-  { email: 'hiago.branco@gympass.com', pass: '123', role: 'admin', name: 'Hiago' },
+  { email: 'hiago.branco@gympass.com', pass: '123', role: 'superadmin', name: 'Hiago' },
   { email: 'helena.carbonari@gympass.com', pass: '123', role: 'member', name: 'Helena Carbonari' },
   { email: 'christiane.steinhoff@gympass.com', pass: '123', role: 'member', name: 'Christiane Steinhoff' }
 ];
+
+// Helpers de papel — centralizam a checagem em vez de espalhar `role === 'admin'` (que
+// deixaria o superadmin de fora sem querer em cada ponto novo).
+function isAdminOrAbove(role) { return role === 'admin' || role === 'superadmin'; }
+function isSuperadmin(role) { return role === 'superadmin'; }
+function roleLabel(r) { return r === 'superadmin' ? 'Superadmin' : r === 'admin' ? 'Admin' : 'Member'; }
+
+// Regras de quem pode trocar o papel de quem (gestão de contas na área de Membros):
+// - Ninguém muda o PRÓPRIO papel (evita o último superadmin se rebaixar e travar a conta).
+// - Superadmin muda qualquer um (member↔admin↔superadmin).
+// - Admin só mexe em quem é 'member' hoje, e só pode promover a 'admin' (nunca superadmin,
+//   e nunca toca em outro admin/superadmin — rebaixar admin é exclusivo do superadmin).
+// - Member não gerencia ninguém.
+function canChangeUserRole(actor, target) {
+  if(!actor || !target) return false;
+  if(actor.email.toLowerCase() === target.email.toLowerCase()) return false;
+  if(isSuperadmin(actor.role)) return true;
+  if(actor.role === 'admin') return target.role === 'member';
+  return false;
+}
+// Quais papéis o "actor" pode ATRIBUIR a esse "target" (opções do select). Sempre inclui o
+// papel atual do target (pra aparecer selecionado). Admin não vê 'superadmin' como opção.
+function allowedRoleTargets(actor, target) {
+  if(!canChangeUserRole(actor, target)) return [];
+  if(isSuperadmin(actor.role)) return ['member', 'admin', 'superadmin'];
+  return ['member', 'admin']; // admin promovendo um member
+}
 
 function authGetUsers() {
   try {
@@ -2027,11 +2061,11 @@ function renderProfileAvatar(user) {
   const btn = document.getElementById('profileAvatarBtn');
   if(btn) { btn.textContent = initials; btn.style.background = avColorForEmail(user.email); }
   const nameEl = document.getElementById('profileMenuName');
-  if(nameEl) nameEl.textContent = name + (user.role === 'admin' ? ' · Admin' : '');
+  if(nameEl) nameEl.textContent = name + (isSuperadmin(user.role) ? ' · Superadmin' : user.role === 'admin' ? ' · Admin' : '');
   const emailEl = document.getElementById('profileMenuEmail');
   if(emailEl) emailEl.textContent = user.email;
   const membersItem = document.getElementById('profileMembersItem');
-  if(membersItem) membersItem.style.display = user.role === 'admin' ? '' : 'none';
+  if(membersItem) membersItem.style.display = isAdminOrAbove(user.role) ? '' : 'none';
 }
 
 function toggleProfileMenu() {
@@ -3320,7 +3354,7 @@ function renderDashboard() {
   const toApproveList = document.getElementById('toApproveProjectsList');
   if(toApproveList) toApproveList.innerHTML = toApproveFiltered.length ? toApproveFiltered.map(p => projRowHtml(p, false)).join('') : emptyToApprove;
 
-  if(me.role === 'admin') renderDashUserList();
+  if(isAdminOrAbove(me.role)) renderDashUserList();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -4336,7 +4370,11 @@ function renderDashUserList() {
           onchange="dashRenameUser('${u.email}', this.value)" onclick="event.stopPropagation()">
         <div class="member-email" style="overflow:hidden;text-overflow:ellipsis;color:var(--text3);font-weight:400;font-size:11.5px;margin-top:2px;">${u.email}</div>
         <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
-          <div class="role-badge ${u.role}">${u.role}</div>
+          ${canChangeUserRole(me, u)
+            ? `<select class="dept-select" style="width:auto;" onchange="dashSetUserRole('${u.email}', this.value)" onclick="event.stopPropagation()">
+                ${allowedRoleTargets(me, u).map(r => `<option value="${r}" ${r===u.role?'selected':''}>${roleLabel(r)}</option>`).join('')}
+               </select>`
+            : `<div class="role-badge ${u.role}">${roleLabel(u.role)}</div>`}
           ${u.department ? departmentTagHtml(u.department) : ''}
         </div>
         <select class="dept-select" onchange="dashSetUserDept('${u.email}', this.value)" onclick="event.stopPropagation()">
@@ -4351,6 +4389,14 @@ function renderDashUserList() {
   const addSel = document.getElementById('dashNewUserDept');
   if(addSel && addSel.options.length <= 1) {
     DEPARTMENTS.forEach(d => addSel.insertAdjacentHTML('beforeend', `<option value="${d.key}">${d.label}</option>`));
+  }
+  // Só superadmin pode criar alguém já como superadmin — a opção só aparece pra ele no
+  // formulário "Add member" (dashAddUser também guarda por baixo). Idempotente no re-render.
+  const roleSel = document.getElementById('dashNewUserRole');
+  if(roleSel) {
+    const hasSuper = [...roleSel.options].some(o => o.value === 'superadmin');
+    if(isSuperadmin(me.role) && !hasSuper) roleSel.insertAdjacentHTML('beforeend', `<option value="superadmin">Superadmin</option>`);
+    if(!isSuperadmin(me.role) && hasSuper) roleSel.querySelector('option[value="superadmin"]').remove();
   }
 }
 
@@ -4384,6 +4430,27 @@ async function dashSetUserDept(email, dept) {
   renderDashUserList();
 }
 
+// Troca o papel de conta de um membro. Re-checa a permissão contra os dados FRESCOS (não só
+// contra o que a UI mostrou), pra que uma chamada direta pelo console — ou um render antigo —
+// não escape das regras de canChangeUserRole/allowedRoleTargets.
+async function dashSetUserRole(email, newRole) {
+  await dashPullUsersIfPossible();
+  const me = authCurrentUser(); // resolvido DEPOIS do pull — papel do actor sempre fresco
+  const users = authGetUsers();
+  const target = users.find(x => x.email.toLowerCase() === email.toLowerCase());
+  if(!me || !target) return;
+  if(!canChangeUserRole(me, target) || !allowedRoleTargets(me, target).includes(newRole)) {
+    showNotif('You do not have permission to make that role change.', 'warn');
+    renderDashUserList();
+    return;
+  }
+  if(target.role === newRole) return; // nada mudou
+  target.role = newRole;
+  authSaveUsers(users);
+  renderDashUserList();
+  notifAdd(email, me.email, `${me.email} changed your account role to ${roleLabel(newRole)}.`);
+}
+
 async function dashAddUser() {
   const name = (document.getElementById('dashNewUserName').value || '').trim();
   const email = (document.getElementById('dashNewUserEmail').value || '').trim().toLowerCase();
@@ -4399,13 +4466,16 @@ async function dashAddUser() {
     return;
   }
   await dashPullUsersIfPossible();
+  const me = authCurrentUser();
+  // Guard: só superadmin cria alguém já como superadmin (defesa além de esconder a opção).
+  const safeRole = (role === 'superadmin' && !isSuperadmin(me && me.role)) ? 'member' : role;
   const users = authGetUsers();
   if(users.some(u => u.email.toLowerCase() === email)) {
     errEl.textContent = 'A member with this email already exists.';
     errEl.classList.add('show');
     return;
   }
-  users.push({ email, pass, role, name: name || '', department });
+  users.push({ email, pass, role: safeRole, name: name || '', department });
   authSaveUsers(users);
   document.getElementById('dashNewUserName').value = '';
   document.getElementById('dashNewUserEmail').value = '';
@@ -4576,6 +4646,9 @@ function projRowHtml(p, isOwner) {
   }
   const lastEdited = p.updatedAt ? ` · Last edited ${relativeTime(p.updatedAt)}` : '';
   const isApprover = !isOwner && (p.approvers || []).some(e => e.toLowerCase() === me.email.toLowerCase());
+  // Botão Share aparece pro dono (isOwner) OU pra admin/superadmin em qualquer card, mesmo
+  // num projeto que não é dele (ex: só compartilhado com ele). Antes era só isOwner.
+  const canShare = isOwner || canShareProject(p);
   const progressBadge = translationProgressBadgeHtml(projTranslationStats(p));
   const badges = `${progressBadge}${lockBadge}${isApprover && !reviewers.length ? `<span class="lock-pill mine" style="background:#f5f3ff;border-color:#c4b5fd;color:#6d28d9;">You're an approver</span>` : ''}${approvingBadge}`;
   return `
@@ -4597,7 +4670,7 @@ function projRowHtml(p, isOwner) {
         </div>
       </div>
       <div class="proj-actions">
-        ${isOwner ? `<button class="btn-back" onclick="openShareModal('${p.id}')">Share with your team</button>` : ''}
+        ${canShare ? `<button class="btn-back" onclick="openShareModal('${p.id}')">Share with your team</button>` : ''}
         ${isApprover ? `<button class="btn-go" style="background:#6d28d9;" ${locked ? 'disabled' : ''} onclick="approverOpenProject('${p.id}')">Approve copies</button>` : ''}
         ${!isApprover ? `<button class="btn-go" id="openBtn-${p.id}" ${(locked && !lockedByMe) || reviewers.length ? 'disabled' : ''} onclick="projOpen('${p.id}', this)">Open Project</button>` : ''}
         ${isOwner ? `<button class="btn-danger" onclick="projDelete('${p.id}')">Delete</button>` : ''}
@@ -5198,6 +5271,9 @@ function openShareModal(id) {
 
   const withAccess = allUsers.filter(u => roleOf(u));
   const withoutAccess = allUsers.filter(u => !roleOf(u));
+  // Só o dono (ou superadmin) pode REMOVER acesso — um admin não-dono só adiciona/compartilha.
+  // Quando não pode remover, o ✕ some (o guard em setMemberRole também bloqueia por baixo).
+  const canRemove = canRemoveFromProject(p);
 
   const rowId = u => 'shareRow-' + u.email.replace(/[^a-zA-Z0-9]/g, '_');
   const accessRow = u => {
@@ -5217,7 +5293,7 @@ function openShareModal(id) {
           <option value="editor" ${role==='editor'?'selected':''}>Editor</option>
           <option value="approver" ${role==='approver'?'selected':''}>Approver</option>
         </select>
-        <button class="share-remove-btn" title="Remove access" onclick="setMemberRole('${id}','${u.email}',null,'${rowId(u)}')">✕</button>
+        ${canRemove ? `<button class="share-remove-btn" title="Remove access" onclick="setMemberRole('${id}','${u.email}',null,'${rowId(u)}')">✕</button>` : ''}
       </div>`;
   };
   const addRow = u => `
@@ -5267,6 +5343,11 @@ async function setMemberRole(projId, email, role, rowId) {
   const projects = projGetAll();
   const p = projects.find(x => x.id === projId);
   if(!p) return;
+  // Guard REAL de permissão (não só esconder botão): adicionar/trocar papel exige
+  // canShareProject; remover (role null) exige canRemoveFromProject (dono/superadmin).
+  // Sem isso, um membro comum chamando setMemberRole direto pelo console passava batido.
+  const allowed = role === null ? canRemoveFromProject(p) : canShareProject(p);
+  if(!allowed) { showNotif('You do not have permission to change sharing on this project.', 'warn'); openShareModal(projId); return; }
   p.sharedWith = p.sharedWith || [];
   p.approvers = p.approvers || [];
   const hadAccess = p.sharedWith.some(e => e.toLowerCase() === email.toLowerCase());
@@ -7432,6 +7513,26 @@ function isCurrentProjectOwner() {
   if(!currentProjectId) return true; // ainda não virou projeto salvo/compartilhado — só quem está criando está aqui
   const p = projGetAll().find(x => x.id === currentProjectId);
   return !!(p && p.owner && p.owner.toLowerCase() === me.email.toLowerCase());
+}
+
+// Quem pode COMPARTILHAR (adicionar gente) num projeto: o dono, OU qualquer admin/superadmin
+// — mesmo em projeto que não é seu (inclusive um só compartilhado com ele). Centralizado
+// aqui pra a UI (botão Share) e o guard de escrita (setMemberRole) usarem a MESMA regra.
+function isProjectOwner(p, me) {
+  return !!(p && p.owner && me && p.owner.toLowerCase() === me.email.toLowerCase());
+}
+function canShareProject(p) {
+  const me = authCurrentUser();
+  if(!me || !p) return false;
+  return isProjectOwner(p, me) || isAdminOrAbove(me.role);
+}
+// Remover gente de um projeto é mais restrito que adicionar: só o DONO ou um superadmin
+// (que "pode tudo"). Um admin não-dono só consegue ADICIONAR/compartilhar, nunca tirar o
+// acesso de quem já está — evita um admin remover o dono ou outro colaborador por engano.
+function canRemoveFromProject(p) {
+  const me = authCurrentUser();
+  if(!me || !p) return false;
+  return isProjectOwner(p, me) || isSuperadmin(me.role);
 }
 
 /* ─── Popover (modal centralizado) ─── */
