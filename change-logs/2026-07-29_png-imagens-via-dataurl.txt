@@ -1,0 +1,55 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-29
+Tema: PNG da Approval View saía SEM as imagens — corrigido buscando as imagens via fetch e
+embutindo como data: URI só na captura (continuação de 2026-07-29_download-png-approval-view.txt)
+
+===============================================================================
+PEDIDO/PROBLEMA
+===============================================================================
+Depois de adicionar o download de PNG, o usuário reportou: "Não está baixando as imagens" —
+o PNG saía com o texto, mas as imagens do e-mail apareciam em branco.
+
+Causa: as imagens do preview carregam SEM crossorigin. Quando o html2canvas tenta capturá-
+las, esbarra no cache sem-CORS do navegador e a imagem sai em branco no canvas (texto sai,
+imagem não).
+
+===============================================================================
+TENTATIVA QUE QUEBROU (revertida)
+===============================================================================
+Primeira tentativa: adicionar crossorigin="anonymous" nas imagens do preview de aprovação.
+Isso PIOROU tudo — reportado pelo usuário: "As imagens pararam de aparecer no approver".
+Motivo: a imagem já estava no cache SEM CORS (carregada pelo preview visível); ao pedir a
+MESMA URL agora COM crossorigin, o navegador serve o cache sem-CORS e a checagem falha →
+onerror → o script de fallback do preview troca a <img> por uma caixa cinza "IMG". Ou seja,
+forçar crossorigin na imagem EXIBIDA faz ela sumir da tela. Revertido imediatamente.
+
+===============================================================================
+CORREÇÃO DEFINITIVA (não toca na exibição)
+===============================================================================
+Arquivo: index.html, downloadApprovalFramePng()
+
+Antes de rodar o html2canvas: para cada <img> do preview, busca a imagem via
+fetch(url, {mode:'cors'}) (braze-images.com suporta CORS — confirmado), converte o blob em
+data: URI e guarda num mapa {srcAbsoluto: dataURL}. Aí passa um callback onclone pro
+html2canvas: na CÓPIA PRIVADA que ele renderiza (nunca a que está na tela), troca o src de
+cada imagem pela data: URI correspondente. data: é same-origin — o canvas captura a imagem
+sem contaminar (tainted) e sem depender do cache sem-CORS.
+
+Ponto-chave: NADA disso toca as <img> que o revisor vê no approver — elas continuam
+carregando normalmente, sem crossorigin. A conversão só existe dentro do clone do
+html2canvas. Se o fetch de alguma imagem falhar, ela é deixada como está (melhor o PNG sair
+com o texto e as demais imagens do que travar).
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado, projeto com texto + uma imagem real do braze (selo
+"Get it on Google Play"):
+1. Approver: confirmado que a imagem CONTINUA aparecendo (displayHasImg=true, sem a caixa de
+   fallback) — a regressão anterior foi desfeita.
+2. PNG gerado: 77 KB (vs ~18 KB da versão em branco anterior). Renderizado o PNG numa
+   sobreposição na própria página e tirado screenshot: mostra "Welcome to Wellhub." + o selo
+   do Google Play + "Thanks for joining." — a imagem ESTÁ no PNG.
+   (Obs: o detector automático de "pixels coloridos" deu 0 só porque esse selo é cinza/preto;
+   a confirmação visual por screenshot é a que vale.)
+3. Dados de teste limpos ao final.

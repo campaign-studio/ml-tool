@@ -9275,9 +9275,35 @@ async function downloadApprovalFramePng(lang) {
   showNotif('Generating PNG…', 'info', 2000);
   try {
     const w = doc.body.scrollWidth, h = doc.body.scrollHeight;
+
+    // As imagens do e-mail são exibidas SEM crossorigin (senão o cache sem-CORS faz elas
+    // falharem e sumirem do approver). Mas html2canvas, ao capturar, esbarra nesse mesmo
+    // cache sem-CORS e a imagem sai EM BRANCO no PNG. Solução que NÃO toca na exibição:
+    // buscar cada imagem via fetch (modo cors — braze-images.com suporta) e convertê-la em
+    // data: URI; depois, no onclone (a cópia PRIVADA que o html2canvas renderiza, nunca a
+    // que está na tela), trocar o src pela data URI. data: é same-origin, então o canvas
+    // captura a imagem sem contaminar e sem mexer no que o revisor vê.
+    const urlToDataURL = async (url) => {
+      const resp = await fetch(url, { mode: 'cors' });
+      const blob = await resp.blob();
+      return await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
+    };
+    const dataUrlBySrc = {};
+    await Promise.all([...doc.querySelectorAll('img')].map(async (img) => {
+      const src = img.src; // absoluto
+      if(!src || src.startsWith('data:')) return;
+      try { dataUrlBySrc[src] = await urlToDataURL(src); } catch(e) { /* deixa como está — melhor texto sem a imagem do que travar */ }
+    }));
+
     const canvas = await h2c(doc.body, {
       useCORS: true, backgroundColor: '#ffffff', scale: 2,
-      width: w, height: h, windowWidth: w, windowHeight: h
+      width: w, height: h, windowWidth: w, windowHeight: h,
+      onclone: (clonedDoc) => {
+        clonedDoc.querySelectorAll('img').forEach(img => {
+          const d = dataUrlBySrc[img.src];
+          if(d) img.setAttribute('src', d);
+        });
+      }
     });
     const name = `${(S.csv.name || 'preview')}_${toBrazeLang(lang)}.png`.replace(/[^\w.\-]+/g, '_');
     canvas.toBlob(blob => {
