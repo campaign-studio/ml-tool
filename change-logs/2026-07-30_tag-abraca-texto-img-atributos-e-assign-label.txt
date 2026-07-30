@@ -1,0 +1,113 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-30
+Tema: 3 ajustes no tokenizador/previewer — (Bug 1) tag de tradução abraçando o texto sem
+espaço nas pontas; (Bug 2) atributos HTML vazando como TEXTO no preview; e (requisito) o
+{% assign %} virando um label curto {assign.NOME} no preview.
+
+===============================================================================
+PEDIDOS / BUGS
+===============================================================================
+Bug 1 — a tag capturava o espaço das pontas:
+  {%translation idx%} Start free trial{%endtranslation%}   (errado — espaço DENTRO)
+  {%translation idx%}Start free trial{%endtranslation%}    (certo — a tag abraça o texto)
+Vale pra TODOS os translation IDs gerados, não só o exemplo. Decisão confirmada: o espaço
+NÃO some — ele é preservado FORA da tag (mantém o espaçamento visual entre elementos).
+
+Bug 2 — atributos HTML (width="48" height="48" alt="Partner" style="...") apareciam como
+TEXTO visível no preview, junto de blocos "IMG"/"IF". Atributo nunca pode virar texto.
+
+Requisito {% assign %} — no preview, {% assign NOME = ... %} deve virar um label curto
+{assign.NOME} (só o nome da variável). Decisão confirmada: os {% assign partner_X_id %}
+continuam OCULTOS (removidos, como já era); todos os DEMAIS assigns viram label.
+
+===============================================================================
+DIAGNÓSTICO (causa raiz — investigada com o HTML real antes de corrigir)
+===============================================================================
+Bug 2 (raiz): resolveConditionalBranch() sempre injetava o rótulo do ramo
+  <br class="mlt-cond-br"><span class="mlt-cond-tag">IF|ELSE</span><br ...>
+ANTES do texto do ramo escolhido. Quando a condicional está DENTRO de um atributo — o caso
+real é o logo do partner: <img src="{% if partner_1_found %}...{% else %}...{% endif %}"
+width="48" height="48" alt="Partner" style="...">  — injetar <br>/<span> no meio do src=
+quebrava a tag <img>: o navegador fechava o <img> cedo e o resto dos atributos
+(width/height/alt/style) sobrava como TEXTO no corpo. Daí "Partner 1..4" vinham cercados do
+lixo de atributos.
+
+Bug 1 (raiz): o espaço das pontas do texto de origem é preservado de propósito
+(mergeLiquidInline não corta as pontas). buildTaggedHtml() usava esse texto (com pontas)
+como conteúdo da tag → a tag "engolia" o espaço. E o conteúdo da tag TEM que bater
+exatamente com a coluna de origem do CSV (a Braze recusa se diferirem), então não dava pra
+só trimar de um lado.
+
+Assign: é 100% cosmético do preview; o HTML/CSV exportado nunca deve mudar.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Arquivo: index.html
+
+Bug 2 — resolveConditionalBranch/parseSequence/parseIfBlock:
+  parseSequence agora calcula, no ponto em que encontra o {% if %}/{% unless %}, se está
+  DENTRO de uma tag HTML aberta — balanço simples: out.lastIndexOf('<') > out.lastIndexOf('>')
+  (um "<" sem ">" depois = dentro de tag). Passa isso pra parseIfBlock(insideTag). Se
+  insideTag, parseIfBlock devolve SÓ o texto do ramo, sem o rótulo <br>/<span> (não dá pra
+  pôr markup dentro de um atributo). Em texto normal, o rótulo IF/ELSE continua igual.
+
+Bug 1 — csvSourceText + buildTaggedHtml + repairTaggedHtmlDefaults:
+  - Novo csvSourceTextRaw(row): a versão CRUA (pode ter espaço nas pontas), usada só pra
+    calcular quanto espaço mover pra fora da tag.
+  - csvSourceText(row) agora devolve a versão SEM as pontas (o "canônico"). Como é a MESMA
+    função usada pelo conteúdo da tag (buildTaggedHtml) E pela coluna de origem do CSV
+    (buildCsvStringForSave e afins), os dois batem por construção — a tag abraça o texto e o
+    CSV também fica sem as pontas, sem mismatch pra Braze. (Imagem não trima: o "texto" é a
+    URL do src.)
+  - buildTaggedHtml: separa lead/trail (pontas) de csvSourceTextRaw e os recoloca FORA da
+    tag: `${lead}{%translation id%}${core}{%endtranslation%}${trail}`. Render idêntico, tag
+    limpa.
+  - repairTaggedHtmlDefaults (caminho de REABRIR projeto já tageado): idem — o espaço que
+    estava DENTRO da tag antiga é movido pra FORA (não deletado), e o conteúdo passa a bater
+    com csvSourceText (sem pontas). É idempotente: uma tag que já abraça o texto não muda.
+
+Assign label — buildPreviewHtml (só preview):
+  depois do strip dos {% assign partner_X_id %} (que continuam ocultos), um novo replace
+  troca os DEMAIS {% assign NOME = ... %} por <span class="mlt-cond-tag">{assign.NOME}</span>
+  (mesmo estilinho dos rótulos IF/ELSE). Só afeta o preview — o HTML/CSV exportado mantém o
+  {% assign %} original intacto.
+
+===============================================================================
+NOTA — "não mude projetos existentes"
+===============================================================================
+buildTaggedHtml só tageia projeto NOVO. Pra projeto EXISTENTE, quem re-sincroniza ao reabrir
+é repairTaggedHtmlDefaults — que JÁ acopla o conteúdo da tag ao csvSourceText (comportamento
+antigo). Com o Bug 1, ele passa a mover o espaço das pontas pra fora da tag ao reabrir. Isso
+muda os BYTES do HTML salvo (a fronteira da tag anda), mas o e-mail renderizado fica
+IDÊNTICO (o espaço só sai de dentro da tag e volta do lado de fora) e o CSV continua batendo
+com a tag. Não é migração destrutiva: é a própria correção do bug se aplicando, sem alterar
+o que a pessoa vê. Não fazer isso deixaria projetos existentes com a tag (com pontas) e o
+CSV (sem pontas) DIFERENTES — mismatch que a Braze recusaria. Foi a escolha mais segura.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient do app BLOQUEADO o tempo todo (nenhuma escrita no banco); o
+projeto real "Post Summer _ Wave 1 _ Paid" (p_1785225189242) lido por um cliente Supabase
+separado, read-only. Esse projeto tem os 3 casos: labels de botão com espaço, logo de
+partner com condicional DENTRO do src, e 7 assigns (4 partner_X_id + 3 gerais).
+
+1. Bug 2 (unit): resolveConditionalBranch num <img src="{% if %}..{% else %}..{% endif %}"
+   width=.. alt=.. style=..> → nos modos if E else, sai um <img> bem-formado com TODOS os
+   atributos DENTRO da tag, ZERO rótulo <br>/<span>. Condicional em TEXTO comum → o rótulo
+   IF continua sendo injetado (não regrediu).
+2. Bug 1 (fixture): texto " Start free trial " → tag vira
+   `> {%translation 1%}Start free trial{%endtranslation%} <` (abraça o texto, espaço fora).
+   csvSourceText="Start free trial" (sem pontas) = conteúdo da tag = coluna do CSV. repair
+   sobre a tag antiga (espaço dentro) produz o mesmo, texto líquido preservado, idempotente
+   (2ª passada = no-op), e linha sem espaço fica byte-idêntica.
+3. HTML real (transform): resolve+strips no HTML do projeto → 0 vazamento de atributo como
+   texto; logo do partner = <img src="{{ partner_1.logo_url }}" width="48" .. alt="Partner"..>
+   íntegro; partner_X_id sumiram; current_plan_key/plans_reco/current_plan_reco viraram
+   {assign.NOME}; nenhum {% if %}/{% assign %} cru sobrando.
+4. Prova visual (buildPreviewHtml renderizado num iframe, screenshot): e-mail completo
+   limpo — imagens carregam, "Partner 1..4" aparecem SEM os atributos vazados (o bug), os 3
+   labels {ASSIGN.*} aparecem como pills curtos (maiúsculo é o text-transform do estilo,
+   igual aos IF/ELSE), botões normais.
+5. Estado de teste restaurado (S) e overlay removido ao final; sbClient seguiu null.

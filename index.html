@@ -6489,11 +6489,24 @@ function mergeLiquidInline(str) {
 // content_blocks/custom_attribute/context aparecem como tag crua no meio da frase. Linhas
 // recém-extraídas (extractStr) já têm o texto limpo em row.text; linhas de um projeto
 // REABERTO (restoreProjectContent) não têm esse campo, então recalcula a partir do src cru.
-function csvSourceText(row) {
+// Versão CRUA (pode ter espaço nas pontas) — usada só pra calcular quanto espaço mover pra
+// FORA da tag de tradução (ver buildTaggedHtml). O que a pessoa vê/traduz e o que vai dentro
+// da tag é a versão sem as pontas (csvSourceText, logo abaixo).
+function csvSourceTextRaw(row) {
   if(row.isImg) return row.src;
   if(row.text) return row.text;
   if(row.isLiquidFull || row.isLiquidDefault) return row.src || '';
   return mergeLiquidInline(row.src||'') || row.src || '';
+}
+// Texto de origem "canônico": SEM espaço nas pontas. É o mesmo texto usado como conteúdo da
+// tag de tradução (buildTaggedHtml) E como coluna de origem do CSV (buildCsvStringForSave) —
+// os dois têm que bater exatamente (a Braze recusa se diferirem). Trimar aqui, num lugar só,
+// mantém os dois em sincronia e faz a tag abraçar o texto sem espaço sobrando
+// ({%translation%}Start free trial{%endtranslation%}, não {%translation%} Start free trial ).
+// Imagem NÃO trima (o "texto" é a URL do src, sem pontas relevantes).
+function csvSourceText(row) {
+  const raw = csvSourceTextRaw(row);
+  return row.isImg ? raw : raw.replace(/^\s+|\s+$/g, '');
 }
 
 // {% if %}/{% elsif %}/{% else %} marcam ramos MUTUAMENTE EXCLUSIVOS — só um deles é
@@ -8431,7 +8444,16 @@ function resolveConditionalBranch(html, mode){
     while(i < tokens.length){
       const tok = tokens[i];
       if(tok.t === 'text'){ out += tok.v; i++; continue; }
-      if(tok.k === 'if' || tok.k === 'unless'){ i++; out += parseIfBlock(); continue; }
+      if(tok.k === 'if' || tok.k === 'unless'){
+        i++;
+        // Está dentro de uma tag HTML aberta (ex: {% if %} DENTRO do src de um <img>)?
+        // Aí NÃO pode injetar o rótulo <br>/<span> — ele quebraria a tag e os atributos
+        // (width/height/alt/style...) vazariam como texto no preview. Nesse caso resolve
+        // só pro texto do ramo. Balanço simples: um "<" sem ">" depois = dentro de tag.
+        const insideTag = out.lastIndexOf('<') > out.lastIndexOf('>');
+        out += parseIfBlock(insideTag);
+        continue;
+      }
       return { out, stop: tok.k };
     }
     return { out, stop: null };
@@ -8440,8 +8462,9 @@ function resolveConditionalBranch(html, mode){
   // correspondente e devolve o texto do branch escolhido pelo "mode", com a tag IF/ELSE
   // prefixada (própria etiqueta do "mode", não do nome real do branch — bate com o que a
   // pessoa clicou no toggle, mesmo num "else" que na verdade caiu de volta pro if por falta
-  // de um {% else %} de verdade).
-  function parseIfBlock(){
+  // de um {% else %} de verdade). Se `insideTag`, devolve só o texto do branch, sem o rótulo
+  // (não dá pra pôr markup dentro de um atributo).
+  function parseIfBlock(insideTag){
     const branches = [];
     let stop = null;
     for(;;){
@@ -8453,6 +8476,7 @@ function resolveConditionalBranch(html, mode){
     }
     if(stop === 'endif' || stop === 'endunless') i++;
     const chosen = mode === 'if' ? branches[0] : (branches.length > 1 ? branches[branches.length - 1] : branches[0]);
+    if(insideTag) return chosen;
     const label = mode === 'else' ? 'ELSE' : 'IF';
     return `<br class="mlt-cond-br"><span class="mlt-cond-tag">${label}</span><br class="mlt-cond-br">${chosen}`;
   }
@@ -8555,6 +8579,12 @@ function buildPreviewHtml(lang){
   html = resolveConditionalBranch(html, S.condBranch === 'else' ? 'else' : 'if');
   // Strip {% assign partner_X_id = ... %} tags only — purely declarative, never visible
   html=html.replace(/\{%[-\s]*assign\s+partner_\d+_id\s*=[^%]*?%\}/g, '');
+  // Os DEMAIS {% assign NOME = ... %} não somem: no preview viram um label curto {assign.NOME}
+  // (só o nome da variável, sem o valor cru cheio de Liquid poluindo a prévia). Só afeta o
+  // preview — o HTML/CSV exportado continua com o {% assign %} original intacto. Roda DEPOIS
+  // do strip dos partner_X_id (aqueles continuam ocultos, como pedido).
+  html=html.replace(/\{%[-\s]*assign\s+([A-Za-z0-9_.]+)\s*=[^%]*?%\}/g,
+    (m, name) => `<span class="mlt-cond-tag">{assign.${name}}</span>`);
 
   // Step 2 — two-pass injection so duplicate strings always get the right data-tid.
   //
@@ -9117,10 +9147,19 @@ function buildTaggedHtml() {
     // "translation file includes default text that doesn't match the message content".
     // Usando csvSourceText(r) aqui (a mesma função, não uma reimplementação do colapso),
     // os dois artefatos ficam garantidamente idênticos por construção, não só "parecidos".
+    // A tag de tradução tem que ABRAÇAR o texto, sem espaço/quebra de linha sobrando dentro
+    // ({%translation%}Start free trial{%endtranslation%}, não {%translation%} Start free trial ).
+    // O espaço das pontas existia de propósito no HTML de origem (espaçamento visual entre
+    // elementos) — então ele não some: sai de DENTRO da tag e volta pra FORA dela, preservando
+    // o render. lead/trail vêm da versão crua; o conteúdo (srcCurly) e a coluna de origem do
+    // CSV usam csvSourceText (já sem as pontas) — os dois batem por construção (a Braze exige).
+    const raw = csvSourceTextRaw(r);
+    const lead = raw.slice(0, raw.length - raw.replace(/^\s+/, '').length);
+    const trail = raw.slice(raw.replace(/\s+$/, '').length);
     const srcCurly = curlifyApostrophes(csvSourceText(r));
     const replacement = r.isStyle
-      ? `${r.openTag}{%translation ${r.id}%}${srcCurly}{%endtranslation%}${r.closeTag}`
-      : `{%translation ${r.id}%}${srcCurly}{%endtranslation%}`;
+      ? `${r.openTag}${lead}{%translation ${r.id}%}${srcCurly}{%endtranslation%}${trail}${r.closeTag}`
+      : `${lead}{%translation ${r.id}%}${srcCurly}{%endtranslation%}${trail}`;
     const protectedRanges = computeProtectedRanges(tagged);
     let searchFrom = 0, tagged_ok = false;
     while(searchFrom < tagged.length){
@@ -9177,8 +9216,15 @@ function repairTaggedHtmlDefaults(html, rows) {
   return html.replace(/\{%translation\s+(\S+?)%\}([\s\S]*?)\{%endtranslation%\}/g, (match, id, oldInner) => {
     const row = byId.get(id);
     if(!row) return match;
+    // csvSourceText já vem sem as pontas — o conteúdo da tag tem que bater com ele. O espaço
+    // que porventura esteja nas pontas do conteúdo ATUAL não é deletado: sai de dentro da tag
+    // e volta pra fora dela (mesmo critério do buildTaggedHtml), preservando o espaçamento
+    // visual do e-mail. Assim a tag abraça o texto sem que o render mude.
     const fresh = curlifyApostrophes(csvSourceText(row));
-    return fresh === oldInner ? match : `{%translation ${id}%}${fresh}{%endtranslation%}`;
+    const lead = oldInner.slice(0, oldInner.length - oldInner.replace(/^\s+/, '').length);
+    const trail = oldInner.slice(oldInner.replace(/\s+$/, '').length);
+    const rebuilt = `${lead}{%translation ${id}%}${fresh}{%endtranslation%}${trail}`;
+    return rebuilt === match ? match : rebuilt;
   });
 }
 
