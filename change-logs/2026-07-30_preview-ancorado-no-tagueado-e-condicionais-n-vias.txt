@@ -1,0 +1,95 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-30
+Tema: "Texto não é lido no preview" — resolvido de vez. (1) preview passa a ancorar a partir do
+HTML tagueado (fonte autoritativa); (2) condicionais de N vias ({% elsif %}) + aninhadas agora
+mostram TODO o texto; (3) rótulo IF/ELSIF/ELSE inline na frente do texto (sem o vão vertical).
+
+===============================================================================
+PEDIDO / BUG
+===============================================================================
+"Tem texto que não tá sendo lido no preview DE NOVO. Preciso que ajuste isso de 1x por todas."
+E depois, sobre o rótulo de ramo: "ajuste o visual dos botões para ficar normal, sem esse
+espaçamento todo; deixe o if na frente do texto."
+
+Medido no início: 11 de 22 projetos tinham trecho(s) que NÃO apareciam no preview em nenhum
+modo (o aviso de integridade "N trechos não aparecem" era exatamente isso).
+
+===============================================================================
+DIAGNÓSTICO (causa raiz — investigado com os 22 projetos reais)
+===============================================================================
+Duas causas somadas, ambas estruturais:
+
+A) Dois pipelines independentes divergindo. O preview REENCONTRAVA cada texto por conta própria
+   (um "Pass A" que dava indexOf de row.src no HTML) — separado do extractStr e do
+   buildTaggedHtml. A cada transformação nova (rótulo de ramo injetado, ramo resolvido, entidade,
+   espaço, chaves que se sobrepõem como substring) um divergia do outro e algumas linhas paravam
+   de casar. Por isso o bug voltava toda hora.
+
+B) Condicionais de N vias e ANINHADAS. resolveConditionalBranch só sabia 2 ramos: o primeiro
+   (if) e o último (else). Todo texto num {% elsif %} do meio ficava INALCANÇÁVEL (ex: o botão
+   "Start your free trial →" do Eligible vive num elsif). Pior: quando um {% if %} está DENTRO
+   do ramo de outro, um índice global único muda os dois juntos — nunca dá pra ter
+   "outer=elsif E inner=if" ao mesmo tempo (ex: {{custom_attribute.${client_name}}} dentro do
+   elsif de outro condicional).
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Arquivo: index.html
+
+1) PREVIEW ANCORADO NO HTML TAGUEADO (buildPreviewHtml)
+   O preview deixou de reencontrar texto sozinho. Agora reusa buildTaggedHtml(silent) — que já
+   envolve TODA linha (texto/imagem/Liquid/estilo) com {%translation idN%}...{%endtranslation%}
+   na posição exata (é o mesmo artefato que sobe pro Braze, o único lugar que sabe ancorar). O
+   preview só: resolve condicional, trata {% assign %}, e troca cada tag de tradução por
+   <span data-tid="idN"> com o texto de exibição (tradução do idioma, ou o próprio conteúdo
+   canônico da tag). Zero re-ancoragem = zero divergência. buildTaggedHtml ganhou um parâmetro
+   `silent` pra não disparar o toast de "linhas fora" a cada render.
+
+2) CONDICIONAIS DE N VIAS (if / elsif... / else)
+   - S.condBranch virou um ÍNDICE de ramo (0=if, 1=1º elsif, ..., último=else), não mais
+     'if'/'else'. resolveConditionalBranch escolhe branches[min(idx, último)] e rotula IF/ELSIF/
+     ELSE conforme a posição real.
+   - maxCondBranchCount(html): nº máximo de ramos de um mesmo condicional — define quantos
+     botões o toggle mostra. Toggle renderizado dinamicamente (renderCondBranchToggle) no
+     refreshViewer e na Approval View; some quando não há condicional.
+
+3) CONDICIONAIS ANINHADAS — resolução CIENTE DO ALVO (revealRow)
+   resolveConditionalBranch(html, idx, revealRow): quando uma linha está sendo revelada, CADA
+   condicional escolhe, independentemente, o ramo que contém {%translation revealRow%} (se algum
+   contiver); senão usa o índice global. Como o revealRow é visível pra toda a recursão, o outer
+   e o inner se alinham sozinhos pro lado que contém a linha — cobre qualquer aninhamento. Novo
+   estado S.condRevealRow, setado no revealCondBranchForRow (ao clicar/focar uma linha) e limpo
+   ao navegar manualmente no toggle. Assim clicar em QUALQUER linha SEMPRE a revela.
+   - verifyAllRowsPositionable reescrito: uma linha é posicionável se dá pra revelá-la (base 0 +
+     reveal específico pras que faltarem). Só sobra de fora quem realmente não tem âncora visível
+     (ex: só existe no fallback VML/mso do Outlook) — não é erro de extração, então não é falso
+     alarme.
+
+4) VISUAL DO RÓTULO DE RAMO (pedido do usuário)
+   O rótulo deixou de vir entre <br class="mlt-cond-br"> (que criavam um vão vertical enorme —
+   num botão, o "IF" numa linha e o texto embaixo). Agora é inline, logo na FRENTE do texto:
+   <span class="mlt-cond-tag">IF</span> texto.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient do app BLOQUEADO o tempo todo; os 22 projetos lidos por cliente
+Supabase separado read-only.
+1. Sweep de posicionabilidade nos 22 projetos (723 linhas de texto): ANTES 11 projetos / dezenas
+   de linhas faltando; no fim 0 projetos / 0 linhas — TODA linha é revelável.
+   (Evolução medida: 45 faltantes só com o reorder → 23 com o toggle N-way → 0 com o reveal
+   ciente de aninhamento.)
+2. Eligible "Phase 1 - WH - Email 6" (tem elsif e aninhamento): toggle mostra If/Elsif/Else;
+   integridade missing=0, dups=0; revealCondBranchForRow('id13') (botão no elsif) → true e o
+   id13 aparece no preview; sem tags <br class=mlt-cond-br>; rótulo inline na frente confirmado
+   por regex e por screenshot (botão "ELSIF Start your free trial →" numa linha só, sem vão).
+3. Sem erros de console após recarregar.
+4. Estado de teste (S) restaurado e overlays removidos ao final; sbClient seguiu null.
+
+===============================================================================
+NOTA
+===============================================================================
+O que continua não aparecendo no preview visual é só o conteúdo do fallback VML/Outlook
+(<!--[if mso]>...), que é uma cópia do botão já visível fora do mso — não é texto perdido, e
+não dispara mais o aviso de integridade.
