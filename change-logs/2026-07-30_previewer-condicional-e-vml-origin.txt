@@ -1,0 +1,89 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-30
+Tema: Eligible — trechos em ramo de condicional (ex: id41/id42) não apareciam no previewer;
++ checagem de integridade; + tag VML na coluna Origin
+
+===============================================================================
+PEDIDO / BUG
+===============================================================================
+No último Eligible ("Phase 2 - Non WH+ Flow - Email 1"), os translation IDs 41 e 42 (e
+similares) "não eram lidos" e o previewer não mostrava tudo. Pedido também: garantir que
+todo id apareça independentemente da posição; uma checagem automática de integridade; e a
+tag VML visível na coluna Origin do editor quando o trecho for VML.
+
+===============================================================================
+DIAGNÓSTICO (causa raiz — investigada com o HTML real antes de corrigir)
+===============================================================================
+NÃO havia limite de "primeiros 40" nem truncamento. O parser (parseSavedProjectHtml) lê
+TODAS as tags (34 no arquivo, incluindo id41/id42) e as duas viram linhas na tabela
+(editáveis). O problema era 100% no PREVIEWER, e eram DOIS bugs somados:
+
+id41 e id42 são os dois ramos de UMA condicional (label de um botão):
+  {% if offer_trial_available == true %}{%translation id41%} Start your free trial ...
+  {% else %}{%translation id42%} Start exploring today {%endtranslation%}{% endif %}
+e o botão tem fallback VML (<v:roundrect>) pro Outlook em volta.
+
+Bug A — buildPreviewHtml resolve pra UM ramo só (toggle If/Else) e remove o outro; então
+o id do ramo inativo não existe no preview e clicar nele não mostra nada.
+
+Bug B — o e-mail usa <code> pra estilizar snippets de Liquid, e essas tags cruzam a
+fronteira da condicional. Ao remover o ramo "if", resolveConditionalBranch leva junto os
+</code> de fechamento, deixando <code> ABERTO sem fechar (medido: modo else = 2 aberturas /
+0 fechamentos). Como <code> está no SKIP_PAIR, computeProtectedRanges via um <code> sem fim
+e protegia daí até o EOF — o Pass A rejeitava id42 (e tudo depois) como "região protegida",
+então id42 não aparecia em NENHUM modo.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Arquivo: index.html
+
+Bug B — computeProtectedRanges: uma abertura de bloco (skip-pair OU mso) que nunca fecha
+NÃO protege mais até o EOF (antes: [start, html.length]). Uma abertura órfã agora protege
+NADA. Pior caso: um data-tid cai dentro de um code/style solto (inofensivo) — muito melhor
+que esconder metade do e-mail.
+
+Bug A — novo revealCondBranchForRow(rowId): calcula se o id aparece no ramo ATUAL (via
+buildPreviewHtml, sem depender do #vf estar carregado); se não, testa o outro ramo e, se
+estiver lá, troca o toggle If/Else pra lá. Integrado em switchAndHL e highlightFromTable:
+ao clicar/focar um id de ramo inativo, o preview troca de ramo automaticamente, re-renderiza
+e destaca o trecho — clicar em QUALQUER id sempre revela, sem a pessoa alternar na mão.
+Linhas normais (que existem nos dois ramos) NÃO trocam de ramo.
+
+Checagem de integridade (item 2) — verifyAllRowsPositionable(): uma vez por HTML carregado
+(chamada em buildTable), confirma que todo trecho aparece no preview em ao menos UM dos
+modos If/Else; se algum não aparece em nenhum, avisa (console + toast). Também sinaliza ids
+duplicados no HTML.
+
+Tag VML na coluna Origin (item 4) — detectVmlWrap(html, pos): sinal ESTRUTURAL — o trecho é
+label de botão VML se está dentro de um <a>...</a> cujo markup contém uma forma VML aberta
+(<v:roundrect>, <v:rect>...). Robusto ao tamanho dos estilos inline (uma tentativa anterior
+por janela fixa perdia botões com estilos longos; outra por contagem de profundidade dava
+falso positivo em texto comum). O nome da forma vira row.vmlTag (em parseSavedProjectHtml,
+carregado pra S.csv.rows em restoreProjectContent), e a célula Origin mostra um badge roxo
+"VML: v:roundrect". Não afeta texto normal/currency.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, com o HTML REAL do Eligible (Supabase lido por cliente separado; sbClient
+do app bloqueado o tempo todo — nenhuma escrita no banco):
+1. Bug B: id42 volta a ser posicionável no modo Else (antes: em nenhum).
+2. Bug A (lógica): id42 a partir de "if" → troca pra "else"; id41 a partir de "else" → troca
+   pra "if"; id já visível → não troca; linha normal (id1) → nunca troca (nos dois sentidos).
+3. Bug A (UI real): no editor, começando em "If", clicar a célula de origem do id42 → o
+   toggle vira "Else" sozinho e o id42 aparece DESTACADO no preview. Confirmado por
+   inspeção do DOM.
+4. Integridade: no Eligible, missing=[] e dups=[] (todos posicionáveis, sem duplicados).
+5. VML: 8 linhas detectadas — TODAS labels de botão ("Start your free trial", "Create your
+   account", "Start exploring today"...), todas v:roundrect, ZERO falso positivo (texto
+   comum tipo "Gym membership" não é marcado). Badge "VML: v:roundrect" confirmado
+   visualmente na coluna Origin de id41/id42 por screenshot.
+
+===============================================================================
+NOTA
+===============================================================================
+A detecção VML e o carregamento de row.vmlTag rodam no caminho de REABRIR projeto
+(parseSavedProjectHtml). Um projeto NOVO só ganha o badge na próxima reabertura (o
+tageamento inicial não registra posição por linha). O Supabase voltou a responder a leituras
+nesta sessão (a cota de egress deve ter resetado).

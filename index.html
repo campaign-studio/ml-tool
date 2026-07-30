@@ -668,6 +668,7 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
    fica verde por um instante e depois some, sem precisar recarregar a tabela. */
 .text-warn-badge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;font-size:10px;border-radius:50%;background:#FEF3C7;color:#92400e;border:1px solid #FDE68A;cursor:pointer;margin-right:4px;flex-shrink:0;vertical-align:middle;transition:background .3s,color .3s,border-color .3s,opacity .3s;}
 .text-warn-badge:hover{background:#FDE68A;}
+.vml-badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:1px 5px;margin:0 4px 2px 0;border-radius:3px;background:#ede9fe;color:#6d28d9;border:1px solid #ddd6fe;vertical-align:middle;white-space:nowrap;font-family:var(--sans);}
 .text-warn-badge.checked{background:#DCFCE7;color:#166534;border-color:#BBF7D0;}
 .text-warn-badge.fading{opacity:0;}
 .tl-inner{display:flex;align-items:flex-start;gap:2px;width:100%;}
@@ -6196,6 +6197,30 @@ function projSaveOnBuild(wasImport) {
 
 // Carrega o conteúdo salvo de um projeto direto no app, sem precisar reupload manual.
 // Para na tela de seleção de imagens (3.5), já com as imagens que estavam marcadas.
+// Detecta se o trecho na posição `pos` do HTML está DENTRO de uma forma VML (fallback de
+// imagem/formas pro Outlook, ex: um botão <v:roundrect> ou <v:rect>). A VML vem em
+// comentários condicionais MSO SEPARADOS: um abre a forma ANTES do texto (<!--[if mso]>
+// <v:roundrect ...> ...<![endif]-->), outro fecha DEPOIS (<!--[if mso]></v:roundrect>
+// <![endif]-->) — o texto fica no meio, fora dos comentários. Conta aberturas <v:...> vs
+// fechamentos </v:...> antes de `pos`: se sobra abertura (estamos dentro) e existe o
+// fechamento correspondente depois, devolve o nome da tag (ex: 'v:roundrect'); senão null.
+function detectVmlWrap(html, pos){
+  // Sinal ESTRUTURAL (robusto ao tamanho dos estilos inline): o trecho é label de um botão
+  // VML se está dentro de um <a>...</a> cujo markup contém uma forma VML aberta (<v:roundrect>,
+  // <v:rect>, etc.) — a VML e o <a> são o mesmo botão (VML pro Outlook, <a> pro resto). Isso
+  // pega o caso do Eligible (id41/id42 num <a> com <v:roundrect> no fallback mso) sem os falsos
+  // positivos de contar profundidade de <v:...> pelo documento todo.
+  const before = html.slice(0, pos);
+  const aOpen = before.lastIndexOf('<a ');
+  if(aOpen === -1) return null;
+  if(before.indexOf('</a>', aOpen) !== -1) return null; // há um </a> entre o <a> e o trecho — não estamos dentro dele
+  const aCloseRel = html.slice(pos).indexOf('</a>');
+  if(aCloseRel === -1) return null;
+  const anchorHtml = html.slice(aOpen, pos + aCloseRel + 4);
+  const m = anchorHtml.match(/<v:([a-z][a-z0-9]*)\b(?![^>]*\/>)/i); // forma VML aberta (não <v:.../>)
+  return m ? 'v:' + m[1].toLowerCase() : null;
+}
+
 // Lê as tags {%translation idN%}...{%endtranslation%} de um HTML já tageado por este
 // app — usado só ao REABRIR um projeto salvo (restoreProjectContent, logo abaixo). Não
 // faz nenhuma validação de CSV/HTML incompatível: dados salvos pelo próprio app sempre
@@ -6227,7 +6252,7 @@ function parseSavedProjectHtml(html) {
         }
       }
     }
-    rows.push({ id, src, isImg, imgTag });
+    rows.push({ id, src, isImg, imgTag, vmlTag: detectVmlWrap(html, m.index) });
   }
   return rows;
 }
@@ -6261,7 +6286,7 @@ function restoreProjectContent(data, readOnly) {
     src: r.src,
     display: toLiquidPlaceholder(r.src),
     isStyle: false, outerKey: null, openTag: null, closeTag: null,
-    isImg: r.isImg, imgTag: r.imgTag,
+    isImg: r.isImg, imgTag: r.imgTag, vmlTag: r.vmlTag || null,
     translations: Object.fromEntries(langs.map(l => [l, (byId[r.id] && byId[r.id][l]) || '']))
   }));
   // Repara na hora projetos tageados antes da correção do buildTaggedHtml (ver comentário em
@@ -7329,6 +7354,9 @@ function buildTable() {
   setTimeout(syncAllRowHeights, 0);
   openPendingCommentTarget();
   openPendingApprovalTarget();
+  // Rede de segurança: confirma que todo trecho aparece no preview em algum modo (uma vez
+  // por HTML). Adiado pra não competir com o render da tabela.
+  setTimeout(verifyAllRowsPositionable, 0);
 }
 
 // Se a pessoa chegou aqui clicando numa notificação de menção, abre o comentário direto.
@@ -7416,10 +7444,15 @@ function rowsHTML() {
     const warnBadge = mismatch
       ? `<span class="text-warn-badge" id="warnBadge-${ri}" title="${mismatchTitle}" onclick="event.stopPropagation();ackTextMismatch(${ri})">⚠</span>`
       : '';
+    // Marcador VML na coluna Origin: quando o trecho é o label de uma forma VML (fallback
+    // Outlook, ex: botão <v:roundrect>), mostra a tag ali pra quem edita saber que é VML.
+    const vmlBadge = row.vmlTag
+      ? `<span class="vml-badge" title="Este trecho está dentro de uma forma VML (fallback Outlook): &lt;${escHtml(row.vmlTag)}&gt;">VML: ${escHtml(row.vmlTag)}</span>`
+      : '';
     return `<tr>
       <td class="rn" style="width:22px!important;max-width:22px!important">${ri+1}</td>
       <td class="cid" style="width:38px!important;max-width:38px!important">${id}</td>
-      <td class="src" onclick="highlightFromTable(${ri},'${origLang||''}')">${warnBadge}<textarea rows="1" readonly style="${row.isLiquidFull ? 'color:var(--text3);font-size:10.5px;' : ''}cursor:default;">${displaySrc}</textarea></td>
+      <td class="src" onclick="highlightFromTable(${ri},'${origLang||''}')">${warnBadge}${vmlBadge}<textarea rows="1" readonly style="${row.isLiquidFull ? 'color:var(--text3);font-size:10.5px;' : ''}cursor:default;">${displaySrc}</textarea></td>
       ${tls}
       <td class="del"><button onclick="event.stopPropagation();delRow(${ri})">×</button></td>
     </tr>`;
@@ -8858,6 +8891,65 @@ function setCondBranch(mode, btn){
   refreshViewer();
 }
 
+// Se um translation id NÃO está visível no preview atual porque vive no ramo INATIVO de uma
+// condicional {% if/else %} (ex: id41="Start your free trial" no ramo if e id42="Start
+// exploring today" no ramo else do mesmo botão do Eligible), troca o toggle If/Else pro
+// ramo que contém aquele id — assim clicar em QUALQUER id sempre revela o trecho, sem a
+// pessoa precisar adivinhar/alternar na mão. Devolve true se trocou de ramo (aí quem chamou
+// deixa o refreshViewer + _pendingHL cuidarem do destaque no ramo novo). Só mexe quando o id
+// realmente está no OUTRO ramo; pra qualquer outro caso (já visível, ou some por outro
+// motivo) não altera nada.
+function revealCondBranchForRow(rowId){
+  if(!rowId) return false;
+  const save = S.condBranch;
+  // Calcula direto se o id aparece no ramo ATUAL (não depende do #vf estar carregado/atual —
+  // uma linha normal, que existe nos DOIS ramos, precisa ser reconhecida como "já visível"
+  // aqui, senão o toggle trocaria à toa toda vez que ela fosse clicada).
+  let curHtml = '';
+  try { curHtml = buildPreviewHtml(S.vLang); } catch(e) { return false; }
+  if(curHtml.includes('data-tid="' + rowId + '"')) return false; // já visível no ramo atual
+  const other = S.condBranch === 'else' ? 'if' : 'else';
+  S.condBranch = other;
+  let otherHtml = '';
+  try { otherHtml = buildPreviewHtml(S.vLang); } finally { S.condBranch = save; }
+  if(!otherHtml.includes('data-tid="' + rowId + '"')) return false; // não é o outro ramo — não força troca
+  S.condBranch = other;
+  document.querySelectorAll('.cb-btn').forEach(b => b.classList.toggle('active', (b.getAttribute('onclick')||'').includes("'" + other + "'")));
+  return true;
+}
+
+// Rede de segurança (item 2 do pedido): pra QUALQUER HTML aberto, garante que todo trecho
+// consegue ser mostrado no preview em ao menos UM dos modos If/Else — se algum não aparece
+// em nenhum, é sinal de bug de extração/posicionamento (como o do Eligible id41/id42), e
+// avisa de forma visível ANTES de virar problema silencioso. Também sinaliza ids duplicados.
+// Roda uma vez por HTML carregado (guardado por _integrityCheckedHtml), pra não repesar o
+// re-render a cada tecla. NÃO altera nada — só mede e avisa.
+let _integrityCheckedHtml = null;
+function verifyAllRowsPositionable() {
+  if(!S.rawHtml || !S.csv.rows.length) return;
+  if(_integrityCheckedHtml === S.rawHtml) return; // já checado pra este HTML
+  _integrityCheckedHtml = S.rawHtml;
+  const save = S.condBranch;
+  const placeable = new Set();
+  try {
+    ['if','else'].forEach(m => {
+      S.condBranch = m;
+      const h = buildPreviewHtml(S.vLang);
+      [...h.matchAll(/data-tid="(id\d+)"/g)].forEach(mm => placeable.add(mm[1]));
+    });
+  } finally { S.condBranch = save; }
+  const missing = S.csv.rows.filter(r => !r.isImg && !placeable.has(r.id)).map(r => r.id);
+  const ids = (S.rawHtml.match(/\{%translation\s+(id\d+)%\}/g) || []).map(s => (s.match(/id\d+/)||[''])[0]);
+  const dups = [...new Set(ids.filter((id,i) => ids.indexOf(id) !== i))];
+  if(missing.length || dups.length) {
+    console.warn('[integridade preview] ids que não aparecem em nenhum modo If/Else:', missing, '| ids duplicados no HTML:', dups);
+    if(typeof showNotif === 'function') {
+      showNotif(`Aviso de integridade: ${missing.length} trecho(s) não aparecem no preview em nenhum modo${dups.length ? ` · ${dups.length} id(s) duplicado(s)` : ''} — veja o console.`, 'warn');
+    }
+  }
+  return { missing, dups };
+}
+
 
 // Diz se a posição "before" (texto até o ponto candidato) está dentro de um <style>/<script>
 // ainda aberto. buildTaggedHtml/buildPreviewHtml fazem busca de texto simples no documento
@@ -8933,10 +9025,14 @@ function computeProtectedRanges(html) {
       if(skipDepth === 0 && skipStart !== -1){ ranges.push([skipStart, tokStart + tok.length]); skipStart = -1; }
     }
   }
-  // Bloco nunca fechado até o fim do documento (HTML malformado) — protege até o final em
-  // vez de deixar um range sem fim que quebraria a checagem de posição.
-  if(msoDepth > 0 && msoStart !== -1) ranges.push([msoStart, html.length]);
-  if(skipDepth > 0 && skipStart !== -1) ranges.push([skipStart, html.length]);
+  // Abertura de bloco (skip-pair OU mso) que NUNCA fecha: NÃO protege até o fim do
+  // documento. Protegia antes ("defensivo pra HTML malformado"), mas isso escondia conteúdo
+  // real: no previewer, resolveConditionalBranch() dropa o ramo inativo da condicional e
+  // pode levar junto o </code> (ou </style>) de fechamento, deixando um <code> órfão aberto
+  // — daí TUDO daquele ponto até o EOF (incluindo o outro ramo, ex: id42 do Eligible) virava
+  // "região protegida" e o Pass A do preview não conseguia posicionar aqueles trechos.
+  // Melhor deixar uma abertura órfã proteger NADA (pior caso: um data-tid cai dentro de um
+  // bloco de code/style solto — inofensivo) do que esconder metade do e-mail.
   return ranges.sort((a,b) => a[0]-b[0]);
 }
 
@@ -9332,6 +9428,9 @@ function switchAndHL(ri, lang) {
   const trs = document.querySelectorAll('#gstb tr');
   if(trs[ri]) trs[ri].classList.add('table-sel');
 
+  // Se este id vive no ramo inativo de uma condicional, troca o toggle If/Else pra revelá-lo.
+  const branchSwitched = S.csv.rows[ri] ? revealCondBranchForRow(S.csv.rows[ri].id) : false;
+
   // Switch viewer to this lang if needed
   if(S.vLang !== lang) {
     S.vLang = lang;
@@ -9343,6 +9442,11 @@ function switchAndHL(ri, lang) {
     // refreshViewer() consome _pendingHL com um token de geração — mesmo que outro
     // refresh seja disparado antes deste iframe terminar de carregar, o highlight nunca
     // é aplicado no documento errado (a chamada obsoleta simplesmente não faz nada).
+    _pendingHL = { ri, lang };
+    refreshViewer();
+  } else if(branchSwitched) {
+    // Trocou de ramo mas não de idioma — precisa re-renderizar o preview no ramo novo antes
+    // de destacar (o data-tid só existe no ramo que agora está ativo).
     _pendingHL = { ri, lang };
     refreshViewer();
   } else {
@@ -9385,6 +9489,9 @@ function highlightFromTable(ri, lang) {
   const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
   const targetLang = lang && lang !== origLang ? lang : origLang;
 
+  // Se este id vive no ramo inativo de uma condicional, troca o toggle If/Else pra revelá-lo.
+  const branchSwitched = revealCondBranchForRow(row.id);
+
   // Switch viewer lang tab silently if needed
   if(targetLang && S.vLang !== targetLang) {
     S.vLang = targetLang;
@@ -9395,6 +9502,13 @@ function highlightFromTable(ri, lang) {
     // refreshViewer() consome _pendingHL com um token de geração — mesmo que outro
     // refresh seja disparado antes deste iframe terminar de carregar, o highlight nunca
     // é aplicado no documento errado (a chamada obsoleta simplesmente não faz nada).
+    _pendingHL = { ri, lang: targetLang };
+    refreshViewer();
+    return;
+  }
+
+  if(branchSwitched) {
+    // Trocou de ramo (mesmo idioma) — re-renderiza no ramo novo antes de destacar.
     _pendingHL = { ri, lang: targetLang };
     refreshViewer();
     return;
