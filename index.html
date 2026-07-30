@@ -1937,6 +1937,7 @@ const AUTH_USERS_KEY = 'mlt_users_v1';
 //   (promover a superadmin, rebaixar) — o único que gerencia a camada de admins.
 // Precisa existir ao menos UM superadmin semeado, senão nunca daria pra gerir admins.
 const AUTH_DEFAULT_USERS = [
+  { email: 'superadmin@gympass.com', pass: '321', role: 'superadmin', name: 'Super Admin' },
   { email: 'hiago.branco@gympass.com', pass: '123', role: 'superadmin', name: 'Hiago' },
   { email: 'helena.carbonari@gympass.com', pass: '123', role: 'member', name: 'Helena Carbonari' },
   { email: 'christiane.steinhoff@gympass.com', pass: '123', role: 'member', name: 'Christiane Steinhoff' }
