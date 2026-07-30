@@ -3754,7 +3754,7 @@ function renderCampaignBulkApproval() {
 // (origem primeiro, depois as traduções), cada um com preview + Approve/Approved.
 function campaignBulkRowHtml(item, idx) {
   const origCountry = COUNTRIES.find(c => c.code === item.origin);
-  const langs = [...new Set([origCountry?.lang, ...(item.langs || [])].filter(Boolean))];
+  const langs = [...new Set([origCountry?.lang, ...sortLangsForDisplay(item.langs || [])].filter(Boolean))]; // origin primeiro, resto na ordem fixa global
   return `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;">
       <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">${escHtml(item.name)}</div>
@@ -3793,7 +3793,7 @@ function campaignBulkLangCardHtml(item, idx, lang, isOrig) {
 // via S emprestado, ou o cartãozinho de push), só que agora repetida por item×idioma.
 function renderCampaignBulkRowThumbs(item, idx) {
   const origCountry = COUNTRIES.find(c => c.code === item.origin);
-  const langs = [...new Set([origCountry?.lang, ...(item.langs || [])].filter(Boolean))];
+  const langs = [...new Set([origCountry?.lang, ...sortLangsForDisplay(item.langs || [])].filter(Boolean))]; // origin primeiro, resto na ordem fixa global
   if(item.type === 'push') {
     const titleRow = item.rows.find(r => r.id === 'id1');
     const bodyRow = item.rows.find(r => r.id === 'id2');
@@ -3845,7 +3845,7 @@ function toggleCampaignBulkApprove(idx, lang) {
 
 function renderCampaignGrid(item) {
   const table = document.getElementById('campaignItemTable');
-  const langs = item.langs || [];
+  const langs = sortLangsForDisplay(item.langs || []); // ordem fixa global (bate com renderCampaignLangBar)
   // colgroup, thead e tbody precisam ser montados numa ÚNICA atribuição a table.innerHTML —
   // setar cada um separado (ex: só colgroup.innerHTML) faz a próxima atribuição de
   // table.innerHTML apagar o colgroup junto, já que ele também é filho da table.
@@ -3888,7 +3888,7 @@ function setCampaignCell(ri, lang, value) {
 
 function renderCampaignLangBar(item) {
   const bar = document.getElementById('campaignItemLbar');
-  const langs = item.langs || [];
+  const langs = sortLangsForDisplay(item.langs || []); // ordem fixa global (bate com renderCampaignGrid)
   const origLangName = item.origin ? (COUNTRIES.find(c => c.code === item.origin)?.lang) : null;
   const all = [];
   if(origLangName) all.push({ lang: origLangName, isOrig: true });
@@ -4036,7 +4036,7 @@ function renderManageContentList() {
     <div class="member-row">
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:700;color:var(--text);">${escHtml(it.name)}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${(it.langs || []).length} language(s)${(it.langs || []).length ? ': ' + it.langs.map(escHtml).join(', ') : ''}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${(it.langs || []).length} language(s)${(it.langs || []).length ? ': ' + sortLangsForDisplay(it.langs).map(escHtml).join(', ') : ''}</div>
       </div>
       <button class="btn-back" style="padding:6px 12px;font-size:11.5px;" onclick="openItemFromModal(${i})">Open</button>
       <button class="btn-danger" style="padding:6px 10px;font-size:11.5px;" onclick="deleteContentItem(${i})">Remove</button>
@@ -4305,7 +4305,7 @@ function applyCsvToCampaignItem(csvText) {
 function dlItemCSV() {
   const item = _campaign && _campaign.items[_campaignItemIndex];
   if(!item) return;
-  const langs = item.langs || [];
+  const langs = sortLangsForDisplay(item.langs || []); // ordem fixa global (não mexe em item.langs)
   const esc = s => `"${String(s || '').replace(/"/g, '""')}"`;
   const nameRow = [item.name, '', ...langs.map(() => '')].map(esc).join(',');
   const header = ['', 'Translation tags', ...langs].map(esc).join(',');
@@ -4490,7 +4490,7 @@ function translationProgressBadgeHtml(stats, extraStyle) {
 function projLangsRow(p) {
   if(!p.data) return '';
   const originC = p.data.origin ? COUNTRIES.find(c => c.code === p.data.origin) : null;
-  const targetLangs = (p.data.langs || []).filter(l => !originC || l !== originC.lang);
+  const targetLangs = sortLangsForDisplay(p.data.langs || []).filter(l => !originC || l !== originC.lang); // ordem fixa global
   if(!originC && !targetLangs.length) return '';
   const originChip = originC ? `<span class="lang-chip origin">${originC.lang}</span>` : '';
   const targetChips = targetLangs.map(l => `<span class="lang-chip">${l}</span>`).join('');
@@ -5978,7 +5978,7 @@ function buildAndGo() {
 // projeto no Dashboard, com você como dono e a trava ativa.
 // Gera a string CSV (mesmo formato do export) sem disparar download — usada pra salvar o projeto.
 function buildCsvStringForSave() {
-  const langs = S.csv.langs;
+  const langs = sortLangsForDisplay(S.csv.langs); // ordem fixa global (não mexe em S.csv.langs)
   if(!langs.length) return '';
   const esc = v => `"${String(v||'').replace(/"/g,'""')}"`;
   const emptyCols = langs.map(()=>'').join(',');
@@ -7111,10 +7111,12 @@ function renderConfirm() {
   // Origin: always what the user picked in step 2
   const origC = S.allC.find(c => c.code === S.origin);
 
-  // Langs to show: from CSV if already loaded (import flow), else from targets
-  const displayLangs = S.csv.langs.length > 0
+  // Langs to show: from CSV if already loaded (import flow), else from targets.
+  // Ordem fixa global (sortLangsForDisplay) — os grupos missing/partial/ok abaixo herdam essa
+  // ordem, já que .filter() preserva a sequência.
+  const displayLangs = sortLangsForDisplay(S.csv.langs.length > 0
     ? S.csv.langs
-    : [...new Set(S.targets.map(code => S.allC.find(c=>c.code===code)).filter(Boolean).flatMap(c => expandLang(c.lang)))];
+    : [...new Set(S.targets.map(code => S.allC.find(c=>c.code===code)).filter(Boolean).flatMap(c => expandLang(c.lang)))]);
 
   // Score each lang: missing / partial / ok
   const langScore = lang => {
@@ -7183,7 +7185,7 @@ function buildTable() {
   const subj = document.getElementById('mailSubject');
   if(subj) subj.textContent = S.csv.name || 'Wellhub';
   const t = document.getElementById('gst');
-  const langs = S.csv.langs;
+  const langs = sortLangsForDisplay(S.csv.langs); // ordem fixa global (rowsHTML usa a MESMA — determinístico)
   const origC = S.allC.find(c=>c.code===S.origin);
 
   // Set table min-width so columns never compress below 140px with many langs
@@ -7203,7 +7205,7 @@ function buildTable() {
     <tr>
       <th style="width:22px!important;max-width:22px!important"></th>
       <th style="width:38px!important;max-width:38px!important;background:var(--s3);color:var(--text3);">id</th>
-      <th>${origC?.lang||S.csv.langs[0]||'src'} <span style="font-size:9px;background:var(--green);color:#fff;border-radius:3px;padding:1px 5px;margin-left:3px;font-weight:700;vertical-align:middle;">origin</span></th>
+      <th>${origC?.lang||langs[0]||'src'} <span style="font-size:9px;background:var(--green);color:#fff;border-radius:3px;padding:1px 5px;margin-left:3px;font-weight:700;vertical-align:middle;">origin</span></th>
       ${langs.map(l=>`<th>${toBrazeLang(l)} <button onclick="delLang('${l}')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:10px;padding:1px 4px;border-radius:3px;vertical-align:middle;" title="Remove">×</button></th>`).join('')}
       <th></th>
     </tr>
@@ -7240,13 +7242,16 @@ function openPendingCommentTarget() {
 }
 
 function rowsHTML() {
+  // MESMA ordem fixa que buildTable() usa no cabeçalho — calculada uma vez aqui e usada nas
+  // duas iterações abaixo (imagem e texto), pra as colunas do corpo baterem com as do header.
+  const langsOrdered = sortLangsForDisplay(S.csv.langs);
   return S.csv.rows.map((row,ri)=>{
     // ── IMAGE ROW ──
     if(row.isImg){
       const id  = (row.id||'').replace(/"/g,'&quot;');
       const src = (row.src||'').replace(/"/g,'&quot;');
       const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
-      const tls = S.csv.langs.map(l=>{
+      const tls = langsOrdered.map(l=>{
         const v=(row.translations[l]||'').replace(/"/g,'&quot;');
         const isEmpty = !(row.translations[l]||'').trim();
         return `<td class="tl tl-cell${isEmpty ? ' tl-missing' : ''}">
@@ -7279,7 +7284,7 @@ function rowsHTML() {
     // custom_attribute, context) no meio da frase, mesmo já tendo sido "limpo" só no CSV.
     const displaySrc = csvSourceText(row).replace(/</g,'&lt;').replace(/"/g,'&quot;');
     const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
-    const tls = S.csv.langs.map(l=>{
+    const tls = langsOrdered.map(l=>{
       const v=(row.translations[l]||'').replace(/</g,'&lt;').replace(/"/g,'&quot;');
       const isEmpty = !(row.translations[l]||'').trim();
       return `<td class="tl tl-cell${isEmpty ? ' tl-missing' : ''}">
@@ -8091,10 +8096,11 @@ function debR(){clearTimeout(rt);rt=setTimeout(refreshViewer,200);}
 function renderLbar() {
   const bar=document.getElementById('lbar');
   const origLang=S.allC.find(c=>c.code===S.origin)?.lang||null;
-  if(!S.vLang) S.vLang=origLang||S.csv.langs[0]||null;
+  const langsOrdered=sortLangsForDisplay(S.csv.langs); // ordem fixa global
+  if(!S.vLang) S.vLang=origLang||langsOrdered[0]||null;
   const tabs=[
     origLang?{lang:origLang,isOrig:true}:null,
-    ...S.csv.langs.filter(l=>l!==origLang).map(l=>({lang:l,isOrig:false}))
+    ...langsOrdered.filter(l=>l!==origLang).map(l=>({lang:l,isOrig:false}))
   ].filter(Boolean);
   bar.innerHTML=tabs.map(({lang,isOrig})=>{
     const localeKey = toBrazeLang(lang);
@@ -8994,7 +9000,7 @@ document.addEventListener('click', (e) => {
 
 function dlXLSX(){
   if(typeof XLSX === 'undefined'){ alert('SheetJS not loaded.'); return; }
-  const langs = S.csv.langs;
+  const langs = sortLangsForDisplay(S.csv.langs); // ordem fixa global (não mexe em S.csv.langs)
   if(!langs.length){ alert('No language configured.'); return; }
   checkEmptyLangsBeforeExport(() => {
     // curlifyApostrophes(csvSourceText(r)) — mesma fonte usada no CSV/HTML exportados (ver
@@ -9045,6 +9051,31 @@ function closeEmptyLangModal() {
 // Retorna o locale key do Braze (ex: pt_br) — usado EXCLUSIVAMENTE no CSV/XLSX exportado.
 function toBrazeLang(lang) {
   return lang.toLowerCase().replace(/-/g, '_');
+}
+
+// Ordem FIXA e global de exibição/exportação dos idiomas — mesma sequência em QUALQUER
+// tela (editor, previewer, approver, cards) e em QUALQUER export (CSV/XLSX), independente
+// da ordem em que os idiomas foram adicionados no projeto. Padrão da plataforma, não é
+// configurável por projeto. Guardada no formato INTERNO (pt-BR, não pt_br) porque quase
+// todo lugar itera nesse formato e só chama toBrazeLang() na hora de exibir/exportar.
+const LOCALE_DISPLAY_ORDER = ['de-DE','en-GB','en-IE','es-AR','es-CL','es-ES','es-MX','it-IT','pt-BR','pt-PT','ro-RO'];
+const _LOCALE_ORDER_INDEX = Object.fromEntries(LOCALE_DISPLAY_ORDER.map((l, i) => [l.toLowerCase(), i]));
+
+// Devolve uma CÓPIA ordenada do array de idiomas: primeiro os locales da lista fixa acima,
+// na ordem definida; depois qualquer locale fora da lista (customizado), em ordem
+// alfabética, no fim. NUNCA reordena o array original in-place — vários lugares (ex:
+// buildTable + rowsHTML, renderCampaignLangBar + renderCampaignGrid) iteram o MESMO array
+// separadamente pra montar cabeçalho e corpo, e reordenar in-place desalinharia as colunas.
+// É SÓ camada de apresentação/export — o array salvo (S.csv.langs/item.langs/p.data.langs)
+// continua na ordem de criação, sem migração de nenhum dado existente.
+function sortLangsForDisplay(langs) {
+  const known = [], unknown = [];
+  (langs || []).forEach(l => {
+    (Object.prototype.hasOwnProperty.call(_LOCALE_ORDER_INDEX, (l||'').toLowerCase()) ? known : unknown).push(l);
+  });
+  known.sort((a, b) => _LOCALE_ORDER_INDEX[a.toLowerCase()] - _LOCALE_ORDER_INDEX[b.toLowerCase()]);
+  unknown.sort((a, b) => (a||'').localeCompare(b||''));
+  return [...known, ...unknown];
 }
 
 // Retorna o nome de exibição completo (ex: "Brazil (pt_br)") — usado na UI (headers da tabela,
@@ -9244,12 +9275,12 @@ function cssSafeLang(lang) {
   return String(lang).replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
-// Origin primeiro, depois os demais idiomas configurados no CSV.
+// Origin primeiro, depois os demais idiomas na ordem fixa global (sortLangsForDisplay).
 function approvalLangs() {
   const origLang = S.allC.find(c => c.code === S.origin)?.lang || null;
   const langs = [];
   if(origLang) langs.push(origLang);
-  (S.csv.langs || []).forEach(l => { if(l !== origLang) langs.push(l); });
+  sortLangsForDisplay(S.csv.langs || []).forEach(l => { if(l !== origLang) langs.push(l); });
   return { origLang, langs };
 }
 

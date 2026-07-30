@@ -1,0 +1,85 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-29
+Tema: Ordem fixa e global das colunas/abas de idioma, na exibição e na exportação
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+Fixar a ordem das colunas de idioma (locale) tanto na exibição dentro da plataforma
+quanto na exportação de CSV/XLSX — SEMPRE a mesma, em qualquer tela ou export, independente
+da ordem em que os idiomas foram adicionados no projeto.
+
+Ordem obrigatória:
+de_de, en_gb, en_ie, es_ar, es_cl, es_es, es_mx, it_it, pt_br, pt_pt, ro_ro
+
+Regras: padrão global (não configurável por projeto); NÃO pode quebrar projetos existentes
+(aplicar só na camada de exibição/export, sem migrar dados salvos); locale customizado
+fora da lista continua aparecendo, depois dos 11 fixos.
+
+===============================================================================
+IMPLEMENTAÇÃO
+===============================================================================
+Arquivo: index.html
+
+1. Constante única LOCALE_DISPLAY_ORDER (formato interno: 'de-DE', não 'de_de', porque quase
+   todo lugar itera nesse formato e só chama toBrazeLang() na hora de exibir/exportar) +
+   índice _LOCALE_ORDER_INDEX pra lookup O(1). Perto de toBrazeLang().
+2. Helper sortLangsForDisplay(langs): devolve uma CÓPIA ordenada — 11 fixos primeiro na
+   ordem definida, depois locales fora da lista em ordem alfabética. NUNCA reordena o array
+   original in-place (crítico: buildTable+rowsHTML e renderCampaignLangBar+renderCampaignGrid
+   iteram o MESMO array separadamente pra montar cabeçalho e corpo; reordenar in-place
+   desalinharia as colunas).
+
+Pontos que passaram a usar o helper:
+EXPORT:
+- buildCsvStringForSave() (usado por dlCSV + save de projeto)
+- dlXLSX() (implementação paralela própria)
+- dlItemCSV() (CSV de item de campanha)
+DISPLAY:
+- buildTable() + rowsHTML() (tabela do editor — cabeçalho e corpo, calculados
+  independentemente mas com a MESMA função determinística, então batem)
+- renderLbar() (pills do previewer — origin-first preservado)
+- approvalLangs() (helper único que alimenta TODA a Approval View: frames, banner, pins —
+  origin-first preservado)
+- renderCampaignLangBar() + renderCampaignGrid() (abas + grade do item de campanha)
+- campaignBulkRowHtml() + renderCampaignBulkRowThumbs() (view "Approve all copies",
+  origin-first preservado via Set)
+- projLangsRow() (chips do Dashboard)
+- renderManageContentList() (lista de idiomas do modal de conteúdo)
+- renderConfirm() (tela de confirmação pré-build; grupos missing/partial/ok herdam a ordem)
+
+Defaults de idioma "primeiro da lista" (S.vLang em renderLbar) agora usam o primeiro da
+ordem FIXA em vez do primeiro cru — mudança de comportamento aceita pelo usuário.
+
+Origin sempre em primeiro (regra confirmada): os pontos que separam o idioma de origem
+(approvalLangs, renderLbar, campaign lang bar) continuam colocando a origem na frente; só
+os idiomas-alvo são ordenados. Origem não duplica se for um dos 11.
+
+===============================================================================
+NÃO MIGRA NENHUM DADO
+===============================================================================
+S.csv.langs / item.langs / p.data.langs continuam armazenados na ordem de criação —
+nenhuma escrita reordenada no banco. A ordenação é aplicada só no momento de iterar pra
+exibir/exportar. Projetos existentes não são tocados; passam a exibir/exportar na ordem
+nova na próxima abertura. Pontos de camada de dados (aplicar traduções de um CSV por chave,
+delLang, csvCoveredLangs, getEmptyLangs) foram deixados intocados de propósito — ordem ali
+não é visível nem relevante.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado:
+1. Teste unitário de sortLangsForDisplay: 11 embaralhados → ordem exata; subconjunto de 5 →
+   sequência relativa correta; com locale customizado (fr-FR/zz-ZZ) → fixos primeiro, custom
+   alfabético no fim; só customizados → alfabético; vazio → []; array original NÃO mutado.
+2. Projeto real com targets em ordem embaralhada (PT,DE,MX,GB,BR): confirmado que
+   S.csv.langs FICA embaralhado no armazenamento (sem mutação), mas o cabeçalho do CSV, os
+   headers da tabela do editor e as pills do previewer saem todos em de,en_gb,es_mx,pt_br,
+   pt_pt.
+3. Alinhamento cabeçalho×corpo: colocada uma tradução distinta e identificável em cada
+   idioma; confirmado que cada uma cai na coluna CERTA do CSV exportado e da tabela do
+   editor (TXT_deDE na coluna de_de, etc.) — corpo e cabeçalho em sincronia, sem
+   desalinhamento.
+4. XLSX: header capturado em memória → mesma ordem fixa.
+5. Confirmado visualmente por screenshot (tabela + pills do previewer + Approval não
+   quebrou). Dados de teste limpos ao final.
