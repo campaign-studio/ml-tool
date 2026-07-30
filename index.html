@@ -944,6 +944,17 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
 
     <!-- TAB: PROJECTS -->
     <div id="dashTabProjects">
+      <!-- Busca SEMPRE visível — ficava dentro de dashFoldersSection (que some quando não há
+           nenhuma pasta), então a barra de busca sumia junto pra quem não usava pastas. Agora
+           é um bloco próprio, independente das pastas. -->
+      <div class="dash-section" style="padding-top:0;border-top:none;margin-bottom:0;">
+        <div style="display:flex;align-items:center;">
+          <div class="dash-search-wrap" style="margin-left:auto;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5"/></svg>
+            <input type="text" id="dashProjectSearch" class="dash-search-input" placeholder="Search projects…" oninput="setDashProjectSearch(this.value)">
+          </div>
+        </div>
+      </div>
       <div class="dash-section" id="dashFoldersSection" style="display:none;">
         <div class="sec-lbl">Folders</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -952,10 +963,6 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
             <button class="dash-folder-manage-btn" title="Rename folder" onclick="openRenameFolderModal(_dashFolderFilter)">✎</button>
             <button class="dash-folder-manage-btn" title="Delete folder" onclick="deleteFolderEverywhere(_dashFolderFilter)">🗑</button>
           </span>
-          <div class="dash-search-wrap" style="margin-left:auto;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5"/></svg>
-            <input type="text" id="dashProjectSearch" class="dash-search-input" placeholder="Search projects…" oninput="setDashProjectSearch(this.value)">
-          </div>
         </div>
       </div>
 
@@ -1977,8 +1984,33 @@ function authGetUsers() {
       localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(AUTH_DEFAULT_USERS));
       return [...AUTH_DEFAULT_USERS];
     }
-    return JSON.parse(raw);
+    const users = JSON.parse(raw);
+    return reconcileSeedUsers(users);
   } catch(e){ return [...AUTH_DEFAULT_USERS]; }
+}
+
+// A semeadura (AUTH_DEFAULT_USERS) só rodava quando o localStorage estava VAZIO — então um
+// navegador que já tinha usuários salvos de antes NUNCA recebia uma conta-semente nova
+// adicionada depois (foi o caso do superadmin@gympass.com: não aparecia pra quem já tinha
+// usado a ferramenta, e o login falhava). Aqui, a cada leitura, garante que qualquer
+// conta-semente FALTANDO seja mesclada — MAS respeitando o tombstone de exclusão
+// (isUserRecentlyDeleted): se alguém apagou uma conta-semente de propósito, ela NÃO
+// ressuscita. Só grava de volta se algo mudou de fato (idempotente, barato).
+function reconcileSeedUsers(users) {
+  const have = new Set(users.map(u => (u.email||'').toLowerCase()));
+  let changed = false;
+  for(const seed of AUTH_DEFAULT_USERS) {
+    const key = seed.email.toLowerCase();
+    if(have.has(key)) continue;
+    if(typeof isUserRecentlyDeleted === 'function' && isUserRecentlyDeleted(key)) continue; // apagada de propósito — não ressuscita
+    users.push({ ...seed });
+    have.add(key);
+    changed = true;
+  }
+  if(changed) {
+    try { localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users)); } catch(e){}
+  }
+  return users;
 }
 
 function authSaveUsers(users) {

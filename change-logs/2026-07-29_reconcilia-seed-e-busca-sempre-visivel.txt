@@ -1,0 +1,53 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-29
+Tema: (1) usuário-semente novo não aparecia pra quem já usava a ferramenta (login falhava);
+(2) barra de busca do Dashboard sumia quando não havia nenhuma pasta
+
+===============================================================================
+PROBLEMA 1 — superadmin@gympass.com não logava
+===============================================================================
+Reportado: "A conta não logou."
+
+Causa: AUTH_DEFAULT_USERS (a lista de sementes) só era gravada quando o localStorage estava
+VAZIO — em authGetUsers(), `if(!raw) { seed }`. Pra qualquer navegador que já tinha usado a
+ferramenta antes (localStorage já populado), uma conta-semente ADICIONADA depois nunca
+entrava. Então o superadmin@gympass.com recém-criado não existia pra quem já tinha usuários
+salvos, e o login não achava a conta.
+
+Correção: nova função reconcileSeedUsers(users), chamada em authGetUsers() a cada leitura:
+garante que qualquer conta de AUTH_DEFAULT_USERS que esteja FALTANDO seja mesclada na lista
+existente — MAS respeitando o tombstone de exclusão (isUserRecentlyDeleted): se uma
+conta-semente foi apagada DE PROPÓSITO, ela NÃO ressuscita. Só grava de volta no localStorage
+se algo mudou de fato (idempotente e barato).
+
+Verificado no navegador: (a) navegador simulando estado antigo (só hiago+helena, sem
+superadmin) → após authGetUsers(), superadmin e christiane (também faltante) são mesclados,
+persistidos, e o login com senha '321' passaria; (b) tombstone respeitado: christiane
+marcada como deletada NÃO volta, hiago (não deletado) volta.
+
+===============================================================================
+PROBLEMA 2 — barra de busca do Dashboard sumia
+===============================================================================
+Reportado: "A barra de pesquisa sumiu."
+
+Causa: o input de busca (#dashProjectSearch) vivia DENTRO de #dashFoldersSection, que
+renderDashFolders() esconde (display:none) quando a pessoa não tem NENHUMA pasta
+(`if(!folders.length) { section.style.display='none'; return; }`). Sem pastas, a busca sumia
+junto — mesmo sendo uma busca global de projetos, não específica de pasta.
+
+Correção: a barra de busca foi movida pra um bloco PRÓPRIO, sempre visível, logo acima da
+seção de pastas — desacoplada da existência de pastas. A seção de pastas continua
+aparecendo/sumindo conforme antes, agora só com o select de pasta dentro.
+
+Verificado no navegador: com um projeto SEM pasta (folder:null), #dashFoldersSection fica
+display:none mas #dashProjectSearch está visível (offsetParent != null). Confirmado por
+screenshot (barra "Search projects…" no topo do Dashboard).
+
+===============================================================================
+NOTA (produção)
+===============================================================================
+A reconciliação atua no localStorage local. Quando o Supabase voltar a sincronizar
+(sbPullUsers), a tabela `users` do banco continua sendo a fonte da verdade — a conta-semente
+precisa existir lá também pra valer em todos os dispositivos. Como o Supabase está bloqueado
+(cota de egress) agora, a correção resolve o uso local/imediato; a persistência no banco fica
+pendente pra quando o acesso voltar.
