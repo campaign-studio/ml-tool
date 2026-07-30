@@ -668,6 +668,7 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
    fica verde por um instante e depois some, sem precisar recarregar a tabela. */
 .text-warn-badge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;font-size:10px;border-radius:50%;background:#FEF3C7;color:#92400e;border:1px solid #FDE68A;cursor:pointer;margin-right:4px;flex-shrink:0;vertical-align:middle;transition:background .3s,color .3s,border-color .3s,opacity .3s;}
 .text-warn-badge:hover{background:#FDE68A;}
+.vml-badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:1px 5px;margin:0 4px 2px 0;border-radius:3px;background:#ede9fe;color:#6d28d9;border:1px solid #ddd6fe;vertical-align:middle;white-space:nowrap;font-family:var(--sans);}
 .text-warn-badge.checked{background:#DCFCE7;color:#166534;border-color:#BBF7D0;}
 .text-warn-badge.fading{opacity:0;}
 .tl-inner{display:flex;align-items:flex-start;gap:2px;width:100%;}
@@ -6196,6 +6197,30 @@ function projSaveOnBuild(wasImport) {
 
 // Carrega o conteúdo salvo de um projeto direto no app, sem precisar reupload manual.
 // Para na tela de seleção de imagens (3.5), já com as imagens que estavam marcadas.
+// Detecta se o trecho na posição `pos` do HTML está DENTRO de uma forma VML (fallback de
+// imagem/formas pro Outlook, ex: um botão <v:roundrect> ou <v:rect>). A VML vem em
+// comentários condicionais MSO SEPARADOS: um abre a forma ANTES do texto (<!--[if mso]>
+// <v:roundrect ...> ...<![endif]-->), outro fecha DEPOIS (<!--[if mso]></v:roundrect>
+// <![endif]-->) — o texto fica no meio, fora dos comentários. Conta aberturas <v:...> vs
+// fechamentos </v:...> antes de `pos`: se sobra abertura (estamos dentro) e existe o
+// fechamento correspondente depois, devolve o nome da tag (ex: 'v:roundrect'); senão null.
+function detectVmlWrap(html, pos){
+  // Sinal ESTRUTURAL (robusto ao tamanho dos estilos inline): o trecho é label de um botão
+  // VML se está dentro de um <a>...</a> cujo markup contém uma forma VML aberta (<v:roundrect>,
+  // <v:rect>, etc.) — a VML e o <a> são o mesmo botão (VML pro Outlook, <a> pro resto). Isso
+  // pega o caso do Eligible (id41/id42 num <a> com <v:roundrect> no fallback mso) sem os falsos
+  // positivos de contar profundidade de <v:...> pelo documento todo.
+  const before = html.slice(0, pos);
+  const aOpen = before.lastIndexOf('<a ');
+  if(aOpen === -1) return null;
+  if(before.indexOf('</a>', aOpen) !== -1) return null; // há um </a> entre o <a> e o trecho — não estamos dentro dele
+  const aCloseRel = html.slice(pos).indexOf('</a>');
+  if(aCloseRel === -1) return null;
+  const anchorHtml = html.slice(aOpen, pos + aCloseRel + 4);
+  const m = anchorHtml.match(/<v:([a-z][a-z0-9]*)\b(?![^>]*\/>)/i); // forma VML aberta (não <v:.../>)
+  return m ? 'v:' + m[1].toLowerCase() : null;
+}
+
 // Lê as tags {%translation idN%}...{%endtranslation%} de um HTML já tageado por este
 // app — usado só ao REABRIR um projeto salvo (restoreProjectContent, logo abaixo). Não
 // faz nenhuma validação de CSV/HTML incompatível: dados salvos pelo próprio app sempre
@@ -6227,7 +6252,7 @@ function parseSavedProjectHtml(html) {
         }
       }
     }
-    rows.push({ id, src, isImg, imgTag });
+    rows.push({ id, src, isImg, imgTag, vmlTag: detectVmlWrap(html, m.index) });
   }
   return rows;
 }
@@ -6261,7 +6286,7 @@ function restoreProjectContent(data, readOnly) {
     src: r.src,
     display: toLiquidPlaceholder(r.src),
     isStyle: false, outerKey: null, openTag: null, closeTag: null,
-    isImg: r.isImg, imgTag: r.imgTag,
+    isImg: r.isImg, imgTag: r.imgTag, vmlTag: r.vmlTag || null,
     translations: Object.fromEntries(langs.map(l => [l, (byId[r.id] && byId[r.id][l]) || '']))
   }));
   // Repara na hora projetos tageados antes da correção do buildTaggedHtml (ver comentário em
@@ -6464,11 +6489,24 @@ function mergeLiquidInline(str) {
 // content_blocks/custom_attribute/context aparecem como tag crua no meio da frase. Linhas
 // recém-extraídas (extractStr) já têm o texto limpo em row.text; linhas de um projeto
 // REABERTO (restoreProjectContent) não têm esse campo, então recalcula a partir do src cru.
-function csvSourceText(row) {
+// Versão CRUA (pode ter espaço nas pontas) — usada só pra calcular quanto espaço mover pra
+// FORA da tag de tradução (ver buildTaggedHtml). O que a pessoa vê/traduz e o que vai dentro
+// da tag é a versão sem as pontas (csvSourceText, logo abaixo).
+function csvSourceTextRaw(row) {
   if(row.isImg) return row.src;
   if(row.text) return row.text;
   if(row.isLiquidFull || row.isLiquidDefault) return row.src || '';
   return mergeLiquidInline(row.src||'') || row.src || '';
+}
+// Texto de origem "canônico": SEM espaço nas pontas. É o mesmo texto usado como conteúdo da
+// tag de tradução (buildTaggedHtml) E como coluna de origem do CSV (buildCsvStringForSave) —
+// os dois têm que bater exatamente (a Braze recusa se diferirem). Trimar aqui, num lugar só,
+// mantém os dois em sincronia e faz a tag abraçar o texto sem espaço sobrando
+// ({%translation%}Start free trial{%endtranslation%}, não {%translation%} Start free trial ).
+// Imagem NÃO trima (o "texto" é a URL do src, sem pontas relevantes).
+function csvSourceText(row) {
+  const raw = csvSourceTextRaw(row);
+  return row.isImg ? raw : raw.replace(/^\s+|\s+$/g, '');
 }
 
 // {% if %}/{% elsif %}/{% else %} marcam ramos MUTUAMENTE EXCLUSIVOS — só um deles é
@@ -7329,6 +7367,9 @@ function buildTable() {
   setTimeout(syncAllRowHeights, 0);
   openPendingCommentTarget();
   openPendingApprovalTarget();
+  // Rede de segurança: confirma que todo trecho aparece no preview em algum modo (uma vez
+  // por HTML). Adiado pra não competir com o render da tabela.
+  setTimeout(verifyAllRowsPositionable, 0);
 }
 
 // Se a pessoa chegou aqui clicando numa notificação de menção, abre o comentário direto.
@@ -7416,10 +7457,15 @@ function rowsHTML() {
     const warnBadge = mismatch
       ? `<span class="text-warn-badge" id="warnBadge-${ri}" title="${mismatchTitle}" onclick="event.stopPropagation();ackTextMismatch(${ri})">⚠</span>`
       : '';
+    // Marcador VML na coluna Origin: quando o trecho é o label de uma forma VML (fallback
+    // Outlook, ex: botão <v:roundrect>), mostra a tag ali pra quem edita saber que é VML.
+    const vmlBadge = row.vmlTag
+      ? `<span class="vml-badge" title="Este trecho está dentro de uma forma VML (fallback Outlook): &lt;${escHtml(row.vmlTag)}&gt;">VML: ${escHtml(row.vmlTag)}</span>`
+      : '';
     return `<tr>
       <td class="rn" style="width:22px!important;max-width:22px!important">${ri+1}</td>
       <td class="cid" style="width:38px!important;max-width:38px!important">${id}</td>
-      <td class="src" onclick="highlightFromTable(${ri},'${origLang||''}')">${warnBadge}<textarea rows="1" readonly style="${row.isLiquidFull ? 'color:var(--text3);font-size:10.5px;' : ''}cursor:default;">${displaySrc}</textarea></td>
+      <td class="src" onclick="highlightFromTable(${ri},'${origLang||''}')">${warnBadge}${vmlBadge}<textarea rows="1" readonly style="${row.isLiquidFull ? 'color:var(--text3);font-size:10.5px;' : ''}cursor:default;">${displaySrc}</textarea></td>
       ${tls}
       <td class="del"><button onclick="event.stopPropagation();delRow(${ri})">×</button></td>
     </tr>`;
@@ -8398,7 +8444,16 @@ function resolveConditionalBranch(html, mode){
     while(i < tokens.length){
       const tok = tokens[i];
       if(tok.t === 'text'){ out += tok.v; i++; continue; }
-      if(tok.k === 'if' || tok.k === 'unless'){ i++; out += parseIfBlock(); continue; }
+      if(tok.k === 'if' || tok.k === 'unless'){
+        i++;
+        // Está dentro de uma tag HTML aberta (ex: {% if %} DENTRO do src de um <img>)?
+        // Aí NÃO pode injetar o rótulo <br>/<span> — ele quebraria a tag e os atributos
+        // (width/height/alt/style...) vazariam como texto no preview. Nesse caso resolve
+        // só pro texto do ramo. Balanço simples: um "<" sem ">" depois = dentro de tag.
+        const insideTag = out.lastIndexOf('<') > out.lastIndexOf('>');
+        out += parseIfBlock(insideTag);
+        continue;
+      }
       return { out, stop: tok.k };
     }
     return { out, stop: null };
@@ -8407,8 +8462,9 @@ function resolveConditionalBranch(html, mode){
   // correspondente e devolve o texto do branch escolhido pelo "mode", com a tag IF/ELSE
   // prefixada (própria etiqueta do "mode", não do nome real do branch — bate com o que a
   // pessoa clicou no toggle, mesmo num "else" que na verdade caiu de volta pro if por falta
-  // de um {% else %} de verdade).
-  function parseIfBlock(){
+  // de um {% else %} de verdade). Se `insideTag`, devolve só o texto do branch, sem o rótulo
+  // (não dá pra pôr markup dentro de um atributo).
+  function parseIfBlock(insideTag){
     const branches = [];
     let stop = null;
     for(;;){
@@ -8420,6 +8476,7 @@ function resolveConditionalBranch(html, mode){
     }
     if(stop === 'endif' || stop === 'endunless') i++;
     const chosen = mode === 'if' ? branches[0] : (branches.length > 1 ? branches[branches.length - 1] : branches[0]);
+    if(insideTag) return chosen;
     const label = mode === 'else' ? 'ELSE' : 'IF';
     return `<br class="mlt-cond-br"><span class="mlt-cond-tag">${label}</span><br class="mlt-cond-br">${chosen}`;
   }
@@ -8522,6 +8579,12 @@ function buildPreviewHtml(lang){
   html = resolveConditionalBranch(html, S.condBranch === 'else' ? 'else' : 'if');
   // Strip {% assign partner_X_id = ... %} tags only — purely declarative, never visible
   html=html.replace(/\{%[-\s]*assign\s+partner_\d+_id\s*=[^%]*?%\}/g, '');
+  // Os DEMAIS {% assign NOME = ... %} não somem: no preview viram um label curto {assign.NOME}
+  // (só o nome da variável, sem o valor cru cheio de Liquid poluindo a prévia). Só afeta o
+  // preview — o HTML/CSV exportado continua com o {% assign %} original intacto. Roda DEPOIS
+  // do strip dos partner_X_id (aqueles continuam ocultos, como pedido).
+  html=html.replace(/\{%[-\s]*assign\s+([A-Za-z0-9_.]+)\s*=[^%]*?%\}/g,
+    (m, name) => `<span class="mlt-cond-tag">{assign.${name}}</span>`);
 
   // Step 2 — two-pass injection so duplicate strings always get the right data-tid.
   //
@@ -8858,6 +8921,65 @@ function setCondBranch(mode, btn){
   refreshViewer();
 }
 
+// Se um translation id NÃO está visível no preview atual porque vive no ramo INATIVO de uma
+// condicional {% if/else %} (ex: id41="Start your free trial" no ramo if e id42="Start
+// exploring today" no ramo else do mesmo botão do Eligible), troca o toggle If/Else pro
+// ramo que contém aquele id — assim clicar em QUALQUER id sempre revela o trecho, sem a
+// pessoa precisar adivinhar/alternar na mão. Devolve true se trocou de ramo (aí quem chamou
+// deixa o refreshViewer + _pendingHL cuidarem do destaque no ramo novo). Só mexe quando o id
+// realmente está no OUTRO ramo; pra qualquer outro caso (já visível, ou some por outro
+// motivo) não altera nada.
+function revealCondBranchForRow(rowId){
+  if(!rowId) return false;
+  const save = S.condBranch;
+  // Calcula direto se o id aparece no ramo ATUAL (não depende do #vf estar carregado/atual —
+  // uma linha normal, que existe nos DOIS ramos, precisa ser reconhecida como "já visível"
+  // aqui, senão o toggle trocaria à toa toda vez que ela fosse clicada).
+  let curHtml = '';
+  try { curHtml = buildPreviewHtml(S.vLang); } catch(e) { return false; }
+  if(curHtml.includes('data-tid="' + rowId + '"')) return false; // já visível no ramo atual
+  const other = S.condBranch === 'else' ? 'if' : 'else';
+  S.condBranch = other;
+  let otherHtml = '';
+  try { otherHtml = buildPreviewHtml(S.vLang); } finally { S.condBranch = save; }
+  if(!otherHtml.includes('data-tid="' + rowId + '"')) return false; // não é o outro ramo — não força troca
+  S.condBranch = other;
+  document.querySelectorAll('.cb-btn').forEach(b => b.classList.toggle('active', (b.getAttribute('onclick')||'').includes("'" + other + "'")));
+  return true;
+}
+
+// Rede de segurança (item 2 do pedido): pra QUALQUER HTML aberto, garante que todo trecho
+// consegue ser mostrado no preview em ao menos UM dos modos If/Else — se algum não aparece
+// em nenhum, é sinal de bug de extração/posicionamento (como o do Eligible id41/id42), e
+// avisa de forma visível ANTES de virar problema silencioso. Também sinaliza ids duplicados.
+// Roda uma vez por HTML carregado (guardado por _integrityCheckedHtml), pra não repesar o
+// re-render a cada tecla. NÃO altera nada — só mede e avisa.
+let _integrityCheckedHtml = null;
+function verifyAllRowsPositionable() {
+  if(!S.rawHtml || !S.csv.rows.length) return;
+  if(_integrityCheckedHtml === S.rawHtml) return; // já checado pra este HTML
+  _integrityCheckedHtml = S.rawHtml;
+  const save = S.condBranch;
+  const placeable = new Set();
+  try {
+    ['if','else'].forEach(m => {
+      S.condBranch = m;
+      const h = buildPreviewHtml(S.vLang);
+      [...h.matchAll(/data-tid="(id\d+)"/g)].forEach(mm => placeable.add(mm[1]));
+    });
+  } finally { S.condBranch = save; }
+  const missing = S.csv.rows.filter(r => !r.isImg && !placeable.has(r.id)).map(r => r.id);
+  const ids = (S.rawHtml.match(/\{%translation\s+(id\d+)%\}/g) || []).map(s => (s.match(/id\d+/)||[''])[0]);
+  const dups = [...new Set(ids.filter((id,i) => ids.indexOf(id) !== i))];
+  if(missing.length || dups.length) {
+    console.warn('[integridade preview] ids que não aparecem em nenhum modo If/Else:', missing, '| ids duplicados no HTML:', dups);
+    if(typeof showNotif === 'function') {
+      showNotif(`Aviso de integridade: ${missing.length} trecho(s) não aparecem no preview em nenhum modo${dups.length ? ` · ${dups.length} id(s) duplicado(s)` : ''} — veja o console.`, 'warn');
+    }
+  }
+  return { missing, dups };
+}
+
 
 // Diz se a posição "before" (texto até o ponto candidato) está dentro de um <style>/<script>
 // ainda aberto. buildTaggedHtml/buildPreviewHtml fazem busca de texto simples no documento
@@ -8933,10 +9055,14 @@ function computeProtectedRanges(html) {
       if(skipDepth === 0 && skipStart !== -1){ ranges.push([skipStart, tokStart + tok.length]); skipStart = -1; }
     }
   }
-  // Bloco nunca fechado até o fim do documento (HTML malformado) — protege até o final em
-  // vez de deixar um range sem fim que quebraria a checagem de posição.
-  if(msoDepth > 0 && msoStart !== -1) ranges.push([msoStart, html.length]);
-  if(skipDepth > 0 && skipStart !== -1) ranges.push([skipStart, html.length]);
+  // Abertura de bloco (skip-pair OU mso) que NUNCA fecha: NÃO protege até o fim do
+  // documento. Protegia antes ("defensivo pra HTML malformado"), mas isso escondia conteúdo
+  // real: no previewer, resolveConditionalBranch() dropa o ramo inativo da condicional e
+  // pode levar junto o </code> (ou </style>) de fechamento, deixando um <code> órfão aberto
+  // — daí TUDO daquele ponto até o EOF (incluindo o outro ramo, ex: id42 do Eligible) virava
+  // "região protegida" e o Pass A do preview não conseguia posicionar aqueles trechos.
+  // Melhor deixar uma abertura órfã proteger NADA (pior caso: um data-tid cai dentro de um
+  // bloco de code/style solto — inofensivo) do que esconder metade do e-mail.
   return ranges.sort((a,b) => a[0]-b[0]);
 }
 
@@ -9021,10 +9147,19 @@ function buildTaggedHtml() {
     // "translation file includes default text that doesn't match the message content".
     // Usando csvSourceText(r) aqui (a mesma função, não uma reimplementação do colapso),
     // os dois artefatos ficam garantidamente idênticos por construção, não só "parecidos".
+    // A tag de tradução tem que ABRAÇAR o texto, sem espaço/quebra de linha sobrando dentro
+    // ({%translation%}Start free trial{%endtranslation%}, não {%translation%} Start free trial ).
+    // O espaço das pontas existia de propósito no HTML de origem (espaçamento visual entre
+    // elementos) — então ele não some: sai de DENTRO da tag e volta pra FORA dela, preservando
+    // o render. lead/trail vêm da versão crua; o conteúdo (srcCurly) e a coluna de origem do
+    // CSV usam csvSourceText (já sem as pontas) — os dois batem por construção (a Braze exige).
+    const raw = csvSourceTextRaw(r);
+    const lead = raw.slice(0, raw.length - raw.replace(/^\s+/, '').length);
+    const trail = raw.slice(raw.replace(/\s+$/, '').length);
     const srcCurly = curlifyApostrophes(csvSourceText(r));
     const replacement = r.isStyle
-      ? `${r.openTag}{%translation ${r.id}%}${srcCurly}{%endtranslation%}${r.closeTag}`
-      : `{%translation ${r.id}%}${srcCurly}{%endtranslation%}`;
+      ? `${r.openTag}${lead}{%translation ${r.id}%}${srcCurly}{%endtranslation%}${trail}${r.closeTag}`
+      : `${lead}{%translation ${r.id}%}${srcCurly}{%endtranslation%}${trail}`;
     const protectedRanges = computeProtectedRanges(tagged);
     let searchFrom = 0, tagged_ok = false;
     while(searchFrom < tagged.length){
@@ -9081,8 +9216,15 @@ function repairTaggedHtmlDefaults(html, rows) {
   return html.replace(/\{%translation\s+(\S+?)%\}([\s\S]*?)\{%endtranslation%\}/g, (match, id, oldInner) => {
     const row = byId.get(id);
     if(!row) return match;
+    // csvSourceText já vem sem as pontas — o conteúdo da tag tem que bater com ele. O espaço
+    // que porventura esteja nas pontas do conteúdo ATUAL não é deletado: sai de dentro da tag
+    // e volta pra fora dela (mesmo critério do buildTaggedHtml), preservando o espaçamento
+    // visual do e-mail. Assim a tag abraça o texto sem que o render mude.
     const fresh = curlifyApostrophes(csvSourceText(row));
-    return fresh === oldInner ? match : `{%translation ${id}%}${fresh}{%endtranslation%}`;
+    const lead = oldInner.slice(0, oldInner.length - oldInner.replace(/^\s+/, '').length);
+    const trail = oldInner.slice(oldInner.replace(/\s+$/, '').length);
+    const rebuilt = `${lead}{%translation ${id}%}${fresh}{%endtranslation%}${trail}`;
+    return rebuilt === match ? match : rebuilt;
   });
 }
 
@@ -9243,6 +9385,82 @@ function trigDL(content,name,mime){
   a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);
 }
 
+// html2canvas carregado SOB DEMANDA (só quando alguém baixa um PNG pela primeira vez) —
+// mesmo padrão de CDN dos outros libs (xlsx/supabase, ver as tags no topo). Cacheia a
+// promise pra não injetar o script duas vezes.
+let _html2canvasPromise = null;
+function ensureHtml2Canvas() {
+  if(window.html2canvas) return Promise.resolve(window.html2canvas);
+  if(_html2canvasPromise) return _html2canvasPromise;
+  _html2canvasPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload = () => resolve(window.html2canvas);
+    s.onerror = () => { _html2canvasPromise = null; reject(new Error('Could not load the PNG export library (offline?).')); };
+    document.head.appendChild(s);
+  });
+  return _html2canvasPromise;
+}
+
+// Baixa a prévia de UM idioma da Approval View como PNG. O preview de cada idioma é um
+// <iframe> com blob same-origin (dá pra acessar contentDocument). useCORS:true pra desenhar
+// as imagens do braze-images.com (que mandam header de CORS — confirmado, senão sairiam em
+// branco). Captura o corpo INTEIRO do e-mail (scrollHeight), não só a parte visível.
+async function downloadApprovalFramePng(lang) {
+  const vp = document.getElementById('avVp-' + cssSafeLang(lang));
+  const iframe = vp && vp.querySelector('iframe');
+  const doc = iframe && iframe.contentDocument;
+  if(!doc || !doc.body) { showNotif('Preview not ready yet — wait a moment and try again.', 'warn'); return; }
+  let h2c;
+  try { h2c = await ensureHtml2Canvas(); }
+  catch(e) { showNotif(e.message, 'warn'); return; }
+  showNotif('Generating PNG…', 'info', 2000);
+  try {
+    const w = doc.body.scrollWidth, h = doc.body.scrollHeight;
+
+    // As imagens do e-mail são exibidas SEM crossorigin (senão o cache sem-CORS faz elas
+    // falharem e sumirem do approver). Mas html2canvas, ao capturar, esbarra nesse mesmo
+    // cache sem-CORS e a imagem sai EM BRANCO no PNG. Solução que NÃO toca na exibição:
+    // buscar cada imagem via fetch (modo cors — braze-images.com suporta) e convertê-la em
+    // data: URI; depois, no onclone (a cópia PRIVADA que o html2canvas renderiza, nunca a
+    // que está na tela), trocar o src pela data URI. data: é same-origin, então o canvas
+    // captura a imagem sem contaminar e sem mexer no que o revisor vê.
+    const urlToDataURL = async (url) => {
+      const resp = await fetch(url, { mode: 'cors' });
+      const blob = await resp.blob();
+      return await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
+    };
+    const dataUrlBySrc = {};
+    await Promise.all([...doc.querySelectorAll('img')].map(async (img) => {
+      const src = img.src; // absoluto
+      if(!src || src.startsWith('data:')) return;
+      try { dataUrlBySrc[src] = await urlToDataURL(src); } catch(e) { /* deixa como está — melhor texto sem a imagem do que travar */ }
+    }));
+
+    const canvas = await h2c(doc.body, {
+      useCORS: true, backgroundColor: '#ffffff', scale: 2,
+      width: w, height: h, windowWidth: w, windowHeight: h,
+      onclone: (clonedDoc) => {
+        clonedDoc.querySelectorAll('img').forEach(img => {
+          const d = dataUrlBySrc[img.src];
+          if(d) img.setAttribute('src', d);
+        });
+      }
+    });
+    const name = `${(S.csv.name || 'preview')}_${toBrazeLang(lang)}.png`.replace(/[^\w.\-]+/g, '_');
+    canvas.toBlob(blob => {
+      if(!blob) { showNotif('Could not generate the PNG.', 'warn'); return; }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    }, 'image/png');
+  } catch(e) {
+    showNotif('Could not generate the PNG: ' + (e && e.message || e), 'warn');
+  }
+}
+
 /* ═══════════ TABLE → PREVIEW HIGHLIGHT ═══════════ */
 let _selRow = -1;
 let _selLang = null;
@@ -9256,6 +9474,9 @@ function switchAndHL(ri, lang) {
   const trs = document.querySelectorAll('#gstb tr');
   if(trs[ri]) trs[ri].classList.add('table-sel');
 
+  // Se este id vive no ramo inativo de uma condicional, troca o toggle If/Else pra revelá-lo.
+  const branchSwitched = S.csv.rows[ri] ? revealCondBranchForRow(S.csv.rows[ri].id) : false;
+
   // Switch viewer to this lang if needed
   if(S.vLang !== lang) {
     S.vLang = lang;
@@ -9267,6 +9488,11 @@ function switchAndHL(ri, lang) {
     // refreshViewer() consome _pendingHL com um token de geração — mesmo que outro
     // refresh seja disparado antes deste iframe terminar de carregar, o highlight nunca
     // é aplicado no documento errado (a chamada obsoleta simplesmente não faz nada).
+    _pendingHL = { ri, lang };
+    refreshViewer();
+  } else if(branchSwitched) {
+    // Trocou de ramo mas não de idioma — precisa re-renderizar o preview no ramo novo antes
+    // de destacar (o data-tid só existe no ramo que agora está ativo).
     _pendingHL = { ri, lang };
     refreshViewer();
   } else {
@@ -9309,6 +9535,9 @@ function highlightFromTable(ri, lang) {
   const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
   const targetLang = lang && lang !== origLang ? lang : origLang;
 
+  // Se este id vive no ramo inativo de uma condicional, troca o toggle If/Else pra revelá-lo.
+  const branchSwitched = revealCondBranchForRow(row.id);
+
   // Switch viewer lang tab silently if needed
   if(targetLang && S.vLang !== targetLang) {
     S.vLang = targetLang;
@@ -9319,6 +9548,13 @@ function highlightFromTable(ri, lang) {
     // refreshViewer() consome _pendingHL com um token de geração — mesmo que outro
     // refresh seja disparado antes deste iframe terminar de carregar, o highlight nunca
     // é aplicado no documento errado (a chamada obsoleta simplesmente não faz nada).
+    _pendingHL = { ri, lang: targetLang };
+    refreshViewer();
+    return;
+  }
+
+  if(branchSwitched) {
+    // Trocou de ramo (mesmo idioma) — re-renderiza no ramo novo antes de destacar.
     _pendingHL = { ri, lang: targetLang };
     refreshViewer();
     return;
@@ -9831,6 +10067,7 @@ function renderApprovalGrid() {
             <button class="av-cb-btn ${(!S.condBranch||S.condBranch==='if')?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch('if')">If</button>
             <button class="av-cb-btn ${S.condBranch==='else'?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch('else')">Else</button>
           </span>
+          <button class="av-cb-btn" title="Download this preview as a PNG image" style="border:1px solid var(--border-s);" onclick="event.stopPropagation();downloadApprovalFramePng('${escJsAttr(lang)}')">⬇ PNG</button>
           <span class="av-frame-approve-slot" id="avApproveSlot-${cssSafeLang(lang)}"></span>
         </div>
         <div class="av-frame-viewport${(_campaignPushPreview || _campaignInappPreview) ? ' av-frame-viewport-bare' : ''}" id="avVp-${cssSafeLang(lang)}" style="width:${frameW}px;"></div>
