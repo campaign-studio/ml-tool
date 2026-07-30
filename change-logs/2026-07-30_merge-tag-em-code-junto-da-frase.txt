@@ -1,0 +1,76 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-30
+Tema: merge tag (ex: {{context.${offer_trial_duration}}}) embrulhada em <code> sumia do CSV e
+partia a frase em duas linhas — agora vai pro CSV e é tagueada JUNTO da frase.
+
+===============================================================================
+PEDIDO / BUG
+===============================================================================
+Reportado: "{{context.${offer_trial_duration}}} isso SEMPRE precisa ir pro csv e ser
+tagueado JUNTO da frase." Nos e-mails de Eligible, a mesma frase aparecia de dois jeitos:
+
+  OK   (id29): Try it free for {{context.${offer_trial_duration}}} days.
+               -> 1 linha, merge tag junto.
+  BUG  (id6/7): Enjoy your first <code>{{context.${offer_trial_duration}}}</code> days on us.
+               -> virava id6="Enjoy your first" + id7="days on us." e a merge tag SUMIA do CSV.
+
+===============================================================================
+DIAGNÓSTICO (causa raiz — investigada com o HTML real antes de corrigir)
+===============================================================================
+A única diferença entre os dois casos é o <code> em volta da merge tag. E <code> está no
+SKIP_PAIR do tokenizador (script|style|pre|code|noscript|svg): o conteúdo dele é PULADO na
+extração. Efeito duplo: (1) parte a frase em duas linhas (o texto antes e depois do <code>
+viram linhas separadas) e (2) a merge tag dentro do <code> é descartada — não vai pro CSV
+nem pra nenhuma tag de tradução. Confirmado rodando extractStr no HTML real: só a ocorrência
+SEM <code> (id29) mantinha a tag.
+
+Escopo verificado nos 22 projetos: 10 usam <code>, e 100% dos <code> embrulham APENAS Liquid
+(merge tags context.*/content_blocks, ou controle {% if %}) — nunca prosa/código de verdade.
+Nesses templates Braze o <code> é só monospace pra estilizar snippet de Liquid.
+
+===============================================================================
+CORREÇÃO (escopo conservador, confirmado com o usuário)
+===============================================================================
+Arquivo: index.html
+
+Novo helper unwrapLiquidOnlyCode(html): desembrulha <code>...</code> SOMENTE quando o miolo é
+exclusivamente Liquid (testado via splitLiquid, que entende ${...} e o }}} triplo — todo
+token não-espaço tem que ser 'liquid'). Um <code> com QUALQUER texto/código real é deixado
+intacto (continua pulado como antes). Retorna cedo se não houver "<code" no html.
+
+Aplicado de forma IDÊNTICA nos três caminhos, pra os três concordarem na mesma posição:
+- extractStr (rawForExtraction): a frase vira um texto contínuo -> extraída como UMA linha,
+  com a merge tag inline (mergeLiquidInline mantém context.*/custom_attribute.*).
+- buildTaggedHtml: normaliza o HTML antes de tagueiar, senão o src da linha (já sem <code>)
+  não seria achado no HTML (que ainda teria o <code> no meio). Resultado:
+  {%translation id6%}Enjoy your first {{context.${offer_trial_duration}}} days on us.{%endtranslation%}
+- buildPreviewHtml: mesma normalização pra o data-tid (Pass A/B) casar a posição da frase
+  mesclada (highlight/troca de ramo continuam funcionando).
+
+Efeito colateral aceito: o <code> some do HTML tagueado exportado. Como ele só dava monospace
+a um snippet de Liquid (que no Braze renderiza como um valor simples, ex: "7"), a diferença
+visual é irrelevante — e é justamente o que "tagueado junto da frase" pede.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient do app BLOQUEADO o tempo todo; HTML real lido por cliente
+Supabase separado read-only.
+1. Eligible "Phase 2 - Non WH+ Flow - Email 1" (p_1785424783551): extractStr agora dá
+   id6 = " Enjoy your first {{context.${offer_trial_duration}}} days on us." (uma linha só;
+   o antigo id7 "days on us." sumiu, mesclado). buildTaggedHtml produz a frase inteira dentro
+   de UMA tag {%translation%} com a merge tag dentro; 0 <code> puro restante; a coluna de
+   origem do CSV (csvSourceText) bate exatamente com o conteúdo da tag. Preview: o span
+   data-tid="id6" cobre a frase mesclada inteira.
+2. Helper: mantém <code>real text {{...}}</code> intacto; desembrulha <code>{{context.${x}}}</code>
+   (inclusive o }}} triplo).
+3. Sweep nos 10 projetos que usam <code>: 0 erros, todos tagueiam com sucesso, 0 <code> puro
+   órfão sobrando após o tagueamento. Projetos sem <code> não são tocados (retorno antecipado).
+4. Nenhuma escrita no banco; estado de teste (S) restaurado ao final.
+
+===============================================================================
+NOTA (renumeração / projetos existentes)
+===============================================================================
+Como a frase deixa de ser 2 linhas e passa a ser 1, os translation ids seguintes deslocam
+(ex: o antigo id29 vira id28). Isso é inerente à correção e só acontece quando o projeto é
+re-tageado (reaberto). Projetos já salvos não são reescritos sozinhos.

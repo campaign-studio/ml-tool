@@ -6008,6 +6008,32 @@ function splitLiquid(str){
   return r;
 }
 
+// Desembrulha <code>...</code> quando o miolo é EXCLUSIVAMENTE Liquid (merge tags, content_blocks
+// ou controle {% %}), devolvendo só o conteúdo interno sem o <code>. Motivo: nesses templates
+// Braze o <code> é usado só pra estilizar (monospace) um snippet de Liquid — ex:
+// "Enjoy your first <code>{{context.${offer_trial_duration}}}</code> days on us." Como <code>
+// está no SKIP_PAIR do tokenizador, o conteúdo dele era PULADO: a frase quebrava em duas linhas
+// (id6 "Enjoy your first" / id7 "days on us.") e a merge tag SUMIA do CSV. Tirando o <code>
+// (só quando ele embrulha nada além de Liquid), a frase vira UM texto contínuo — a extração
+// junta tudo numa linha só, mergeLiquidInline mantém a merge tag (context.*/custom_attribute.*),
+// e a tag de tradução passa a abraçar a frase inteira COM a merge tag dentro. Um <code> que
+// contenha QUALQUER texto/código real (fora do escopo destes templates) é deixado intacto
+// (continua sendo pulado como antes) — decisão conservadora confirmada com o usuário.
+// Aplicado de forma idêntica na extração (extractStr), no tagueamento (buildTaggedHtml) e no
+// preview (buildPreviewHtml) pra os três concordarem na mesma posição de texto.
+function unwrapLiquidOnlyCode(html){
+  if(!html || html.indexOf('<code') === -1) return html;
+  return html.replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, (m, inner) => {
+    // Ignora tags de tradução já presentes só pra o teste de "é puro Liquid?".
+    const test = inner.replace(/\{%translation\s+\S+?%\}/g,'').replace(/\{%endtranslation%\}/g,'');
+    // splitLiquid entende ${...} e o }}} triplo (via findLiquidMergeEnd); puro = todo token
+    // não-espaço é Liquid.
+    const toks = splitLiquid(test);
+    const pure = toks.every(t => t.type === 'liquid' || !/\S/.test(t.val));
+    return pure ? inner : m;
+  });
+}
+
 function buildCSV() {
   // Se já temos rows (de import OU de um build anterior), preserva as traduções existentes
   // e apenas sincroniza os langs com os targets atuais — sem recriar rows do zero.
@@ -6607,7 +6633,8 @@ function extractStr() {
   // (ex: explicando uma cascata de fallback de parceiro). Sem remover esse bloco
   // antes de tokenizar, o texto interno parecia conteúdo normal e virava linha
   // traduzível por engano, mesmo sendo só anotação pra quem mantém o template.
-  const rawForExtraction = S.rawHtml.replace(/\{%[-\s]*comment[-\s]*%\}[\s\S]*?\{%[-\s]*endcomment[-\s]*%\}/gi, '');
+  const rawForExtraction = unwrapLiquidOnlyCode(
+    S.rawHtml.replace(/\{%[-\s]*comment[-\s]*%\}[\s\S]*?\{%[-\s]*endcomment[-\s]*%\}/gi, ''));
   // O 2º grupo da alternativa exige uma LETRA (ou "/"/"!") logo após o "<" — sem isso, um "<"
   // qualquer virava início de tag pro tokenizador, mesmo sem ser HTML de verdade. Achado real:
   // uma condição Liquid comparando quantidade com "<3" (ex: "{{...user_family_member_count}}
@@ -8563,7 +8590,10 @@ function replaceLiquidPlaceholders(html){
 function buildPreviewHtml(lang){
   const origLang=S.allC.find(c=>c.code===S.origin)?.lang;
   const isOrig=!lang||lang===origLang;
-  let html=S.rawHtml;
+  // Mesma normalização da extração/tagueamento: desembrulha <code> puramente-Liquid pra o preview
+  // ficar alinhado — o texto marcado com data-tid (Pass A/B) usa o mesmo texto de linha da
+  // extração; sem isso, a posição da frase mesclada não bateria e o highlight/tag falharia.
+  let html=unwrapLiquidOnlyCode(S.rawHtml);
 
   // Step 1: strip any existing Liquid translation tags (from tagged HTML imports)
   html=html.replace(/\{%translation\s+\S+?%\}/g,'').replace(/\{%endtranslation%\}/g,'');
@@ -9091,7 +9121,12 @@ function buildTaggedHtml() {
     const i = str.indexOf(search); if(i === -1) return str;
     return str.slice(0,i) + replacement + str.slice(i+search.length);
   }
-  let tagged = S.rawHtml;
+  // Mesma normalização da extração: desembrulha <code> puramente-Liquid ANTES de tagueiar, senão
+  // o src da linha ("Enjoy your first {{...}} days on us.", já sem o <code>) não seria encontrado
+  // no HTML (que ainda teria o <code> no meio). Assim a frase inteira é achada e tagueada como
+  // uma unidade só, com a merge tag dentro. O <code> some do HTML tagueado exportado — aceitável:
+  // ele só dava monospace a um snippet de Liquid que renderiza como valor simples no Braze.
+  let tagged = unwrapLiquidOnlyCode(S.rawHtml);
   const allRows = S.csv.rows.filter(r=>r.src||(r.isStyle&&r.outerKey));
   // Linhas que não conseguimos encontrar/tagueiar no HTML final — sem isso, a linha some do
   // export em silêncio e a pessoa acha que a tradução foi aplicada quando não foi.
