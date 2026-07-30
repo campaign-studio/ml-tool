@@ -9426,7 +9426,19 @@ async function downloadApprovalFramePng(lang) {
     // que está na tela), trocar o src pela data URI. data: é same-origin, então o canvas
     // captura a imagem sem contaminar e sem mexer no que o revisor vê.
     const urlToDataURL = async (url) => {
-      const resp = await fetch(url, { mode: 'cors' });
+      // A <img> VISÍVEL do preview já carregou essa mesma URL SEM crossorigin e populou o
+      // cache HTTP com uma resposta sem cabeçalho CORS. Um fetch(url,{mode:'cors'}) pra MESMA
+      // URL reaproveita essa entrada de cache (sem Access-Control-Allow-Origin) e a checagem
+      // de CORS falha com "Failed to fetch" — MAS só quando a img terminou de carregar ANTES
+      // do fetch rodar. É uma corrida: por isso só "algumas imagens de alguns e-mails" saíam
+      // em branco no PNG (intermitente, dependia de qual img ganhou a corrida). Eligible, com
+      // muitas imagens, batia nisso com frequência. Correção: um cache-buster (chave de cache
+      // DIFERENTE da que a <img> poluiu) + cache:'reload' forçam uma requisição NOVA, com o
+      // header Origin, que o braze-images responde com CORS. A query extra é ignorada pelo
+      // servidor (devolve a mesma imagem).
+      const bust = url + (url.includes('?') ? '&' : '?') + '__mltpng=1';
+      const resp = await fetch(bust, { mode: 'cors', cache: 'reload' });
+      if(!resp.ok) throw new Error('HTTP ' + resp.status);
       const blob = await resp.blob();
       return await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
     };

@@ -1,0 +1,65 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-30
+Tema: Download de PNG no Approver — algumas imagens saíam em branco, principalmente nos
+e-mails de Eligible (que têm muitas imagens).
+
+===============================================================================
+PEDIDO / BUG
+===============================================================================
+Reportado: "Na hora de download PNG dentro do approver das imagens, os e-mails de Eligible
+não estão vindo com as imagens, alguns." Intermitente — só ALGUMAS imagens de ALGUNS e-mails.
+
+===============================================================================
+DIAGNÓSTICO (causa raiz — investigada com projetos Eligible reais antes de corrigir)
+===============================================================================
+downloadApprovalFramePng, pra não contaminar o canvas, busca cada <img> do preview via
+fetch(url,{mode:'cors'}) e embute como data: URI no clone (onclone) que o html2canvas
+renderiza. Medido no Eligible "Phase 2 - Non WH+ Flow - Email 1" (p_1785424783551): das 16
+imagens do preview, TODAS carregavam na tela (loaded=true), mas 7 FALHAVAM no
+fetch cors com "TypeError: Failed to fetch" — e eram do MESMO domínio (braze-images.com)
+das que passavam.
+
+Causa: colisão de CACHE. A <img> visível carrega a URL SEM crossorigin e popula o cache HTTP
+com uma resposta "opaca"/sem cabeçalho Access-Control-Allow-Origin. Quando o fetch cors pede
+a MESMA URL, o navegador reaproveita essa entrada de cache sem CORS e a checagem falha. Só
+falha quando a <img> terminou de carregar ANTES do fetch rodar — é uma CORRIDA, por isso era
+intermitente e por isso batia mais nos Eligible (muitas imagens => mais imagens já em cache
+na hora do fetch).
+
+Confirmado direto no navegador com uma URL que falhava:
+  fetch(url,{mode:'cors'})                    -> FAIL: Failed to fetch
+  fetch(url,{mode:'cors',cache:'reload'})     -> OK (blob 1906 bytes)
+  fetch(url+'?__mltpng=1',{mode:'cors'})      -> OK (blob 1906 bytes)
+Ou seja: forçar uma requisição que NÃO reusa a entrada de cache poluída resolve.
+
+(Nota: as srcs de Liquid não resolvido, ex: {{ partner_1_logo }}, nunca viram imagem no
+preview nem no PNG — não têm URL real. Isso é esperado e não é o bug reportado.)
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Arquivo: index.html, downloadApprovalFramePng() -> urlToDataURL():
+
+Antes:  const resp = await fetch(url, { mode: 'cors' });
+Agora:  const bust = url + (url.includes('?') ? '&' : '?') + '__mltpng=1';
+        const resp = await fetch(bust, { mode: 'cors', cache: 'reload' });
+        if(!resp.ok) throw new Error('HTTP ' + resp.status);
+
+O cache-buster (__mltpng=1) dá uma CHAVE DE CACHE diferente da que a <img> poluiu, e
+cache:'reload' força ir à rede — as duas coisas garantem uma requisição nova COM o header
+Origin, que o braze-images responde com CORS. A query extra é ignorada pelo servidor (mesma
+imagem). Nada muda na exibição do approver (continua sem crossorigin); a conversão só existe
+dentro do fluxo do PNG.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient do app BLOQUEADO o tempo todo (nenhuma escrita no banco);
+Eligible real p_1785424783551 lido por cliente Supabase separado read-only:
+1. ANTES: das 16 imagens, 7 falhavam no fetch cors (Failed to fetch).
+2. DEPOIS (código recarregado): as 16 convertem pra data: URI, 0 falha.
+3. End-to-end real: chamado downloadApprovalFramePng no iframe do approver, blob PNG
+   interceptado = 1250x5928, 2128 KB, 93,9% de pixels não-brancos (cheio de imagem, não em
+   branco). Renderizado numa sobreposição e conferido por screenshot: logo Wellhub, os
+   ícones de cifrão, o cofrinho e o mock do celular TODOS presentes no PNG.
+4. Estado de teste (S) restaurado e iframes/overlays removidos ao final; sbClient seguiu null.
