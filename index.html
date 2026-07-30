@@ -1135,9 +1135,9 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
               Approve copies
             </button>
-            <button class="tbtn upload" onclick="openItemCsvModal()">
+            <button class="tbtn upload" onclick="openItemCsvModal()" title="Upload a filled-in CSV/XLSX to update the translations already in this item">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V3m0 0l-4 4m4-4l4 4"/></svg>
-              Upload CSV
+              Upload CSV/XLSX
             </button>
             <button class="tbtn csv" onclick="dlItemCSV()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
@@ -1710,7 +1710,7 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
             </div>
             <button class="tbtn upload" onclick="document.getElementById('editorCsvInput').click()" title="Upload a filled-in CSV/XLSX to update the translations already in this project">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V3m0 0l-4 4m4-4l4 4"/></svg>
-              Update from CSV
+              Update from CSV/XLSX
             </button>
             <input type="file" id="editorCsvInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="onEditorCsvUpload(this.files[0])">
             <button class="tbtn" id="btnApprove" onclick="openApprovalView()" style="border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;">
@@ -1929,11 +1929,46 @@ function departmentTagHtml(key) {
 const AUTH_USERS_KEY = 'mlt_users_v1';
 
 // Admin inicial — troque o e-mail/senha abaixo antes de compartilhar o arquivo.
+// Papéis de conta, em ordem de poder: member < admin < superadmin.
+// - member: usa a ferramenta, não gerencia gente.
+// - admin: enxerga a área de Membros, adiciona/promove MEMBROS a admin, e pode
+//   compartilhar QUALQUER projeto (não só os que criou).
+// - superadmin: pode tudo que o admin pode, e mais: mexer no papel de admins
+//   (promover a superadmin, rebaixar) — o único que gerencia a camada de admins.
+// Precisa existir ao menos UM superadmin semeado, senão nunca daria pra gerir admins.
 const AUTH_DEFAULT_USERS = [
-  { email: 'hiago.branco@gympass.com', pass: '123', role: 'admin', name: 'Hiago' },
+  { email: 'superadmin@gympass.com', pass: '321', role: 'superadmin', name: 'Super Admin' },
+  { email: 'hiago.branco@gympass.com', pass: '123', role: 'superadmin', name: 'Hiago' },
   { email: 'helena.carbonari@gympass.com', pass: '123', role: 'member', name: 'Helena Carbonari' },
   { email: 'christiane.steinhoff@gympass.com', pass: '123', role: 'member', name: 'Christiane Steinhoff' }
 ];
+
+// Helpers de papel — centralizam a checagem em vez de espalhar `role === 'admin'` (que
+// deixaria o superadmin de fora sem querer em cada ponto novo).
+function isAdminOrAbove(role) { return role === 'admin' || role === 'superadmin'; }
+function isSuperadmin(role) { return role === 'superadmin'; }
+function roleLabel(r) { return r === 'superadmin' ? 'Superadmin' : r === 'admin' ? 'Admin' : 'Member'; }
+
+// Regras de quem pode trocar o papel de quem (gestão de contas na área de Membros):
+// - Ninguém muda o PRÓPRIO papel (evita o último superadmin se rebaixar e travar a conta).
+// - Superadmin muda qualquer um (member↔admin↔superadmin).
+// - Admin só mexe em quem é 'member' hoje, e só pode promover a 'admin' (nunca superadmin,
+//   e nunca toca em outro admin/superadmin — rebaixar admin é exclusivo do superadmin).
+// - Member não gerencia ninguém.
+function canChangeUserRole(actor, target) {
+  if(!actor || !target) return false;
+  if(actor.email.toLowerCase() === target.email.toLowerCase()) return false;
+  if(isSuperadmin(actor.role)) return true;
+  if(actor.role === 'admin') return target.role === 'member';
+  return false;
+}
+// Quais papéis o "actor" pode ATRIBUIR a esse "target" (opções do select). Sempre inclui o
+// papel atual do target (pra aparecer selecionado). Admin não vê 'superadmin' como opção.
+function allowedRoleTargets(actor, target) {
+  if(!canChangeUserRole(actor, target)) return [];
+  if(isSuperadmin(actor.role)) return ['member', 'admin', 'superadmin'];
+  return ['member', 'admin']; // admin promovendo um member
+}
 
 function authGetUsers() {
   try {
@@ -2027,11 +2062,11 @@ function renderProfileAvatar(user) {
   const btn = document.getElementById('profileAvatarBtn');
   if(btn) { btn.textContent = initials; btn.style.background = avColorForEmail(user.email); }
   const nameEl = document.getElementById('profileMenuName');
-  if(nameEl) nameEl.textContent = name + (user.role === 'admin' ? ' · Admin' : '');
+  if(nameEl) nameEl.textContent = name + (isSuperadmin(user.role) ? ' · Superadmin' : user.role === 'admin' ? ' · Admin' : '');
   const emailEl = document.getElementById('profileMenuEmail');
   if(emailEl) emailEl.textContent = user.email;
   const membersItem = document.getElementById('profileMembersItem');
-  if(membersItem) membersItem.style.display = user.role === 'admin' ? '' : 'none';
+  if(membersItem) membersItem.style.display = isAdminOrAbove(user.role) ? '' : 'none';
 }
 
 function toggleProfileMenu() {
@@ -3287,7 +3322,12 @@ function renderDashboard() {
   renderDashFolders(mine);
   const byFolder = _dashFolderFilter ? mine.filter(p => p.folder === _dashFolderFilter) : mine;
   const searchTerm = _dashProjectSearch.trim().toLowerCase();
+  // A busca era aplicada SÓ na lista "Projects I started" — "Shared with me", "To approve"
+  // e as campanhas (Projetos) abaixo ficavam de fora, mesmo tendo uma única barra de busca
+  // pra tela inteira. Agora filtra as quatro listas do mesmo jeito.
   const mineFiltered = searchTerm ? byFolder.filter(p => (p.name || '').toLowerCase().includes(searchTerm)) : byFolder;
+  const sharedFiltered = searchTerm ? shared.filter(p => (p.name || '').toLowerCase().includes(searchTerm)) : shared;
+  const toApproveFiltered = searchTerm ? toApprove.filter(p => (p.name || '').toLowerCase().includes(searchTerm)) : toApprove;
 
   const emptyMine = searchTerm
     ? `<div class="empty-state"><p>No projects match "${escHtml(_dashProjectSearch.trim())}"${_dashFolderFilter ? ' in this folder' : ''}.</p></div>`
@@ -3297,19 +3337,25 @@ function renderDashboard() {
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
     <p>No projects yet.<br>Click "New project" to start one.</p>
   </div>`;
-  const emptyShared = `<div class="empty-state">
+  const emptyShared = searchTerm
+    ? `<div class="empty-state"><p>No shared projects match "${escHtml(_dashProjectSearch.trim())}".</p></div>`
+    : `<div class="empty-state">
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 014-4h6a4 4 0 014 4v2"/><path d="M17 11l2 2 4-4"/></svg>
     <p>Nothing shared with you yet.</p>
   </div>`;
+  const emptyToApprove = `<div class="empty-state"><p>No projects to approve match "${escHtml(_dashProjectSearch.trim())}".</p></div>`;
   document.getElementById('myProjectsList').innerHTML = mineFiltered.length ? mineFiltered.map(p => projRowHtml(p, true)).join('') : emptyMine;
-  document.getElementById('sharedProjectsList').innerHTML = shared.length ? shared.map(p => projRowHtml(p, false)).join('') : emptyShared;
+  document.getElementById('sharedProjectsList').innerHTML = sharedFiltered.length ? sharedFiltered.map(p => projRowHtml(p, false)).join('') : emptyShared;
 
+  // A seção "To approve" continua aparecendo/sumindo com base no total SEM filtro (existe
+  // algo pra aprovar ou não) — só o CONTEÚDO dentro dela respeita a busca, senão a seção
+  // inteira sumia ao digitar uma busca que não bate com nada nela, parecendo um bug.
   const toApproveSection = document.getElementById('toApproveSection');
   if(toApproveSection) toApproveSection.style.display = toApprove.length ? '' : 'none';
   const toApproveList = document.getElementById('toApproveProjectsList');
-  if(toApproveList) toApproveList.innerHTML = toApprove.map(p => projRowHtml(p, false)).join('');
+  if(toApproveList) toApproveList.innerHTML = toApproveFiltered.length ? toApproveFiltered.map(p => projRowHtml(p, false)).join('') : emptyToApprove;
 
-  if(me.role === 'admin') renderDashUserList();
+  if(isAdminOrAbove(me.role)) renderDashUserList();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -3336,7 +3382,15 @@ function renderCampaignsList() {
     list.innerHTML = `<div class="empty-state"><p>No projects yet.<br>Click "New project" above to group emails, in-apps and pushes together.</p></div>`;
     return;
   }
-  list.innerHTML = sortDashProjects(mine).map(campaignRowHtml).join('');
+  // Mesma barra de busca do topo da tela (dashProjectSearch) — antes só filtrava "Projects
+  // I started", deixando as campanhas sempre com a lista inteira, sem respeitar a busca.
+  const searchTerm = _dashProjectSearch.trim().toLowerCase();
+  const filtered = searchTerm ? mine.filter(p => (p.name || '').toLowerCase().includes(searchTerm)) : mine;
+  if(!filtered.length) {
+    list.innerHTML = `<div class="empty-state"><p>No projects match "${escHtml(_dashProjectSearch.trim())}".</p></div>`;
+    return;
+  }
+  list.innerHTML = sortDashProjects(filtered).map(campaignRowHtml).join('');
 }
 
 function campaignRowHtml(p) {
@@ -3735,7 +3789,7 @@ function renderCampaignBulkApproval() {
 // (origem primeiro, depois as traduções), cada um com preview + Approve/Approved.
 function campaignBulkRowHtml(item, idx) {
   const origCountry = COUNTRIES.find(c => c.code === item.origin);
-  const langs = [...new Set([origCountry?.lang, ...(item.langs || [])].filter(Boolean))];
+  const langs = [...new Set([origCountry?.lang, ...sortLangsForDisplay(item.langs || [])].filter(Boolean))]; // origin primeiro, resto na ordem fixa global
   return `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;">
       <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">${escHtml(item.name)}</div>
@@ -3774,7 +3828,7 @@ function campaignBulkLangCardHtml(item, idx, lang, isOrig) {
 // via S emprestado, ou o cartãozinho de push), só que agora repetida por item×idioma.
 function renderCampaignBulkRowThumbs(item, idx) {
   const origCountry = COUNTRIES.find(c => c.code === item.origin);
-  const langs = [...new Set([origCountry?.lang, ...(item.langs || [])].filter(Boolean))];
+  const langs = [...new Set([origCountry?.lang, ...sortLangsForDisplay(item.langs || [])].filter(Boolean))]; // origin primeiro, resto na ordem fixa global
   if(item.type === 'push') {
     const titleRow = item.rows.find(r => r.id === 'id1');
     const bodyRow = item.rows.find(r => r.id === 'id2');
@@ -3826,7 +3880,7 @@ function toggleCampaignBulkApprove(idx, lang) {
 
 function renderCampaignGrid(item) {
   const table = document.getElementById('campaignItemTable');
-  const langs = item.langs || [];
+  const langs = sortLangsForDisplay(item.langs || []); // ordem fixa global (bate com renderCampaignLangBar)
   // colgroup, thead e tbody precisam ser montados numa ÚNICA atribuição a table.innerHTML —
   // setar cada um separado (ex: só colgroup.innerHTML) faz a próxima atribuição de
   // table.innerHTML apagar o colgroup junto, já que ele também é filho da table.
@@ -3869,7 +3923,7 @@ function setCampaignCell(ri, lang, value) {
 
 function renderCampaignLangBar(item) {
   const bar = document.getElementById('campaignItemLbar');
-  const langs = item.langs || [];
+  const langs = sortLangsForDisplay(item.langs || []); // ordem fixa global (bate com renderCampaignGrid)
   const origLangName = item.origin ? (COUNTRIES.find(c => c.code === item.origin)?.lang) : null;
   const all = [];
   if(origLangName) all.push({ lang: origLangName, isOrig: true });
@@ -4017,7 +4071,7 @@ function renderManageContentList() {
     <div class="member-row">
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:700;color:var(--text);">${escHtml(it.name)}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${(it.langs || []).length} language(s)${(it.langs || []).length ? ': ' + it.langs.map(escHtml).join(', ') : ''}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${(it.langs || []).length} language(s)${(it.langs || []).length ? ': ' + sortLangsForDisplay(it.langs).map(escHtml).join(', ') : ''}</div>
       </div>
       <button class="btn-back" style="padding:6px 12px;font-size:11.5px;" onclick="openItemFromModal(${i})">Open</button>
       <button class="btn-danger" style="padding:6px 10px;font-size:11.5px;" onclick="deleteContentItem(${i})">Remove</button>
@@ -4286,7 +4340,7 @@ function applyCsvToCampaignItem(csvText) {
 function dlItemCSV() {
   const item = _campaign && _campaign.items[_campaignItemIndex];
   if(!item) return;
-  const langs = item.langs || [];
+  const langs = sortLangsForDisplay(item.langs || []); // ordem fixa global (não mexe em item.langs)
   const esc = s => `"${String(s || '').replace(/"/g, '""')}"`;
   const nameRow = [item.name, '', ...langs.map(() => '')].map(esc).join(',');
   const header = ['', 'Translation tags', ...langs].map(esc).join(',');
@@ -4317,7 +4371,11 @@ function renderDashUserList() {
           onchange="dashRenameUser('${u.email}', this.value)" onclick="event.stopPropagation()">
         <div class="member-email" style="overflow:hidden;text-overflow:ellipsis;color:var(--text3);font-weight:400;font-size:11.5px;margin-top:2px;">${u.email}</div>
         <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
-          <div class="role-badge ${u.role}">${u.role}</div>
+          ${canChangeUserRole(me, u)
+            ? `<select class="dept-select" style="width:auto;" onchange="dashSetUserRole('${u.email}', this.value)" onclick="event.stopPropagation()">
+                ${allowedRoleTargets(me, u).map(r => `<option value="${r}" ${r===u.role?'selected':''}>${roleLabel(r)}</option>`).join('')}
+               </select>`
+            : `<div class="role-badge ${u.role}">${roleLabel(u.role)}</div>`}
           ${u.department ? departmentTagHtml(u.department) : ''}
         </div>
         <select class="dept-select" onchange="dashSetUserDept('${u.email}', this.value)" onclick="event.stopPropagation()">
@@ -4332,6 +4390,14 @@ function renderDashUserList() {
   const addSel = document.getElementById('dashNewUserDept');
   if(addSel && addSel.options.length <= 1) {
     DEPARTMENTS.forEach(d => addSel.insertAdjacentHTML('beforeend', `<option value="${d.key}">${d.label}</option>`));
+  }
+  // Só superadmin pode criar alguém já como superadmin — a opção só aparece pra ele no
+  // formulário "Add member" (dashAddUser também guarda por baixo). Idempotente no re-render.
+  const roleSel = document.getElementById('dashNewUserRole');
+  if(roleSel) {
+    const hasSuper = [...roleSel.options].some(o => o.value === 'superadmin');
+    if(isSuperadmin(me.role) && !hasSuper) roleSel.insertAdjacentHTML('beforeend', `<option value="superadmin">Superadmin</option>`);
+    if(!isSuperadmin(me.role) && hasSuper) roleSel.querySelector('option[value="superadmin"]').remove();
   }
 }
 
@@ -4365,6 +4431,27 @@ async function dashSetUserDept(email, dept) {
   renderDashUserList();
 }
 
+// Troca o papel de conta de um membro. Re-checa a permissão contra os dados FRESCOS (não só
+// contra o que a UI mostrou), pra que uma chamada direta pelo console — ou um render antigo —
+// não escape das regras de canChangeUserRole/allowedRoleTargets.
+async function dashSetUserRole(email, newRole) {
+  await dashPullUsersIfPossible();
+  const me = authCurrentUser(); // resolvido DEPOIS do pull — papel do actor sempre fresco
+  const users = authGetUsers();
+  const target = users.find(x => x.email.toLowerCase() === email.toLowerCase());
+  if(!me || !target) return;
+  if(!canChangeUserRole(me, target) || !allowedRoleTargets(me, target).includes(newRole)) {
+    showNotif('You do not have permission to make that role change.', 'warn');
+    renderDashUserList();
+    return;
+  }
+  if(target.role === newRole) return; // nada mudou
+  target.role = newRole;
+  authSaveUsers(users);
+  renderDashUserList();
+  notifAdd(email, me.email, `${me.email} changed your account role to ${roleLabel(newRole)}.`);
+}
+
 async function dashAddUser() {
   const name = (document.getElementById('dashNewUserName').value || '').trim();
   const email = (document.getElementById('dashNewUserEmail').value || '').trim().toLowerCase();
@@ -4380,13 +4467,16 @@ async function dashAddUser() {
     return;
   }
   await dashPullUsersIfPossible();
+  const me = authCurrentUser();
+  // Guard: só superadmin cria alguém já como superadmin (defesa além de esconder a opção).
+  const safeRole = (role === 'superadmin' && !isSuperadmin(me && me.role)) ? 'member' : role;
   const users = authGetUsers();
   if(users.some(u => u.email.toLowerCase() === email)) {
     errEl.textContent = 'A member with this email already exists.';
     errEl.classList.add('show');
     return;
   }
-  users.push({ email, pass, role, name: name || '', department });
+  users.push({ email, pass, role: safeRole, name: name || '', department });
   authSaveUsers(users);
   document.getElementById('dashNewUserName').value = '';
   document.getElementById('dashNewUserEmail').value = '';
@@ -4471,7 +4561,7 @@ function translationProgressBadgeHtml(stats, extraStyle) {
 function projLangsRow(p) {
   if(!p.data) return '';
   const originC = p.data.origin ? COUNTRIES.find(c => c.code === p.data.origin) : null;
-  const targetLangs = (p.data.langs || []).filter(l => !originC || l !== originC.lang);
+  const targetLangs = sortLangsForDisplay(p.data.langs || []).filter(l => !originC || l !== originC.lang); // ordem fixa global
   if(!originC && !targetLangs.length) return '';
   const originChip = originC ? `<span class="lang-chip origin">${originC.lang}</span>` : '';
   const targetChips = targetLangs.map(l => `<span class="lang-chip">${l}</span>`).join('');
@@ -4557,6 +4647,9 @@ function projRowHtml(p, isOwner) {
   }
   const lastEdited = p.updatedAt ? ` · Last edited ${relativeTime(p.updatedAt)}` : '';
   const isApprover = !isOwner && (p.approvers || []).some(e => e.toLowerCase() === me.email.toLowerCase());
+  // Botão Share aparece pro dono (isOwner) OU pra admin/superadmin em qualquer card, mesmo
+  // num projeto que não é dele (ex: só compartilhado com ele). Antes era só isOwner.
+  const canShare = isOwner || canShareProject(p);
   const progressBadge = translationProgressBadgeHtml(projTranslationStats(p));
   const badges = `${progressBadge}${lockBadge}${isApprover && !reviewers.length ? `<span class="lock-pill mine" style="background:#f5f3ff;border-color:#c4b5fd;color:#6d28d9;">You're an approver</span>` : ''}${approvingBadge}`;
   return `
@@ -4578,7 +4671,7 @@ function projRowHtml(p, isOwner) {
         </div>
       </div>
       <div class="proj-actions">
-        ${isOwner ? `<button class="btn-back" onclick="openShareModal('${p.id}')">Share with your team</button>` : ''}
+        ${canShare ? `<button class="btn-back" onclick="openShareModal('${p.id}')">Share with your team</button>` : ''}
         ${isApprover ? `<button class="btn-go" style="background:#6d28d9;" ${locked ? 'disabled' : ''} onclick="approverOpenProject('${p.id}')">Approve copies</button>` : ''}
         ${!isApprover ? `<button class="btn-go" id="openBtn-${p.id}" ${(locked && !lockedByMe) || reviewers.length ? 'disabled' : ''} onclick="projOpen('${p.id}', this)">Open Project</button>` : ''}
         ${isOwner ? `<button class="btn-danger" onclick="projDelete('${p.id}')">Delete</button>` : ''}
@@ -5179,6 +5272,9 @@ function openShareModal(id) {
 
   const withAccess = allUsers.filter(u => roleOf(u));
   const withoutAccess = allUsers.filter(u => !roleOf(u));
+  // Só o dono (ou superadmin) pode REMOVER acesso — um admin não-dono só adiciona/compartilha.
+  // Quando não pode remover, o ✕ some (o guard em setMemberRole também bloqueia por baixo).
+  const canRemove = canRemoveFromProject(p);
 
   const rowId = u => 'shareRow-' + u.email.replace(/[^a-zA-Z0-9]/g, '_');
   const accessRow = u => {
@@ -5198,7 +5294,7 @@ function openShareModal(id) {
           <option value="editor" ${role==='editor'?'selected':''}>Editor</option>
           <option value="approver" ${role==='approver'?'selected':''}>Approver</option>
         </select>
-        <button class="share-remove-btn" title="Remove access" onclick="setMemberRole('${id}','${u.email}',null,'${rowId(u)}')">✕</button>
+        ${canRemove ? `<button class="share-remove-btn" title="Remove access" onclick="setMemberRole('${id}','${u.email}',null,'${rowId(u)}')">✕</button>` : ''}
       </div>`;
   };
   const addRow = u => `
@@ -5248,6 +5344,11 @@ async function setMemberRole(projId, email, role, rowId) {
   const projects = projGetAll();
   const p = projects.find(x => x.id === projId);
   if(!p) return;
+  // Guard REAL de permissão (não só esconder botão): adicionar/trocar papel exige
+  // canShareProject; remover (role null) exige canRemoveFromProject (dono/superadmin).
+  // Sem isso, um membro comum chamando setMemberRole direto pelo console passava batido.
+  const allowed = role === null ? canRemoveFromProject(p) : canShareProject(p);
+  if(!allowed) { showNotif('You do not have permission to change sharing on this project.', 'warn'); openShareModal(projId); return; }
   p.sharedWith = p.sharedWith || [];
   p.approvers = p.approvers || [];
   const hadAccess = p.sharedWith.some(e => e.toLowerCase() === email.toLowerCase());
@@ -5959,7 +6060,7 @@ function buildAndGo() {
 // projeto no Dashboard, com você como dono e a trava ativa.
 // Gera a string CSV (mesmo formato do export) sem disparar download — usada pra salvar o projeto.
 function buildCsvStringForSave() {
-  const langs = S.csv.langs;
+  const langs = sortLangsForDisplay(S.csv.langs); // ordem fixa global (não mexe em S.csv.langs)
   if(!langs.length) return '';
   const esc = v => `"${String(v||'').replace(/"/g,'""')}"`;
   const emptyCols = langs.map(()=>'').join(',');
@@ -7092,10 +7193,12 @@ function renderConfirm() {
   // Origin: always what the user picked in step 2
   const origC = S.allC.find(c => c.code === S.origin);
 
-  // Langs to show: from CSV if already loaded (import flow), else from targets
-  const displayLangs = S.csv.langs.length > 0
+  // Langs to show: from CSV if already loaded (import flow), else from targets.
+  // Ordem fixa global (sortLangsForDisplay) — os grupos missing/partial/ok abaixo herdam essa
+  // ordem, já que .filter() preserva a sequência.
+  const displayLangs = sortLangsForDisplay(S.csv.langs.length > 0
     ? S.csv.langs
-    : [...new Set(S.targets.map(code => S.allC.find(c=>c.code===code)).filter(Boolean).flatMap(c => expandLang(c.lang)))];
+    : [...new Set(S.targets.map(code => S.allC.find(c=>c.code===code)).filter(Boolean).flatMap(c => expandLang(c.lang)))]);
 
   // Score each lang: missing / partial / ok
   const langScore = lang => {
@@ -7164,7 +7267,7 @@ function buildTable() {
   const subj = document.getElementById('mailSubject');
   if(subj) subj.textContent = S.csv.name || 'Wellhub';
   const t = document.getElementById('gst');
-  const langs = S.csv.langs;
+  const langs = sortLangsForDisplay(S.csv.langs); // ordem fixa global (rowsHTML usa a MESMA — determinístico)
   const origC = S.allC.find(c=>c.code===S.origin);
 
   // Set table min-width so columns never compress below 140px with many langs
@@ -7184,7 +7287,7 @@ function buildTable() {
     <tr>
       <th style="width:22px!important;max-width:22px!important"></th>
       <th style="width:38px!important;max-width:38px!important;background:var(--s3);color:var(--text3);">id</th>
-      <th>${origC?.lang||S.csv.langs[0]||'src'} <span style="font-size:9px;background:var(--green);color:#fff;border-radius:3px;padding:1px 5px;margin-left:3px;font-weight:700;vertical-align:middle;">origin</span></th>
+      <th>${origC?.lang||langs[0]||'src'} <span style="font-size:9px;background:var(--green);color:#fff;border-radius:3px;padding:1px 5px;margin-left:3px;font-weight:700;vertical-align:middle;">origin</span></th>
       ${langs.map(l=>`<th>${toBrazeLang(l)} <button onclick="delLang('${l}')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:10px;padding:1px 4px;border-radius:3px;vertical-align:middle;" title="Remove">×</button></th>`).join('')}
       <th></th>
     </tr>
@@ -7221,13 +7324,16 @@ function openPendingCommentTarget() {
 }
 
 function rowsHTML() {
+  // MESMA ordem fixa que buildTable() usa no cabeçalho — calculada uma vez aqui e usada nas
+  // duas iterações abaixo (imagem e texto), pra as colunas do corpo baterem com as do header.
+  const langsOrdered = sortLangsForDisplay(S.csv.langs);
   return S.csv.rows.map((row,ri)=>{
     // ── IMAGE ROW ──
     if(row.isImg){
       const id  = (row.id||'').replace(/"/g,'&quot;');
       const src = (row.src||'').replace(/"/g,'&quot;');
       const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
-      const tls = S.csv.langs.map(l=>{
+      const tls = langsOrdered.map(l=>{
         const v=(row.translations[l]||'').replace(/"/g,'&quot;');
         const isEmpty = !(row.translations[l]||'').trim();
         return `<td class="tl tl-cell${isEmpty ? ' tl-missing' : ''}">
@@ -7260,7 +7366,7 @@ function rowsHTML() {
     // custom_attribute, context) no meio da frase, mesmo já tendo sido "limpo" só no CSV.
     const displaySrc = csvSourceText(row).replace(/</g,'&lt;').replace(/"/g,'&quot;');
     const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
-    const tls = S.csv.langs.map(l=>{
+    const tls = langsOrdered.map(l=>{
       const v=(row.translations[l]||'').replace(/</g,'&lt;').replace(/"/g,'&quot;');
       const isEmpty = !(row.translations[l]||'').trim();
       return `<td class="tl tl-cell${isEmpty ? ' tl-missing' : ''}">
@@ -7408,6 +7514,26 @@ function isCurrentProjectOwner() {
   if(!currentProjectId) return true; // ainda não virou projeto salvo/compartilhado — só quem está criando está aqui
   const p = projGetAll().find(x => x.id === currentProjectId);
   return !!(p && p.owner && p.owner.toLowerCase() === me.email.toLowerCase());
+}
+
+// Quem pode COMPARTILHAR (adicionar gente) num projeto: o dono, OU qualquer admin/superadmin
+// — mesmo em projeto que não é seu (inclusive um só compartilhado com ele). Centralizado
+// aqui pra a UI (botão Share) e o guard de escrita (setMemberRole) usarem a MESMA regra.
+function isProjectOwner(p, me) {
+  return !!(p && p.owner && me && p.owner.toLowerCase() === me.email.toLowerCase());
+}
+function canShareProject(p) {
+  const me = authCurrentUser();
+  if(!me || !p) return false;
+  return isProjectOwner(p, me) || isAdminOrAbove(me.role);
+}
+// Remover gente de um projeto é mais restrito que adicionar: só o DONO ou um superadmin
+// (que "pode tudo"). Um admin não-dono só consegue ADICIONAR/compartilhar, nunca tirar o
+// acesso de quem já está — evita um admin remover o dono ou outro colaborador por engano.
+function canRemoveFromProject(p) {
+  const me = authCurrentUser();
+  if(!me || !p) return false;
+  return isProjectOwner(p, me) || isSuperadmin(me.role);
 }
 
 /* ─── Popover (modal centralizado) ─── */
@@ -8072,10 +8198,11 @@ function debR(){clearTimeout(rt);rt=setTimeout(refreshViewer,200);}
 function renderLbar() {
   const bar=document.getElementById('lbar');
   const origLang=S.allC.find(c=>c.code===S.origin)?.lang||null;
-  if(!S.vLang) S.vLang=origLang||S.csv.langs[0]||null;
+  const langsOrdered=sortLangsForDisplay(S.csv.langs); // ordem fixa global
+  if(!S.vLang) S.vLang=origLang||langsOrdered[0]||null;
   const tabs=[
     origLang?{lang:origLang,isOrig:true}:null,
-    ...S.csv.langs.filter(l=>l!==origLang).map(l=>({lang:l,isOrig:false}))
+    ...langsOrdered.filter(l=>l!==origLang).map(l=>({lang:l,isOrig:false}))
   ].filter(Boolean);
   bar.innerHTML=tabs.map(({lang,isOrig})=>{
     const localeKey = toBrazeLang(lang);
@@ -8975,7 +9102,7 @@ document.addEventListener('click', (e) => {
 
 function dlXLSX(){
   if(typeof XLSX === 'undefined'){ alert('SheetJS not loaded.'); return; }
-  const langs = S.csv.langs;
+  const langs = sortLangsForDisplay(S.csv.langs); // ordem fixa global (não mexe em S.csv.langs)
   if(!langs.length){ alert('No language configured.'); return; }
   checkEmptyLangsBeforeExport(() => {
     // curlifyApostrophes(csvSourceText(r)) — mesma fonte usada no CSV/HTML exportados (ver
@@ -9026,6 +9153,31 @@ function closeEmptyLangModal() {
 // Retorna o locale key do Braze (ex: pt_br) — usado EXCLUSIVAMENTE no CSV/XLSX exportado.
 function toBrazeLang(lang) {
   return lang.toLowerCase().replace(/-/g, '_');
+}
+
+// Ordem FIXA e global de exibição/exportação dos idiomas — mesma sequência em QUALQUER
+// tela (editor, previewer, approver, cards) e em QUALQUER export (CSV/XLSX), independente
+// da ordem em que os idiomas foram adicionados no projeto. Padrão da plataforma, não é
+// configurável por projeto. Guardada no formato INTERNO (pt-BR, não pt_br) porque quase
+// todo lugar itera nesse formato e só chama toBrazeLang() na hora de exibir/exportar.
+const LOCALE_DISPLAY_ORDER = ['de-DE','en-GB','en-IE','es-AR','es-CL','es-ES','es-MX','it-IT','pt-BR','pt-PT','ro-RO'];
+const _LOCALE_ORDER_INDEX = Object.fromEntries(LOCALE_DISPLAY_ORDER.map((l, i) => [l.toLowerCase(), i]));
+
+// Devolve uma CÓPIA ordenada do array de idiomas: primeiro os locales da lista fixa acima,
+// na ordem definida; depois qualquer locale fora da lista (customizado), em ordem
+// alfabética, no fim. NUNCA reordena o array original in-place — vários lugares (ex:
+// buildTable + rowsHTML, renderCampaignLangBar + renderCampaignGrid) iteram o MESMO array
+// separadamente pra montar cabeçalho e corpo, e reordenar in-place desalinharia as colunas.
+// É SÓ camada de apresentação/export — o array salvo (S.csv.langs/item.langs/p.data.langs)
+// continua na ordem de criação, sem migração de nenhum dado existente.
+function sortLangsForDisplay(langs) {
+  const known = [], unknown = [];
+  (langs || []).forEach(l => {
+    (Object.prototype.hasOwnProperty.call(_LOCALE_ORDER_INDEX, (l||'').toLowerCase()) ? known : unknown).push(l);
+  });
+  known.sort((a, b) => _LOCALE_ORDER_INDEX[a.toLowerCase()] - _LOCALE_ORDER_INDEX[b.toLowerCase()]);
+  unknown.sort((a, b) => (a||'').localeCompare(b||''));
+  return [...known, ...unknown];
 }
 
 // Retorna o nome de exibição completo (ex: "Brazil (pt_br)") — usado na UI (headers da tabela,
@@ -9225,12 +9377,12 @@ function cssSafeLang(lang) {
   return String(lang).replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
-// Origin primeiro, depois os demais idiomas configurados no CSV.
+// Origin primeiro, depois os demais idiomas na ordem fixa global (sortLangsForDisplay).
 function approvalLangs() {
   const origLang = S.allC.find(c => c.code === S.origin)?.lang || null;
   const langs = [];
   if(origLang) langs.push(origLang);
-  (S.csv.langs || []).forEach(l => { if(l !== origLang) langs.push(l); });
+  sortLangsForDisplay(S.csv.langs || []).forEach(l => { if(l !== origLang) langs.push(l); });
   return { origLang, langs };
 }
 
