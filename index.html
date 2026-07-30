@@ -1750,10 +1750,7 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
             Mobile
           </button>
         </div>
-        <div class="sp-wrap" id="condBranchWrap" title="Só teste de visualização — não afeta o HTML tageado nem o CSV">
-          <button class="cb-btn active" onclick="setCondBranch('if',this)">If</button>
-          <button class="cb-btn" onclick="setCondBranch('else',this)">Else</button>
-        </div>
+        <div class="sp-wrap" id="condBranchWrap" title="Só teste de visualização — não afeta o HTML tageado nem o CSV" style="display:none;"></div>
       </div>
       <div class="vw-langs">
         <span class="vw-langs-label">Language</span>
@@ -5456,9 +5453,13 @@ const S = {
   vLang: null,
   vSize: 'full',
   // Toggle SÓ de teste/visualização (não afeta o HTML tageado nem o CSV exportado) — deixa
-  // escolher manualmente qual branch de um {% if/else %} aparece no preview, já que o preview
-  // não avalia a condição de verdade. 'if' é sempre o padrão (primeiro branch/if/unless).
-  condBranch: 'if',
+  // escolher manualmente qual branch de um {% if/elsif/else %} aparece no preview, já que o
+  // preview não avalia a condição de verdade. ÍNDICE do ramo: 0=if (padrão), 1=1º elsif, ...,
+  // último=else. Suporta condicionais de N vias (não só if/else).
+  condBranch: 0,
+  // Linha a REVELAR no preview (cada condicional escolhe o ramo que a contém) — setado ao
+  // clicar/focar uma linha, pra que ela sempre apareça mesmo aninhada. null = sem reveal.
+  condRevealRow: null,
   // Approval — Figma-style pin comments over the per-country preview grid.
   // Each: {id, lang, xPct, yPct, text, author, createdAt, resolvedBy:[]}
   approvalComments: [],
@@ -5670,7 +5671,8 @@ function resetAll() {
   S.csv = { name:'', rows:[], langs:[] };
   S.selImgs = new Set();
   S.vLang = null;
-  S.condBranch = 'if';
+  S.condBranch = 0;
+  S.condRevealRow = null;
   S.approvalComments = [];
   S.approvalDoneByLang = {};
   S.approvalActivity = [];
@@ -6006,6 +6008,32 @@ function splitLiquid(str){
     }
   }
   return r;
+}
+
+// Desembrulha <code>...</code> quando o miolo é EXCLUSIVAMENTE Liquid (merge tags, content_blocks
+// ou controle {% %}), devolvendo só o conteúdo interno sem o <code>. Motivo: nesses templates
+// Braze o <code> é usado só pra estilizar (monospace) um snippet de Liquid — ex:
+// "Enjoy your first <code>{{context.${offer_trial_duration}}}</code> days on us." Como <code>
+// está no SKIP_PAIR do tokenizador, o conteúdo dele era PULADO: a frase quebrava em duas linhas
+// (id6 "Enjoy your first" / id7 "days on us.") e a merge tag SUMIA do CSV. Tirando o <code>
+// (só quando ele embrulha nada além de Liquid), a frase vira UM texto contínuo — a extração
+// junta tudo numa linha só, mergeLiquidInline mantém a merge tag (context.*/custom_attribute.*),
+// e a tag de tradução passa a abraçar a frase inteira COM a merge tag dentro. Um <code> que
+// contenha QUALQUER texto/código real (fora do escopo destes templates) é deixado intacto
+// (continua sendo pulado como antes) — decisão conservadora confirmada com o usuário.
+// Aplicado de forma idêntica na extração (extractStr), no tagueamento (buildTaggedHtml) e no
+// preview (buildPreviewHtml) pra os três concordarem na mesma posição de texto.
+function unwrapLiquidOnlyCode(html){
+  if(!html || html.indexOf('<code') === -1) return html;
+  return html.replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, (m, inner) => {
+    // Ignora tags de tradução já presentes só pra o teste de "é puro Liquid?".
+    const test = inner.replace(/\{%translation\s+\S+?%\}/g,'').replace(/\{%endtranslation%\}/g,'');
+    // splitLiquid entende ${...} e o }}} triplo (via findLiquidMergeEnd); puro = todo token
+    // não-espaço é Liquid.
+    const toks = splitLiquid(test);
+    const pure = toks.every(t => t.type === 'liquid' || !/\S/.test(t.val));
+    return pure ? inner : m;
+  });
 }
 
 function buildCSV() {
@@ -6607,7 +6635,8 @@ function extractStr() {
   // (ex: explicando uma cascata de fallback de parceiro). Sem remover esse bloco
   // antes de tokenizar, o texto interno parecia conteúdo normal e virava linha
   // traduzível por engano, mesmo sendo só anotação pra quem mantém o template.
-  const rawForExtraction = S.rawHtml.replace(/\{%[-\s]*comment[-\s]*%\}[\s\S]*?\{%[-\s]*endcomment[-\s]*%\}/gi, '');
+  const rawForExtraction = unwrapLiquidOnlyCode(
+    S.rawHtml.replace(/\{%[-\s]*comment[-\s]*%\}[\s\S]*?\{%[-\s]*endcomment[-\s]*%\}/gi, ''));
   // O 2º grupo da alternativa exige uma LETRA (ou "/"/"!") logo após o "<" — sem isso, um "<"
   // qualquer virava início de tag pro tokenizador, mesmo sem ser HTML de verdade. Achado real:
   // uma condição Liquid comparando quantidade com "<3" (ex: "{{...user_family_member_count}}
@@ -8424,7 +8453,15 @@ function renderFooterPlaceholder(html) {
 // Cada branch escolhido vem com uma tag discreta (IF/ELSE) logo ACIMA do texto — não mostra
 // o outro branch (só existia no modo "Both", removido), mas deixa claro que aquele trecho é
 // conteúdo condicional, e qual lado está sendo mostrado.
-function resolveConditionalBranch(html, mode){
+// revealRow (opcional): id de uma linha a REVELAR. Quando passado, CADA condicional escolhe,
+// independentemente, o ramo que contém {%translation revealRow%} (se algum contiver) — senão
+// usa o índice `mode`. Isso cobre condicionais ANINHADAS: um índice global único mudaria o
+// outer e o inner juntos e nunca mostraria "outer=elsif E inner=if" ao mesmo tempo; com o
+// revealRow, o inner e o outer se alinham sozinhos pro ramo que contém a linha (o revealRow é
+// visível pra toda a recursão, então cada nível se resolve pro lado certo). É assim que clicar
+// numa linha SEMPRE a revela, esteja ela aninhada onde estiver.
+function resolveConditionalBranch(html, mode, revealRow){
+  const revealMark = revealRow ? `{%translation ${revealRow}%}` : null;
   const TAG_RE = /\{%[-\s]*(if|elsif|else|endif|unless|endunless)\b([^%]*)%\}/gi;
   const tokens = [];
   let last = 0, m;
@@ -8475,13 +8512,47 @@ function resolveConditionalBranch(html, mode){
       break; // endif/endunless, ou acabou sem fechar (HTML malformado) — desiste aqui
     }
     if(stop === 'endif' || stop === 'endunless') i++;
-    const chosen = mode === 'if' ? branches[0] : (branches.length > 1 ? branches[branches.length - 1] : branches[0]);
+    // mode agora é um ÍNDICE de ramo (0=if, 1=primeiro elsif, ..., último=else). Cada
+    // condicional tem seu próprio nº de ramos; o índice global é limitado ao último ramo desta
+    // condicional (Math.min) — assim um toggle em "elsif 2" mostra o else de uma condicional que
+    // só tem if/else, sem quebrar. ANTES só existia if(=primeiro) e else(=último): todo texto
+    // num {% elsif %} do meio ficava inalcançável no preview (essa era a raiz de "texto não é
+    // lido no preview" com os e-mails de N vias do Eligible).
+    // Se estamos revelando uma linha e algum ramo DESTE condicional a contém, escolhe esse ramo
+    // (independente do índice global) — é o que faz linhas em ramos aninhados sempre aparecerem.
+    let chosenIdx = Math.min(mode|0, branches.length - 1);
+    if(revealMark){
+      const hit = branches.findIndex(b => b.indexOf(revealMark) !== -1);
+      if(hit !== -1) chosenIdx = hit;
+    }
+    const chosen = branches[chosenIdx];
     if(insideTag) return chosen;
-    const label = mode === 'else' ? 'ELSE' : 'IF';
-    return `<br class="mlt-cond-br"><span class="mlt-cond-tag">${label}</span><br class="mlt-cond-br">${chosen}`;
+    const label = chosenIdx === 0 ? 'IF'
+      : (chosenIdx === branches.length - 1 ? 'ELSE' : 'ELSIF');
+    // Rótulo INLINE, logo na frente do texto do ramo (sem <br> em volta — eles criavam um vão
+    // vertical enorme, ex: dentro de um botão o "IF" ficava numa linha e o texto embaixo).
+    return `<span class="mlt-cond-tag">${label}</span> ${chosen}`;
   }
 
   return parseSequence().out;
+}
+
+// Nº MÁXIMO de ramos numa mesma condicional do HTML (1 = sem elsif/else; 2 = if/else;
+// 3 = if/elsif/else; etc). Usado pra saber quantas posições o toggle de ramo precisa oferecer,
+// e até onde revealCondBranchForRow/verifyAllRowsPositionable devem procurar. Conta por bloco
+// {% if/unless %} (1 + qtd de elsif/else até o endif correspondente), respeitando aninhamento.
+function maxCondBranchCount(html){
+  if(!html) return 1;
+  const TAG_RE = /\{%[-\s]*(if|elsif|else|endif|unless|endunless)\b[^%]*%\}/gi;
+  let m, stack = [], max = 1;
+  while((m = TAG_RE.exec(html))){
+    const k = m[1].toLowerCase();
+    if(k === 'if' || k === 'unless'){ stack.push(1); }
+    else if(k === 'elsif' || k === 'else'){
+      if(stack.length){ stack[stack.length-1]++; if(stack[stack.length-1] > max) max = stack[stack.length-1]; }
+    } else if(k === 'endif' || k === 'endunless'){ stack.pop(); }
+  }
+  return max;
 }
 
 // CSS da tag if/else (.mlt-cond-tag/.mlt-cond-br, ver resolveConditionalBranch) e do aviso
@@ -8560,138 +8631,64 @@ function replaceLiquidPlaceholders(html){
   return html;
 }
 
-function buildPreviewHtml(lang){
+function buildPreviewHtml(lang, revealRow){
   const origLang=S.allC.find(c=>c.code===S.origin)?.lang;
   const isOrig=!lang||lang===origLang;
-  let html=S.rawHtml;
+  // revealRow: linha a forçar visível (cada condicional escolhe o ramo que a contém). Default =
+  // S.condRevealRow (setado ao clicar/focar uma linha). Garante que clicar em QUALQUER linha a
+  // revele, mesmo aninhada, independente do índice do toggle.
+  if(revealRow === undefined) revealRow = S.condRevealRow || null;
+  // ─── Preview ANCORADO A PARTIR DO HTML TAGUEADO (fonte autoritativa) ───────────────────────
+  // "Texto não é lido no preview" voltava toda hora porque o preview RE-ENCONTRAVA cada texto
+  // por conta própria (um "Pass A") e divergia do extractStr/buildTaggedHtml a cada transformação
+  // nova — rótulo IF/ELSE injetado, ramo resolvido, entidade/espaço, chaves que se sobrepõem
+  // como substring. Eram dois pipelines independentes obrigados a achar a MESMA posição sozinhos.
+  // Agora o preview reusa buildTaggedHtml(silent): ele já envolve TODA linha (texto, imagem,
+  // Liquid, estilo) com {%translation idN%}...{%endtranslation%} na posição EXATA — é o mesmo
+  // artefato que sobe pro Braze, o único lugar que precisa (e sabe) ancorar. O preview só:
+  //   1) resolve a condicional (o ramo escolhido mantém suas tags; o inativo some junto),
+  //   2) trata os {% assign %},
+  //   3) troca cada tag de tradução por <span data-tid="idN"> com o texto de EXIBIÇÃO.
+  // Zero re-ancoragem própria = zero divergência. O que não aparece é só ramo inativo/VML, que
+  // o revealCondBranchForRow revela ao clicar. (silent: não dispara o toast de "linhas fora".)
+  const byId = {}; S.csv.rows.forEach(r => byId[r.id] = r);
+  let html = buildTaggedHtml(true);
 
-  // Step 1: strip any existing Liquid translation tags (from tagged HTML imports)
-  html=html.replace(/\{%translation\s+\S+?%\}/g,'').replace(/\{%endtranslation%\}/g,'');
-
-  // {% comment %}...{% endcomment %} é sintaxe do PRÓPRIO Liquid, não do HTML — o navegador
-  // não sabe escondê-la sozinho (diferente de um <!-- --> de verdade, que já fica invisível
-  // por conta própria). Sem remover aqui, uma nota interna de quem mantém o template (ex:
-  // documentando uma cascata de fallback) aparecia como texto cru e visível no preview,
-  // mesmo já não indo mais pro CSV (extractStr já ignora esse bloco desde antes).
-  html=html.replace(/\{%[-\s]*comment[-\s]*%\}[\s\S]*?\{%[-\s]*endcomment[-\s]*%\}/gi, '');
-
-  html=renderFooterPlaceholder(html);
-  html = resolveConditionalBranch(html, S.condBranch === 'else' ? 'else' : 'if');
-  // Strip {% assign partner_X_id = ... %} tags only — purely declarative, never visible
-  html=html.replace(/\{%[-\s]*assign\s+partner_\d+_id\s*=[^%]*?%\}/g, '');
-  // Os DEMAIS {% assign NOME = ... %} não somem: no preview viram um label curto {assign.NOME}
-  // (só o nome da variável, sem o valor cru cheio de Liquid poluindo a prévia). Só afeta o
-  // preview — o HTML/CSV exportado continua com o {% assign %} original intacto. Roda DEPOIS
-  // do strip dos partner_X_id (aqueles continuam ocultos, como pedido).
-  html=html.replace(/\{%[-\s]*assign\s+([A-Za-z0-9_.]+)\s*=[^%]*?%\}/g,
+  // {% comment %} do Liquid não é escondido pelo navegador (≠ <!-- -->) — remove pra não vazar.
+  html = html.replace(/\{%[-\s]*comment[-\s]*%\}[\s\S]*?\{%[-\s]*endcomment[-\s]*%\}/gi, '');
+  html = renderFooterPlaceholder(html);
+  html = resolveConditionalBranch(html, S.condBranch|0, revealRow);
+  // {% assign partner_X_id %} some (declarativo, nunca visível); os demais viram label curto.
+  html = html.replace(/\{%[-\s]*assign\s+partner_\d+_id\s*=[^%]*?%\}/g, '');
+  html = html.replace(/\{%[-\s]*assign\s+([A-Za-z0-9_.]+)\s*=[^%]*?%\}/g,
     (m, name) => `<span class="mlt-cond-tag">{assign.${name}}</span>`);
 
-  // Step 2 — two-pass injection so duplicate strings always get the right data-tid.
-  //
-  // Pass A: mark each row's exact document position with a unique placeholder
-  //   __TID_idN__ using the same skip-if-already-marked loop as dlHTML.
-  //   Because placeholders are unique strings that cannot appear in real HTML,
-  //   Pass B can swap them unambiguously regardless of duplicate source text.
-  //
-  // Pass B: replace every __TID_idN__ with <span data-tid="idN">displayText</span>.
-
-  // Pass A — mark each row's exact position with a unique __TID_idN__ placeholder.
-  // isImg rows mark the src="..." attribute value inside the <img> tag.
-  // After replacing occurrence 0 of a key, the original text is gone from that spot,
-  // so the next row with the same key naturally finds occurrence 1. No counters needed.
-  // Linhas cujo src/outerKey/imgTag não bate literalmente no HTML — não trava nada (o preview
-  // segue rendendo o resto normal), mas fica registrado no console pra dar pra investigar
-  // em vez de simplesmente "sumir" sem deixar rastro nenhum.
-  const previewMissed = [];
-  S.csv.rows.forEach(row=>{
-    const placeholder = `__TID_${row.id}__`;
-    if(row.isImg && row.src){
-      let imgStart = -1, imgEnd = -1;
-      // Prefer stored imgTag (exact match) — more reliable than src search
-      // especially when src has surrounding whitespace or newlines (tagged imports).
-      const needle = row.imgTag || row.src.trim();
-      const needleIdx = html.indexOf(needle);
-      if(needleIdx !== -1){
-        if(row.imgTag){
-          // needle IS the full <img> tag
-          imgStart = needleIdx;
-          imgEnd   = needleIdx + needle.length;
-        } else {
-          // needle is just the src value — expand to full <img> tag
-          let s = needleIdx; while(s > 0 && html[s] !== '<') s--;
-          let e = needleIdx; while(e < html.length && html[e] !== '>') e++;
-          if(html[s] === '<' && html[e] === '>' && /^<img[\s>]/i.test(html.slice(s,s+5))){
-            imgStart = s; imgEnd = e + 1;
-          }
-        }
-      }
-      if(imgStart === -1){ previewMissed.push(row); return; }
-      html = html.slice(0, imgStart) + `__IMGTAG_${row.id}__` + html.slice(imgEnd);
-    } else {
-      const key = (row.isStyle && row.outerKey) ? row.outerKey : row.src;
-      if(!key){ previewMissed.push(row); return; }
-      const marker = row.isStyle
-        ? `${row.openTag}${placeholder}${row.closeTag}`
-        : placeholder;
-      let searchFrom = 0, pos = -1;
-      const protectedRanges = computeProtectedRanges(html);
-      while(searchFrom < html.length){
-        const p = html.indexOf(key, searchFrom);
-        if(p === -1) break;
-        // Skip if inside an HTML attribute (odd number of quotes since last <)
-        const before = html.slice(0, p);
-        const lastTag = before.lastIndexOf('<');
-        const lastClose = before.lastIndexOf('>');
-        if(lastTag > lastClose){
-          const inTag = before.slice(lastTag);
-          const dq = (inTag.match(/"/g)||[]).length;
-          const sq = (inTag.match(/'/g)||[]).length;
-          if(dq % 2 !== 0 || sq % 2 !== 0){ searchFrom = p + key.length; continue; }
-        }
-        // Skip se estiver dentro de um {% ... %} ainda aberto (ex: dentro da condição de um
-        // {% if %}) — mesma proteção do buildTaggedHtml, pro preview não marcar a posição
-        // errada quando a palavra também aparece como sintaxe Liquid antes do texto real.
-        if(isInsideOpenLiquidTag(before)){ searchFrom = p + key.length; continue; }
-        if(isPosProtected(p, protectedRanges)){ searchFrom = p + key.length; continue; }
-        pos = p; break;
-      }
-      if(pos === -1){ previewMissed.push(row); return; }
-      html = html.slice(0, pos) + marker + html.slice(pos + key.length);
-    }
+  // Imagens: buildTaggedHtml põe a tag DENTRO do src (src="{%translation idN%}URL{%endtranslation%}").
+  // Converte a <img> inteira num <span data-tid class=braze-img-wrap>, trocando o src pelo de
+  // exibição (tradução da imagem por idioma, se houver). Feito ANTES da troca genérica de texto,
+  // senão a tag dentro do atributo viraria um <span> dentro do src (quebrado).
+  html = html.replace(/<img\b[^>]*>/gi, (tag) => {
+    const m = tag.match(/\bsrc=(["'])\{%translation\s+(id\d+)%\}([\s\S]*?)\{%endtranslation%\}\1/i);
+    if(!m) return tag;
+    const id = m[2], row = byId[id]; if(!row) return tag;
+    const displaySrc = ((!isOrig && row.translations[lang]) ? row.translations[lang] : (row.src || m[3])).trim();
+    const newTag = tag.replace(/\bsrc=(["'])\{%translation\s+id\d+%\}[\s\S]*?\{%endtranslation%\}\1/i, `src="${displaySrc}"`);
+    return `<span data-tid="${id}" class="braze-img-wrap">${newTag}</span>`;
   });
-  if(previewMissed.length){
-    console.warn(`[buildPreviewHtml] ${previewMissed.length} linha(s) não encontrada(s) no HTML pro idioma "${lang}":`, previewMissed.map(r=>({id:r.id, src:(r.src||'').slice(0,80)})));
-  }
 
-  // Pass B — swap placeholders for real content with display values
-  S.csv.rows.forEach(row=>{
-    if(row.isImg){
-      const imgPlaceholder = `__IMGTAG_${row.id}__`;
-      if(!html.includes(imgPlaceholder)) return;
-      const displaySrc = ((!isOrig && row.translations[lang]) ? row.translations[lang] : row.src).trim();
-      // Use stored imgTag (preserves width/height/class/style), only swap src
-      const baseTag = row.imgTag || `<img src="${row.src.trim()}">`;
-      const newImgTag = baseTag.replace(/\bsrc=(?:"[^"]*"|'[^']*')/i, `src="${displaySrc}"`);
-      html = html.replace(imgPlaceholder, `<span data-tid="${row.id}" class="braze-img-wrap">${newImgTag}</span>`);
-    } else {
-      const placeholder = `__TID_${row.id}__`;
-      if(!html.includes(placeholder)) return;
-      // Para linhas isLiquidFull, o src é a expressão Liquid inteira — no preview, mostramos
-      // o texto humano legível (row.text = fallback do default), não a expressão crua.
-      // Fallback (sem tradução, ou vendo o idioma original) precisa ser o MESMO texto que
-      // aparece no CSV/grid (row.text — com o "default" já preenchido, ex: "there") ou,
-      // na falta dele, row.src ORIGINAL — NUNCA row.display. row.display passa por
-      // toLiquidPlaceholder(), que dá um .trim() de propósito (é só o rótulo compacto do
-      // grid) — sem essa exceção aqui, uma linha cujo espaço de separação com o elemento
-      // vizinho vive só no início/fim do PRÓPRIO texto (ex: um merge tag colado sem espaço
-      // antes, tipo "apps:{{tag}} options...", onde o " options" começa com espaço) perdia
-      // esse espaço no preview — "apps:" e o texto seguinte apareciam grudados, mesmo o
-      // HTML de origem estando certo.
-      const displayText = curlifyApostrophes((!isOrig && row.translations[lang])
-        ? row.translations[lang]
-        : (row.text || row.src));
-      html = html.replace(placeholder, `<span data-tid="${row.id}">${displayText}</span>`);
-    }
+  // Texto/estilo/Liquid: cada {%translation idN%}INNER{%endtranslation%} vira <span data-tid>.
+  // display = tradução do idioma se houver; senão o próprio INNER — que é EXATAMENTE o texto
+  // canônico que o buildTaggedHtml colocou (csvSourceText já curlificado, ou a expressão Liquid
+  // pra linhas isLiquidFull). Usar o INNER (em vez de row.text/row.src) evita duplicar o espaço
+  // das pontas, que o buildTaggedHtml já deixou FORA da tag. Merge tags que sobrarem no display
+  // viram texto legível no replaceLiquidPlaceholders(), logo abaixo, como antes.
+  html = html.replace(/\{%translation\s+(id\d+)%\}([\s\S]*?)\{%endtranslation%\}/g, (m, id, inner) => {
+    const row = byId[id];
+    if(!row) return inner;
+    const displayText = (!isOrig && row.translations[lang])
+      ? curlifyApostrophes(row.translations[lang])
+      : inner;
+    return `<span data-tid="${id}">${displayText}</span>`;
   });
 
   // Só DEPOIS das duas passadas (Pass A/B) é que troca os merge tags Liquid por placeholders
@@ -8768,6 +8765,7 @@ let _pendingHL = null; // {ri, lang} — highlight a aplicar assim que o próxim
 function refreshViewer(){
   if(!S.rawHtml) return;
   showViewer();
+  renderCondBranchToggle();  // (re)desenha o toggle de ramo conforme o nº de vias do HTML atual
   let html = buildPreviewHtml(S.vLang);
 
   // Inject hover-highlight script into iframe (tag split to avoid parser issues)
@@ -8914,11 +8912,35 @@ function setVS(sz,btn){
 
 // Toggle SÓ de teste (ver comentário em resolveConditionalBranch) — não mexe em S.csv nem
 // em S.rawHtml, só troca qual branch o PREVIEW mostra. Refaz o preview na hora.
-function setCondBranch(mode, btn){
-  document.querySelectorAll('.cb-btn').forEach(b=>b.classList.remove('active'));
-  if(btn) btn.classList.add('active');
-  S.condBranch = mode;
+function setCondBranch(idx){
+  S.condBranch = idx|0;
+  S.condRevealRow = null;   // navegação manual por índice — limpa qualquer reveal de linha
+  renderCondBranchToggle();
   refreshViewer();
+}
+
+// Rótulo de cada posição do toggle de ramo: 0=If, último=Else, meio=Elsif (numerado se houver
+// mais de um). n = total de posições (maxCondBranchCount).
+function condBranchLabel(i, n){
+  if(i === 0) return 'If';
+  if(i === n - 1) return 'Else';
+  return n > 3 ? 'Elsif ' + i : 'Elsif';
+}
+
+// Renderiza os botões do toggle de ramo dinamicamente conforme o nº máximo de ramos do HTML
+// atual (if/elsif.../else). Sem condicional de N vias (max<=1), esconde o toggle. Um estado
+// global (S.condBranch) compartilhado — cada condicional mostra o ramo nesse índice (limitado
+// ao seu último ramo). Chamado no refreshViewer e ao trocar de ramo.
+function renderCondBranchToggle(){
+  const wrap = document.getElementById('condBranchWrap');
+  if(!wrap) return;
+  const n = maxCondBranchCount(S.rawHtml);
+  if(n <= 1){ wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  if(S.condBranch > n - 1) S.condBranch = 0;
+  wrap.style.display = '';
+  wrap.innerHTML = Array.from({length:n}, (_,i) =>
+    `<button class="cb-btn${(S.condBranch|0)===i?' active':''}" onclick="setCondBranch(${i})">${condBranchLabel(i,n)}</button>`
+  ).join('');
 }
 
 // Se um translation id NÃO está visível no preview atual porque vive no ramo INATIVO de uma
@@ -8931,20 +8953,17 @@ function setCondBranch(mode, btn){
 // motivo) não altera nada.
 function revealCondBranchForRow(rowId){
   if(!rowId) return false;
-  const save = S.condBranch;
-  // Calcula direto se o id aparece no ramo ATUAL (não depende do #vf estar carregado/atual —
-  // uma linha normal, que existe nos DOIS ramos, precisa ser reconhecida como "já visível"
-  // aqui, senão o toggle trocaria à toa toda vez que ela fosse clicada).
+  // Já visível como está (ramo/reveal atual)? não mexe — uma linha normal, presente em todos os
+  // ramos, não deve resetar o reveal toda vez que é clicada.
   let curHtml = '';
   try { curHtml = buildPreviewHtml(S.vLang); } catch(e) { return false; }
-  if(curHtml.includes('data-tid="' + rowId + '"')) return false; // já visível no ramo atual
-  const other = S.condBranch === 'else' ? 'if' : 'else';
-  S.condBranch = other;
-  let otherHtml = '';
-  try { otherHtml = buildPreviewHtml(S.vLang); } finally { S.condBranch = save; }
-  if(!otherHtml.includes('data-tid="' + rowId + '"')) return false; // não é o outro ramo — não força troca
-  S.condBranch = other;
-  document.querySelectorAll('.cb-btn').forEach(b => b.classList.toggle('active', (b.getAttribute('onclick')||'').includes("'" + other + "'")));
+  if(curHtml.includes('data-tid="' + rowId + '"')) return false;
+  // Tenta revelar esta linha (cada condicional, inclusive aninhado, escolhe o ramo que a contém).
+  let revealed = '';
+  try { revealed = buildPreviewHtml(S.vLang, rowId); } catch(e) { return false; }
+  if(!revealed.includes('data-tid="' + rowId + '"')) return false; // realmente não dá (VML/mso)
+  S.condRevealRow = rowId;   // buildPreviewHtml passa a revelar essa linha até trocar de alvo
+  renderCondBranchToggle();
   return true;
 }
 
@@ -8959,20 +8978,28 @@ function verifyAllRowsPositionable() {
   if(!S.rawHtml || !S.csv.rows.length) return;
   if(_integrityCheckedHtml === S.rawHtml) return; // já checado pra este HTML
   _integrityCheckedHtml = S.rawHtml;
-  const save = S.condBranch;
+  const save = S.condBranch, saveReveal = S.condRevealRow;
   const placeable = new Set();
+  // Uma linha é "posicionável" se dá pra REVELÁ-LA no preview (cada condicional, inclusive
+  // aninhado, escolhe o ramo que a contém). Varre o índice base 0 pra pegar o grosso de uma vez,
+  // e pra cada linha que não apareceu, tenta o reveal específico — assim cobre ramos aninhados
+  // sem testar todas as combinações. Só sobra de fora quem realmente não tem âncora visível
+  // (ex: só existe no fallback VML/mso do Outlook), que não é erro de extração.
   try {
-    ['if','else'].forEach(m => {
-      S.condBranch = m;
-      const h = buildPreviewHtml(S.vLang);
-      [...h.matchAll(/data-tid="(id\d+)"/g)].forEach(mm => placeable.add(mm[1]));
-    });
-  } finally { S.condBranch = save; }
+    S.condRevealRow = null; S.condBranch = 0;
+    const h0 = buildPreviewHtml(S.vLang);
+    [...h0.matchAll(/data-tid="(id\d+)"/g)].forEach(mm => placeable.add(mm[1]));
+    for(const r of S.csv.rows){
+      if(r.isImg || placeable.has(r.id)) continue;
+      let h = ''; try { h = buildPreviewHtml(S.vLang, r.id); } catch(e) {}
+      if(h.includes('data-tid="' + r.id + '"')) placeable.add(r.id);
+    }
+  } finally { S.condBranch = save; S.condRevealRow = saveReveal; }
   const missing = S.csv.rows.filter(r => !r.isImg && !placeable.has(r.id)).map(r => r.id);
   const ids = (S.rawHtml.match(/\{%translation\s+(id\d+)%\}/g) || []).map(s => (s.match(/id\d+/)||[''])[0]);
   const dups = [...new Set(ids.filter((id,i) => ids.indexOf(id) !== i))];
   if(missing.length || dups.length) {
-    console.warn('[integridade preview] ids que não aparecem em nenhum modo If/Else:', missing, '| ids duplicados no HTML:', dups);
+    console.warn('[integridade preview] ids que não aparecem em nenhum ramo:', missing, '| ids duplicados no HTML:', dups);
     if(typeof showNotif === 'function') {
       showNotif(`Aviso de integridade: ${missing.length} trecho(s) não aparecem no preview em nenhum modo${dups.length ? ` · ${dups.length} id(s) duplicado(s)` : ''} — veja o console.`, 'warn');
     }
@@ -9085,13 +9112,18 @@ function isInsideOpenLiquidTag(before){
 }
 
 /* ═══════════ HTML EXPORT MODAL ═══════════ */
-function buildTaggedHtml() {
+function buildTaggedHtml(silent) {
   if(!S.rawHtml) return '';
   function replaceFirst(str, search, replacement){
     const i = str.indexOf(search); if(i === -1) return str;
     return str.slice(0,i) + replacement + str.slice(i+search.length);
   }
-  let tagged = S.rawHtml;
+  // Mesma normalização da extração: desembrulha <code> puramente-Liquid ANTES de tagueiar, senão
+  // o src da linha ("Enjoy your first {{...}} days on us.", já sem o <code>) não seria encontrado
+  // no HTML (que ainda teria o <code> no meio). Assim a frase inteira é achada e tagueada como
+  // uma unidade só, com a merge tag dentro. O <code> some do HTML tagueado exportado — aceitável:
+  // ele só dava monospace a um snippet de Liquid que renderiza como valor simples no Braze.
+  let tagged = unwrapLiquidOnlyCode(S.rawHtml);
   const allRows = S.csv.rows.filter(r=>r.src||(r.isStyle&&r.outerKey));
   // Linhas que não conseguimos encontrar/tagueiar no HTML final — sem isso, a linha some do
   // export em silêncio e a pessoa acha que a tradução foi aplicada quando não foi.
@@ -9192,7 +9224,7 @@ function buildTaggedHtml() {
     }
     if(!tagged_ok) missed.push(r);
   });
-  if(missed.length){
+  if(missed.length && !silent){
     console.warn(`[buildTaggedHtml] ${missed.length} linha(s) não encontrada(s) no HTML e ficaram de fora do export:`, missed.map(r=>({id:r.id, src:(r.src||'').slice(0,80)})));
     if(typeof showNotif === 'function') showNotif(`${missed.length} linha(s) não foram encontradas no HTML e ficaram sem tradução no export — veja o console para detalhes.`, 'warn');
   }
@@ -9426,7 +9458,19 @@ async function downloadApprovalFramePng(lang) {
     // que está na tela), trocar o src pela data URI. data: é same-origin, então o canvas
     // captura a imagem sem contaminar e sem mexer no que o revisor vê.
     const urlToDataURL = async (url) => {
-      const resp = await fetch(url, { mode: 'cors' });
+      // A <img> VISÍVEL do preview já carregou essa mesma URL SEM crossorigin e populou o
+      // cache HTTP com uma resposta sem cabeçalho CORS. Um fetch(url,{mode:'cors'}) pra MESMA
+      // URL reaproveita essa entrada de cache (sem Access-Control-Allow-Origin) e a checagem
+      // de CORS falha com "Failed to fetch" — MAS só quando a img terminou de carregar ANTES
+      // do fetch rodar. É uma corrida: por isso só "algumas imagens de alguns e-mails" saíam
+      // em branco no PNG (intermitente, dependia de qual img ganhou a corrida). Eligible, com
+      // muitas imagens, batia nisso com frequência. Correção: um cache-buster (chave de cache
+      // DIFERENTE da que a <img> poluiu) + cache:'reload' forçam uma requisição NOVA, com o
+      // header Origin, que o braze-images responde com CORS. A query extra é ignorada pelo
+      // servidor (devolve a mesma imagem).
+      const bust = url + (url.includes('?') ? '&' : '?') + '__mltpng=1';
+      const resp = await fetch(bust, { mode: 'cors', cache: 'reload' });
+      if(!resp.ok) throw new Error('HTTP ' + resp.status);
       const blob = await resp.blob();
       return await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
     };
@@ -10063,9 +10107,10 @@ function renderApprovalGrid() {
           <span class="av-frame-lang">${toBrazeLang(lang)}</span>
           ${isOrig ? '<span class="av-frame-origin-badge">origin</span>' : ''}
           <span class="av-frame-count" style="display:none;">0</span>
-          <span class="av-cb-toggle" title="Só teste de visualização — não afeta o HTML/CSV">
-            <button class="av-cb-btn ${(!S.condBranch||S.condBranch==='if')?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch('if')">If</button>
-            <button class="av-cb-btn ${S.condBranch==='else'?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch('else')">Else</button>
+          <span class="av-cb-toggle" title="Só teste de visualização — não afeta o HTML/CSV"${maxCondBranchCount(S.rawHtml)<=1?' style="display:none;"':''}>
+            ${Array.from({length:maxCondBranchCount(S.rawHtml)}, (_,i) =>
+              `<button class="av-cb-btn ${(S.condBranch|0)===i?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch(${i})">${condBranchLabel(i,maxCondBranchCount(S.rawHtml))}</button>`
+            ).join('')}
           </span>
           <button class="av-cb-btn" title="Download this preview as a PNG image" style="border:1px solid var(--border-s);" onclick="event.stopPropagation();downloadApprovalFramePng('${escJsAttr(lang)}')">⬇ PNG</button>
           <span class="av-frame-approve-slot" id="avApproveSlot-${cssSafeLang(lang)}"></span>
@@ -10083,11 +10128,13 @@ function renderApprovalGrid() {
 // estado ÚNICO compartilhado entre todos os idiomas (clicar em qualquer frame atualiza
 // todos), pra comparar o mesmo branch lado a lado em vários idiomas de uma vez. Nunca
 // muda o HTML/CSV real, só recarrega os iframes de preview já abertos.
-function setApprovalCondBranch(mode) {
-  S.condBranch = mode;
+function setApprovalCondBranch(idx) {
+  S.condBranch = idx|0;
+  S.condRevealRow = null;
   document.querySelectorAll('.av-cb-btn').forEach(b => {
-    const isActive = b.getAttribute('onclick').includes(`'${mode}'`);
-    b.classList.toggle('active', isActive);
+    const oc = b.getAttribute('onclick') || '';
+    const mm = oc.match(/setApprovalCondBranch\((\d+)\)/);
+    if(mm) b.classList.toggle('active', (+mm[1]) === (S.condBranch|0));
   });
   const { langs } = approvalLangs();
   langs.forEach(lang => loadApprovalFrame(lang));
