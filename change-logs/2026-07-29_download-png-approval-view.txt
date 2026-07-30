@@ -1,0 +1,80 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-29
+Tema: Download da prévia do e-mail traduzido como PNG, na Approval View (por idioma)
+
+===============================================================================
+PEDIDO ORIGINAL
+===============================================================================
+Reportado: "A parte do download do png não estão disponíveis na plataforma." Confirmado
+com o usuário: exportar a PRÉVIA do e-mail traduzido (por idioma) como PNG, na Approval
+View. Antes disso NÃO existia nenhum download de PNG (só CSV/XLSX/HTML tageado).
+
+===============================================================================
+VIABILIDADE (verificada antes de implementar)
+===============================================================================
+As imagens dos e-mails vêm de braze-images.com (outro domínio). Pra "fotografar" o preview
+num canvas e exportar PNG, o servidor de imagens precisa mandar header de CORS — senão o
+canvas fica "contaminado" (tainted) e o PNG sairia em branco. Testado direto no navegador:
+braze-images.com MANDA CORS (corsOk:true) — dá pra desenhar as imagens e exportar com elas
+intactas. Também testado que html2canvas carrega do CDN e captura um preview real com uma
+imagem do braze, gerando PNG válido (não em branco, não contaminado).
+
+===============================================================================
+IMPLEMENTAÇÃO
+===============================================================================
+Arquivo: index.html
+- ensureHtml2Canvas(): carrega html2canvas (cdnjs) SOB DEMANDA, só no primeiro download —
+  mesmo padrão de CDN dos outros libs (xlsx/supabase). Cacheia a promise.
+- downloadApprovalFramePng(lang): pega o <iframe> do frame daquele idioma (blob same-origin,
+  então dá pra acessar contentDocument), roda html2canvas no body com useCORS:true e
+  scale:2, e baixa o canvas como PNG (nome: <projeto>_<locale>.png). Captura o corpo INTEIRO
+  do e-mail (scrollHeight), não só a parte visível.
+- Botão "⬇ PNG" adicionado no título de cada frame da Approval View (renderApprovalGrid),
+  ao lado do toggle If/Else.
+
+===============================================================================
+BUG GRAVE INTRODUZIDO E CORRIGIDO DURANTE A IMPLEMENTAÇÃO
+===============================================================================
+A primeira versão continha, num COMENTÁRIO (//) do JS, o texto literal "<script>"
+("...ver <script> no topo..."). Apesar de ser só um comentário de JS, o TOKENIZER HTML do
+navegador (que roda ANTES do parser de JS, sobre os bytes crus) enxerga esse "<script>" no
+meio do conteúdo do <script> inline. Combinado com os "<!--" que já existem no arquivo
+(comentários MSO em template strings), isso levou o tokenizer ao estado "script data double
+escaped", onde o "</script>" final NÃO fecha mais a tag — o navegador absorveu
+"</script></body></html>" como parte do script, quebrando o parse com "Unexpected token
+'<'". Resultado: TODO o script parava de executar (doLogin/authSetSession/etc. viravam
+undefined) — o app inteiro morria na tela de login.
+
+Sintoma reportado pelo usuário no meio da implementação: "Uncaught ReferenceError: doLogin
+is not defined". Confirmado que não era só o ambiente de teste.
+
+Diagnóstico: node (new Function/vm.Script) dizia que o JS era 100% válido — porque o
+problema é do TOKENIZER HTML, não do parser JS. Achado comparando o textContent do <script>
+no DOM (que absorvia "</script></body></html>") com o conteúdo servido (correto). Um teste
+A/B (git stash da alteração → app volta) provou que a edição era a causa; um grep nas linhas
+adicionadas achou o "<script>" literal no comentário.
+
+Correção: reescrito o comentário sem o texto "<script>" ("...ver as tags no topo..."). É
+exatamente por isso que o resto do codebase escreve '<scr'+'ipt>' partido — a convenção que
+eu tinha violado.
+
+NOTA sobre outros "<script>"/"<style>" literais que já existiam em comentários (ex: o bloco
+de computeProtectedRanges): foram DEIXADOS como estavam. O estado "seguro" do tokenizer
+depende da sequência EXATA de todos os "<!--"/"<script"/"</script" do arquivo; mexer neles
+poderia inverter a paridade e re-quebrar o app do mesmo jeito. O único estado
+verificado-funcionando é: só o MEU "<script>" removido, o resto intacto. LIÇÃO: nunca
+introduzir texto literal "<script>"/"<style>"/"<!--" no script inline, nem em comentários.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado:
+- Após a correção: doLogin/authSetSession/downloadApprovalFramePng/ensureHtml2Canvas todos
+  = function; o <script> do DOM termina corretamente (sem absorver as tags de fechamento);
+  título e tela de login normais.
+- Projeto real com texto + imagem do braze, traduzido pra en-GB, aberto na Approval View:
+  2 frames (origem + en-GB), 2 botões "⬇ PNG".
+- Download disparado de verdade (interceptando createObjectURL): Blob image/png, 22.840
+  bytes (conteúdo real, não em branco), 1328x184 (scale:2), nome "pngtest_en_gb.png".
+- Confirmado por screenshot: botão no frame, preview traduzido + imagem renderizada.
+- Dados de teste limpos ao final.

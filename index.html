@@ -9243,6 +9243,56 @@ function trigDL(content,name,mime){
   a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);
 }
 
+// html2canvas carregado SOB DEMANDA (só quando alguém baixa um PNG pela primeira vez) —
+// mesmo padrão de CDN dos outros libs (xlsx/supabase, ver as tags no topo). Cacheia a
+// promise pra não injetar o script duas vezes.
+let _html2canvasPromise = null;
+function ensureHtml2Canvas() {
+  if(window.html2canvas) return Promise.resolve(window.html2canvas);
+  if(_html2canvasPromise) return _html2canvasPromise;
+  _html2canvasPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload = () => resolve(window.html2canvas);
+    s.onerror = () => { _html2canvasPromise = null; reject(new Error('Could not load the PNG export library (offline?).')); };
+    document.head.appendChild(s);
+  });
+  return _html2canvasPromise;
+}
+
+// Baixa a prévia de UM idioma da Approval View como PNG. O preview de cada idioma é um
+// <iframe> com blob same-origin (dá pra acessar contentDocument). useCORS:true pra desenhar
+// as imagens do braze-images.com (que mandam header de CORS — confirmado, senão sairiam em
+// branco). Captura o corpo INTEIRO do e-mail (scrollHeight), não só a parte visível.
+async function downloadApprovalFramePng(lang) {
+  const vp = document.getElementById('avVp-' + cssSafeLang(lang));
+  const iframe = vp && vp.querySelector('iframe');
+  const doc = iframe && iframe.contentDocument;
+  if(!doc || !doc.body) { showNotif('Preview not ready yet — wait a moment and try again.', 'warn'); return; }
+  let h2c;
+  try { h2c = await ensureHtml2Canvas(); }
+  catch(e) { showNotif(e.message, 'warn'); return; }
+  showNotif('Generating PNG…', 'info', 2000);
+  try {
+    const w = doc.body.scrollWidth, h = doc.body.scrollHeight;
+    const canvas = await h2c(doc.body, {
+      useCORS: true, backgroundColor: '#ffffff', scale: 2,
+      width: w, height: h, windowWidth: w, windowHeight: h
+    });
+    const name = `${(S.csv.name || 'preview')}_${toBrazeLang(lang)}.png`.replace(/[^\w.\-]+/g, '_');
+    canvas.toBlob(blob => {
+      if(!blob) { showNotif('Could not generate the PNG.', 'warn'); return; }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    }, 'image/png');
+  } catch(e) {
+    showNotif('Could not generate the PNG: ' + (e && e.message || e), 'warn');
+  }
+}
+
 /* ═══════════ TABLE → PREVIEW HIGHLIGHT ═══════════ */
 let _selRow = -1;
 let _selLang = null;
@@ -9831,6 +9881,7 @@ function renderApprovalGrid() {
             <button class="av-cb-btn ${(!S.condBranch||S.condBranch==='if')?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch('if')">If</button>
             <button class="av-cb-btn ${S.condBranch==='else'?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch('else')">Else</button>
           </span>
+          <button class="av-cb-btn" title="Download this preview as a PNG image" style="border:1px solid var(--border-s);" onclick="event.stopPropagation();downloadApprovalFramePng('${escJsAttr(lang)}')">⬇ PNG</button>
           <span class="av-frame-approve-slot" id="avApproveSlot-${cssSafeLang(lang)}"></span>
         </div>
         <div class="av-frame-viewport${(_campaignPushPreview || _campaignInappPreview) ? ' av-frame-viewport-bare' : ''}" id="avVp-${cssSafeLang(lang)}" style="width:${frameW}px;"></div>
