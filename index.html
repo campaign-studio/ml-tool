@@ -991,12 +991,6 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
         <h1 class="dash-title">Dashboard</h1>
         <span id="dashSyncStatus" class="dash-sync"></span>
       </div>
-      <div style="display:flex;gap:10px;">
-        <button class="btn-next" id="newProjBtn" style="width:auto;padding:10px 20px;margin-top:0;" onclick="projCreate()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-          New project
-        </button>
-      </div>
     </div>
 
     <!-- TAB: PROJECTS -->
@@ -1044,9 +1038,17 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
       <div class="dash-section">
         <div class="dash-section-head">
           <div class="sec-lbl" style="margin-bottom:0;">Projects I started</div>
-          <div class="dash-sort" id="dashSort">
-            <button class="dash-sort-btn active" onclick="setDashSortMode('created', this)">Newest first</button>
-            <button class="dash-sort-btn" onclick="setDashSortMode('updated', this)">Last edited</button>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div class="dash-sort" id="dashSort">
+              <button class="dash-sort-btn active" onclick="setDashSortMode('created', this)">Newest first</button>
+              <button class="dash-sort-btn" onclick="setDashSortMode('updated', this)">Last edited</button>
+            </div>
+            <!-- "New project" agora vive aqui, no mesmo estilo/formato do "New folder" (mesma
+                 hierarquia: Folders tem New folder, Projects tem New project). -->
+            <button class="btn-next" id="newProjBtn" style="width:auto;padding:8px 16px;margin-top:0;font-size:12px;" onclick="projCreate()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;"><path d="M12 5v14M5 12h14"/></svg>
+              New project
+            </button>
           </div>
         </div>
         <div id="myProjectsList" style="display:flex;flex-direction:column;gap:14px;"></div>
