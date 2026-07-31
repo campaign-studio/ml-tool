@@ -1,0 +1,45 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: Pasta/Folder — ESTÁGIO 5 (final): remover item da pasta → volta a ser e-mail avulso, com
+a mesma trava anti-perda. Fecha o ciclo de vida completo (mover ↔ remover).
+
+===============================================================================
+O QUE ENTROU
+===============================================================================
+modules/folders.js:
+- planRemoveFromFolder(projects, folderId, itemId, newProjectId, createdAt) — PLANO puro:
+  reconstrói o avulso a partir do item (folderItemToProject, byte-fiel via _fromProjectData) com
+  um id NOVO (o id original está tombstoned pelo move; recriar com ele seria bloqueado) e devolve
+  { newLooseProject, folderWithoutItem }.
+
+index.html:
+- removeItemFromFolder(folderId, itemId) — ORDEM DE SEGURANÇA: 1) recria o avulso + salva (o item
+  AINDA está na pasta); 2) VERIFICA que o avulso entrou; 3) só ENTÃO tira o item da pasta. Se
+  falhar antes do 3, o item continua na pasta (nada perdido); pior caso entre 2-3 = duplicado,
+  recuperável, nunca perda. Atualiza o editor de campanha se estiver aberto na pasta.
+- UI: botão "↩ Remove" no card do item na galeria da pasta (só itens de e-mail — "voltar a solto"
+  é do mundo de e-mail).
+
+===============================================================================
+COMO FOI VERIFICADO (round-trip completo)
+===============================================================================
+No navegador real, sbClient bloqueado, mocks (nenhuma escrita no banco):
+- MOVE: pasta ganha 1 item, avulso some.
+- REMOVE (feliz): avulso recriado com id NOVO (≠ do original, dodgeia o tombstone), HTML
+  restaurado (contém o texto), aprovação (approvalDoneByLang) restaurada, pasta fica vazia.
+- REMOVE fail-safe: forçando a gravação a NÃO persistir o avulso recriado → o item PERMANECE na
+  pasta (não é perdido). Sem erros de console.
+
+===============================================================================
+FEATURE PASTA/FOLDER — COMPLETA (5 estágios)
+===============================================================================
+1. modules/folders.js isolado + conversão avulso<->item lossless.
+2. Compartilhar pasta (reusa canShareProject/openShareModal; pastas compartilhadas aparecem).
+3. Mover e-mail avulso pra pasta (trava anti-perda: verifica antes de deletar).
+4. Listagem: Pastas acima dos soltos, filtro Tudo/Fora-de-pasta, busca dentro das pastas.
+5. Remover da pasta → volta a solto (trava anti-perda: recria antes de tirar).
+
+Tudo reaproveita o motor de campanha (tagueamento/aprovação/push/in-app) — o código NOVO ficou
+isolado em modules/folders.js; o index.html só ganhou fiação fina (botões, modal, uso dos
+helpers). Aprovação por item, herança de acesso via compartilhamento da pasta, item numa pasta
+só. Testes end-to-end VISUAIS no dashboard logado ficam pra conferência do usuário.

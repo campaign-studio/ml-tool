@@ -3786,6 +3786,7 @@ function renderCampaignGallery(pairs) {
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           Edit
         </button>
+        ${it.type === 'email' && _campaign ? `<button class="tbtn" style="height:26px;padding:0 10px;font-size:11px;" title="Tirar da pasta e voltar a ser e-mail avulso" onclick="removeItemFromFolder('${escJsAttr(_campaign.id)}','${escJsAttr(it.id)}')">↩ Remove</button>` : ''}
       </div>
       <div id="campAssetPreview-${idx}" style="flex:1;background:#f2f1f6;"></div>
     </div>
@@ -5369,6 +5370,47 @@ async function createFolderAndMove() {
   const projects = projGetAll(); projects.push(folder);
   await withTimeout(projSaveAll(projects), 8000, 'projSaveAll (nova pasta)');
   await moveProjectToFolder(projId, folder.id);
+}
+
+// ── REMOVER item da pasta → volta a ser e-mail avulso (escrita, mesma trava anti-perda) ──────
+// Ordem: 1) RECRIA o avulso (id novo, pra dodgear o tombstone do id antigo do move) + salva;
+// 2) VERIFICA que entrou; 3) só ENTÃO tira o item da pasta. Se falhar antes do 3, o item
+// continua na pasta (nada perdido). No pior caso entre 2 e 3, fica duplicado (avulso + item) —
+// recuperável, nunca perda.
+async function removeItemFromFolder(folderId, itemId) {
+  const me = authCurrentUser(); if(!me) return;
+  if(!window.Folders) { showNotif('Módulo de pastas não carregou — recarregue a página.', 'warn'); return; }
+  if(!confirm('Remover este item da pasta? Ele volta a ser um e-mail avulso na lista.')) return;
+  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+
+  const now = Date.now();
+  const newId = 'p_' + now;
+  let projects = projGetAll();
+  const plan = Folders.planRemoveFromFolder(projects, folderId, itemId, newId, now);
+  if(!plan.ok) { showNotif(plan.error, 'warn'); return; }
+
+  // 1) recria o avulso + salva (o item AINDA está na pasta aqui).
+  const withLoose = projects.concat([plan.newLooseProject]);
+  await withTimeout(projSaveAll(withLoose), 8000, 'projSaveAll (restaura avulso)');
+  // 2) verifica que o avulso entrou antes de tirar da pasta.
+  const check = projGetAll().find(p => p.id === newId);
+  if(!check || !(check.data && typeof check.data.html === 'string')) {
+    showNotif('Não consegui recriar o e-mail avulso — o item foi MANTIDO na pasta.', 'warn'); return;
+  }
+  // 3) só ENTÃO tira o item da pasta.
+  const after = projGetAll().map(p => p.id === folderId
+    ? { ...p, items: (p.items||[]).filter(it => it.id !== itemId), updatedAt: Date.now() }
+    : p);
+  await withTimeout(projSaveAll(after), 8000, 'projSaveAll (tira item da pasta)');
+
+  // Se o editor de campanha está aberto nessa pasta, mantém o objeto vivo em dia.
+  if(typeof _campaign !== 'undefined' && _campaign && _campaign.id === folderId) {
+    _campaign.items = (_campaign.items||[]).filter(it => it.id !== itemId);
+    if(typeof renderCampaignTabs === 'function') renderCampaignTabs();
+    if(typeof renderCampaignMain === 'function') renderCampaignMain();
+  }
+  showNotif('Item removido da pasta — voltou pra lista de e-mails soltos.', 'ok', 2800);
+  renderDashboard();
 }
 
 let _renameProjectId = null;

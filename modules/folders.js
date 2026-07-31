@@ -161,8 +161,25 @@
     return { ok: true, folderWithItem, item, deleteProjectId: P.id };
   }
 
+  // ── REMOVER item da pasta → volta a solto (PLANO puro, não escreve) ─────────────────────────
+  // newProjectId: o avulso recriado ganha um id NOVO (o id original pode estar tombstoned pelo
+  // move anterior — recriar com ele seria bloqueado pelo tombstone). createdAt: carimbo do
+  // chamador (o módulo não usa Date.now). Retorna { ok, newLooseProject, folderWithoutItem }.
+  function planRemoveFromFolder(projects, folderId, itemId, newProjectId, createdAt) {
+    const F = (projects || []).find(x => x.id === folderId && x.kind === 'campaign');
+    if (!F) return { ok: false, error: 'Pasta não encontrada.' };
+    const item = (F.items || []).find(it => it.id === itemId);
+    if (!item) return { ok: false, error: 'Item não encontrado na pasta.' };
+    const loose = folderItemToProject(item, F.owner);
+    loose.id = newProjectId || loose.id;       // id novo (evita o tombstone do id antigo)
+    loose.createdAt = createdAt || loose.createdAt;
+    loose.updatedAt = createdAt || loose.updatedAt;
+    const folderWithoutItem = { ...F, items: (F.items || []).filter(it => it.id !== itemId) };
+    return { ok: true, newLooseProject: loose, folderWithoutItem, item };
+  }
+
   global.Folders = {
     isCampaign, isLoose, all, visibleTo, isOwner, looseProjects, listView, search, searchInFolder,
-    projectToFolderItem, folderItemToProject, planMoveIntoFolder,
+    projectToFolderItem, folderItemToProject, planMoveIntoFolder, planRemoveFromFolder,
   };
 })(typeof window !== 'undefined' ? window : this);
