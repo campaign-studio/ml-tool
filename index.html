@@ -1527,6 +1527,24 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
   </div>
 </div>
 
+<!-- ═══════════ UI MODAL genérico — substitui alert()/confirm()/prompt() do navegador por um
+     pop-up da própria plataforma (uiAlert/uiConfirm/uiPrompt, baseados em Promise). ═══════════ -->
+<div id="uiModal" class="modal-ov" style="display:none;">
+  <div class="card modal-card" style="width:100%;max-width:430px;">
+    <div class="ci" style="padding:26px;">
+      <h1 id="uiModalTitle" style="margin:0 0 8px;font-size:18px;"></h1>
+      <p class="sub" id="uiModalMsg" style="margin-bottom:16px;white-space:pre-wrap;"></p>
+      <div class="field" id="uiModalField" style="margin-bottom:0;display:none;">
+        <input id="uiModalInput" type="text" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter'){event.preventDefault();uiModalResolve(true);}">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;">
+        <button class="btn-back" id="uiModalCancel" style="flex:1;" onclick="uiModalResolve(false)">Cancel</button>
+        <button class="btn-next" id="uiModalOk" style="flex:1;margin-top:0;" onclick="uiModalResolve(true)">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════ LOCK TAKEOVER WARNING (someone else grabbed the lock after 3min) ═══════════ -->
 <!-- ═══════════ SYNC WARNING TOAST ═══════════ -->
 <div id="syncWarningToast" class="sync-toast"></div>
@@ -3288,6 +3306,41 @@ let _dashFolderFilter = null;
 function escJsAttr(s) {
   return String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
+
+// ── Pop-ups da plataforma (substituem alert/confirm/prompt do navegador) ─────────────────────
+// Baseados em Promise: uiAlert(msg) → resolve void; uiConfirm(msg) → resolve boolean;
+// uiPrompt(msg, {def}) → resolve string (ou null se cancelou). Um modal só, reaproveitado.
+let _uiModalResolver = null, _uiModalMode = 'alert';
+function uiModalResolve(ok) {
+  const resolver = _uiModalResolver; _uiModalResolver = null;
+  const m = document.getElementById('uiModal'); if(m) m.style.display = 'none';
+  if(!resolver) return;
+  if(_uiModalMode === 'prompt') resolver(ok ? document.getElementById('uiModalInput').value : null);
+  else if(_uiModalMode === 'confirm') resolver(!!ok);
+  else resolver();
+}
+function _uiOpen(o) {
+  o = o || {};
+  return new Promise(res => {
+    _uiModalResolver = res; _uiModalMode = o.mode || 'alert';
+    document.getElementById('uiModalTitle').textContent = o.title || (o.mode === 'alert' ? 'Heads up' : 'Please confirm');
+    document.getElementById('uiModalMsg').textContent = o.message || '';
+    const field = document.getElementById('uiModalField'), input = document.getElementById('uiModalInput');
+    if(o.mode === 'prompt') { field.style.display = ''; input.value = o.def || ''; input.placeholder = o.placeholder || ''; }
+    else field.style.display = 'none';
+    const cancel = document.getElementById('uiModalCancel'), ok = document.getElementById('uiModalOk');
+    cancel.style.display = (o.mode === 'alert') ? 'none' : '';
+    cancel.textContent = o.cancelLabel || 'Cancel';
+    ok.textContent = o.okLabel || 'OK';
+    ok.className = o.danger ? 'btn-danger' : 'btn-next';
+    ok.style.flex = '1'; ok.style.marginTop = '0';
+    document.getElementById('uiModal').style.display = 'flex';
+    if(o.mode === 'prompt') setTimeout(() => { input.focus(); input.select(); }, 30);
+  });
+}
+function uiAlert(message, opts) { return _uiOpen(Object.assign({}, opts, { message: message, mode: 'alert' })); }
+function uiConfirm(message, opts) { return _uiOpen(Object.assign({}, opts, { message: message, mode: 'confirm' })); }
+function uiPrompt(message, opts) { return _uiOpen(Object.assign({}, opts, { message: message, mode: 'prompt' })); }
 
 // Filtro de pasta do dashboard: 'all' (pastas + soltos, padrão) | 'unfoldered' (só os soltos,
 // esconde a seção de Pastas). Puramente de visualização — não muda dado nenhum.
