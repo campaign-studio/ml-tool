@@ -1,0 +1,61 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: Approve by Locale REFEITO — agora é DENTRO da pasta (não no Dashboard) e mostra os PREVIEWS
+      localizados de todos os assets, recortando a aprovação por IDIOMA.
+
+===============================================================================
+CORREÇÃO DE RUMO
+===============================================================================
+A 1a versão colocou "Approve by Locale" como uma TELA no Dashboard, listando itens (tipo + nome +
+botão) de TODAS as campanhas. Estava errado em dois pontos, conforme o usuário:
+- Lugar: tem que ser DENTRO da pasta aberta, não uma tela solta no Dashboard.
+- Formato: tem que VISUALIZAR os assets (o preview renderizado na versão daquele idioma), não uma
+  listinha.
+A função é SEPARAR a aprovação por idioma: abrir "EN" e ver TODOS os e-mails, TODOS os in-apps e
+TODOS os pushes daquela pasta já na versão EN, cada um com Approve só daquele idioma. Depois trocar
+a aba pra o próximo país.
+
+===============================================================================
+O QUE FOI REMOVIDO
+===============================================================================
+- Botão "Approve by Locale" do topo do Dashboard.
+- Tela #approveByLocaleScreen (dashboard-level) + JS (openApproveByLocale/closeApproveByLocale/
+  setAblLocale/renderApproveByLocale/ablToggleApproval, _ablLocale).
+(As helpers localesInUse/byLocale/itemApprovedForLocale de modules/folders.js ficaram — inofensivas;
+ a visão de pasta calcula direto do _campaign, não precisa delas.)
+
+===============================================================================
+O QUE ENTROU (index.html) — tudo recortando o _campaign ABERTO
+===============================================================================
+- Aba "🌐 By Locale" no cabeçalho do editor da pasta, ao lado de Email/In-app/Push
+  (renderCampaignTabs), com um divisor. Estado: _campaignByLocale + _campaignLocale.
+- Container #campaignLocaleView (abas de locale #campLocaleTabs + corpo #campLocaleBody).
+- renderCampaignMain: quando _campaignByLocale, ocupa a tela toda (esconde galeria/edit/vazio) e
+  chama renderCampaignByLocale; esconde "+ Add content" nesse modo.
+- campaignLocalesInUse(): união dos item.langs de TODOS os itens da pasta, na ordem fixa da
+  plataforma (sortLangsForDisplay); abas só dos idiomas que existem.
+- renderCampaignByLocale(): abas + corpo agrupado por TIPO (Emails, depois In-apps, depois Pushes),
+  cada seção com contagem; cada asset vira um card com o PREVIEW localizado + Approve/Approved.
+- renderCampaignLocaleThumb(): preview no locale escolhido — buildPreviewHtml(loc) via S emprestado
+  (mesmo caminho da galeria) pra email/in-app; cartão de push com title/body do loc.
+- campToggleLocaleApproval(idx): alterna item.approvalDoneByLang[loc] (undone:true pra desaprovar,
+  nunca deleta a chave — ver isLangApproved) no _campaign em memória + scheduleCampaignAutosave.
+  É o MESMO campo da aprovação por item, só recortado por idioma — não é dado novo.
+- Sai do modo By Locale ao: trocar de aba de tipo, abrir edição/aprovação de um item, voltar pra
+  galeria, ou reabrir a pasta.
+- CSS .abl-section/.abl-grid(-email/-inapp/-push)/.abl-card/.abl-card-preview(-tipo)/.abl-approve-btn:
+  emails largos e altos (520px), in-app estreito (fundo de celular), push compacto.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado, mocks (nenhuma escrita no banco):
+- Pasta com Email 1/2, Inapp 1, Push 1 e idiomas misturados (pt-BR/de-DE).
+- Abas: de_de (ativa) e pt_br, na ordem fixa, só os idiomas presentes.
+- de_de: seção Emails (2) [Email 1 = Approve, Email 2 = já Approved], In-apps (1), Pushes (1) —
+  todos juntos, separados por tipo, cada um com o preview marcado no locale certo.
+- Approve no Email 1: autosave chamado (1x), approvalDoneByLang[de-DE] setado, botão vira Approved.
+- Trocar pra pt_br: Push 1 some (só existe em de-DE); sobram Emails (1) + In-apps (1) = 2 cards.
+- Sem erros de console.
+NOTA: o preview de e-mail real (iframe via buildPreviewHtml) usa o MESMO caminho já provado pela
+galeria da pasta; o teste isolou a estrutura/agrupamento/aprovação com um stub de preview.
