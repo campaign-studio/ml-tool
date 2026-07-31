@@ -1,0 +1,41 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: Pasta/Folder — ESTÁGIO 2: compartilhar pasta (reusa o fluxo de share existente).
+Decisão confirmada: enriquecer a seção de campanhas existente (= a pasta), sem aba nova; começar
+por "compartilhar" (sem migração de dados = mais seguro).
+
+===============================================================================
+O QUE ENTROU
+===============================================================================
+Arquivo modules/folders.js:
+- visibleTo(email): pastas (kind:'campaign') visíveis pra um e-mail — dono OU sharedWith OU
+  approver. Mesma regra de acesso dos projetos soltos; compartilhar a pasta dá acesso a tudo
+  dentro (os itens vivem em p.items → herdam o acesso).
+- isOwner(p,email).
+
+Arquivo index.html (edições mínimas nas funções de render de campanha; nada reimplementado):
+- renderCampaignsList: lista agora usa Folders.visibleTo(me.email) em vez de só "owner === me" —
+  então uma pasta compartilhada finalmente aparece pra quem recebeu.
+- campaignRowHtml: botão "Share with your team" (gate canShareProject, EXATAMENTE como os
+  projetos soltos → abre openShareModal(p.id), que já funciona pra qualquer projeto por id,
+  inclusive campanha). Não-dono: badge "🔗 Shared", mostra "by <dono>", e SEM rename/delete
+  (só dono/superadmin). Compartilhar/remover acesso reusa setMemberRole (mesmos guards).
+
+Zero migração de dados. Reaproveita canShareProject/openShareModal/setMemberRole/isSuperadmin.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado (mocks locais, nenhuma escrita):
+- Folders.visibleTo('me') = minhas + compartilhadas comigo; exclui pasta compartilhada com
+  outra pessoa.
+- campaignRowHtml: card do dono tem Share+Delete+Rename; card compartilhado (member não-dono)
+  tem badge "Shared", SEM Share/Delete/Rename (respeita a permissão). Sem erros de console.
+
+===============================================================================
+PRÓXIMOS ESTÁGIOS
+===============================================================================
+3. Mover e-mail avulso pra pasta (escrita/migração — conversão lossless já testada no estágio 1;
+   será feito com backup/verificação).
+4. Filtros Todos/Fora-de-pasta + pastas acima dos soltos + busca ampliada (só leitura/render).
+5. Remover da pasta → volta a solto.

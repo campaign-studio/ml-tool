@@ -3418,7 +3418,9 @@ function renderCampaignsList() {
   const me = authCurrentUser();
   const list = document.getElementById('campaignsList');
   if(!me || !list) return;
-  const mine = campaignGetAll().filter(p => p.owner.toLowerCase() === me.email.toLowerCase());
+  // Pastas VISÍVEIS: minhas + compartilhadas comigo + onde sou approver (via módulo Folders) —
+  // antes só mostrava as minhas, então uma pasta compartilhada nunca aparecia pra quem recebeu.
+  const mine = (window.Folders ? Folders.visibleTo(me.email) : campaignGetAll().filter(p => p.owner.toLowerCase() === me.email.toLowerCase()));
   if(!mine.length) {
     list.innerHTML = `<div class="empty-state"><p>No projects yet.<br>Click "New project" above to group emails, in-apps and pushes together.</p></div>`;
     return;
@@ -3443,6 +3445,14 @@ function campaignRowHtml(p) {
     `<span class="lang-chip">${escHtml(typeLabel[t] || t)} ×${typeCounts[t]}</span>`
   ).join('');
   const progressBadge = translationProgressBadgeHtml(campaignTranslationStats(p));
+  const me = authCurrentUser();
+  const isOwner = me && p.owner && p.owner.toLowerCase() === me.email.toLowerCase();
+  // Compartilhar pasta reusa EXATAMENTE o fluxo dos projetos soltos (canShareProject +
+  // openShareModal + setMemberRole). Compartilhar a pasta dá acesso a tudo dentro (os itens
+  // vivem em p.items, então o acesso é herdado). Só dono/superadmin deletam; um editor
+  // compartilhado abre mas não deleta.
+  const canShare = isOwner || canShareProject(p);
+  const sharedBadge = (!isOwner) ? `<span class="lang-chip" title="Shared with you by ${escHtml(p.owner||'')}">🔗 Shared</span>` : '';
   return `
     <div class="proj-row">
       <div class="proj-body">
@@ -3450,17 +3460,18 @@ function campaignRowHtml(p) {
           <div class="proj-header">
             <div class="proj-name">
               ${escHtml(p.name)}
-              <button class="proj-rename-btn" title="Rename project" onclick="event.stopPropagation();renameCampaign('${p.id}')">✎</button>
+              ${isOwner ? `<button class="proj-rename-btn" title="Rename project" onclick="event.stopPropagation();renameCampaign('${p.id}')">✎</button>` : ''}
             </div>
           </div>
-          <div class="proj-meta">Created on ${new Date(p.createdAt).toLocaleDateString('en-US')}${p.updatedAt ? ` · Last edited ${relativeTime(p.updatedAt)}` : ''}</div>
-          <div class="proj-flags" style="margin-top:6px;">${badges || '<span style="font-size:11px;color:var(--text3);">No content yet</span>'}</div>
+          <div class="proj-meta">Created on ${new Date(p.createdAt).toLocaleDateString('en-US')}${p.updatedAt ? ` · Last edited ${relativeTime(p.updatedAt)}` : ''}${!isOwner && p.owner ? ` · by ${escHtml(authorName(p.owner))}` : ''}</div>
+          <div class="proj-flags" style="margin-top:6px;">${sharedBadge}${badges || '<span style="font-size:11px;color:var(--text3);">No content yet</span>'}</div>
           ${progressBadge ? `<div class="proj-badges" style="margin-top:6px;">${progressBadge}</div>` : ''}
         </div>
       </div>
       <div class="proj-actions">
         <button class="btn-go" onclick="openCampaignEditor('${p.id}')">Open Project</button>
-        <button class="btn-danger" onclick="deleteCampaign('${p.id}')">Delete</button>
+        ${canShare ? `<button class="btn-back" onclick="openShareModal('${p.id}')">Share with your team</button>` : ''}
+        ${isOwner || (me && isSuperadmin(me.role)) ? `<button class="btn-danger" onclick="deleteCampaign('${p.id}')">Delete</button>` : ''}
       </div>
     </div>
   `;

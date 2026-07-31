@@ -32,6 +32,19 @@
   // Todas as pastas (registros kind:'campaign').
   function all() { return app.campaigns(); }
 
+  // Pastas VISÍVEIS pra um e-mail: dono OU compartilhada (sharedWith) OU approver. Mesma regra
+  // de acesso que os projetos soltos já usam — compartilhar a pasta dá acesso a tudo dentro dela.
+  function visibleTo(email) {
+    const e = String(email || '').toLowerCase();
+    return all().filter(p =>
+      (p.owner || '').toLowerCase() === e ||
+      (p.sharedWith || []).some(x => (x || '').toLowerCase() === e) ||
+      (p.approvers || []).some(x => (x || '').toLowerCase() === e)
+    );
+  }
+  // É minha (sou dono)?
+  function isOwner(p, email) { return p && (p.owner || '').toLowerCase() === String(email || '').toLowerCase(); }
+
   // Projetos "soltos" (fora de qualquer pasta) = os que não são campanha.
   function looseProjects() { return app.projects().filter(isLoose); }
 
@@ -125,7 +138,7 @@
   }
 
   global.Folders = {
-    isCampaign, isLoose, all, looseProjects, listView, search, searchInFolder,
+    isCampaign, isLoose, all, visibleTo, isOwner, looseProjects, listView, search, searchInFolder,
     projectToFolderItem, folderItemToProject,
   };
 })(typeof window !== 'undefined' ? window : this);
