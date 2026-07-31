@@ -559,14 +559,21 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
   background:var(--surface);border:1px solid var(--border);
   box-shadow:0 1px 3px rgba(20,20,40,.05);transition:border-color .18s,box-shadow .18s,transform .18s;}
 .camp-item-card:hover{border-color:var(--border-s);box-shadow:0 16px 36px rgba(20,20,40,.12);transform:translateY(-3px);}
-.camp-item-preview{height:300px;overflow:hidden;background:#f2f1f6;position:relative;}
+.camp-item-preview{height:440px;overflow:hidden;background:#f2f1f6;position:relative;}
 .camp-item-preview iframe{width:100%;height:100%;border:none;}
-.camp-item-foot{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--border);background:var(--s2);}
-.camp-item-info{flex:1;min-width:0;}
-.camp-item-name{font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.camp-item-progress{margin-top:4px;}
-.camp-item-actions{display:flex;gap:6px;flex-shrink:0;opacity:0;transform:translateY(2px);transition:opacity .15s,transform .15s;}
-.camp-item-card:hover .camp-item-actions{opacity:1;transform:none;}
+/* Rodapé em COLUNA: linha de info (nome + progresso) em cima, linha de AÇÕES embaixo — sempre
+   visíveis (não escondidas no hover), pra "Remove from folder" e "Delete" ficarem evidentes. */
+.camp-item-foot{display:flex;flex-direction:column;gap:10px;padding:13px 15px;border-top:1px solid var(--border);background:var(--s2);}
+.camp-item-info{display:flex;align-items:center;gap:10px;min-width:0;}
+.camp-item-name{flex:1;min-width:0;font-size:14px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.camp-item-progress{flex-shrink:0;}
+.camp-item-actions{display:flex;gap:7px;flex-wrap:wrap;}
+.camp-item-actions .tbtn{flex-shrink:0;}
+/* Botão "Remove from folder" — evidente (borda âmbar), e "Delete item" — vermelho. */
+.camp-item-btn-remove{border-color:#fcd34d!important;color:#b45309!important;background:#fffbeb!important;font-weight:600;}
+.camp-item-btn-remove:hover{background:#fef3c7!important;}
+.camp-item-btn-delete{border-color:#fca5a5!important;color:#dc2626!important;background:#fff5f5!important;}
+.camp-item-btn-delete:hover{background:#fee2e2!important;}
 
 .proj-row{position:relative;overflow:hidden;display:flex;flex-direction:column;gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:24px 26px 22px 32px;box-shadow:0 1px 3px rgba(20,20,40,.05);transition:border-color .2s,box-shadow .2s,transform .2s;}
 .proj-row::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--wh-navy),var(--wh-navy2));opacity:.85;transition:width .2s;}
@@ -1176,7 +1183,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
   <!-- Galeria: landing da aba ativa — mostra TODOS os assets daquele tipo já com
        preview + Edit/Approve copies em cima de cada um, sem precisar abrir nada. -->
   <div id="campaignGallery" style="flex:1;display:none;overflow:auto;padding:24px;">
-    <div id="campaignGalleryGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;max-width:1400px;margin:0 auto;"></div>
+    <div id="campaignGalleryGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:22px;max-width:1500px;margin:0 auto;"></div>
   </div>
   <div id="campaignItemBody" style="flex:1;display:none;overflow:hidden;">
     <div style="display:flex;height:100%;">
@@ -3844,15 +3851,22 @@ function renderCampaignGallery(pairs) {
           <div class="camp-item-progress">${translationProgressBadgeHtml(campaignItemTranslationStats(it), 'font-size:10px;padding:2px 8px;')}</div>
         </div>
         <div class="camp-item-actions">
-          <button class="tbtn" style="height:28px;padding:0 11px;font-size:11px;border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;" title="Aprovar cópias" onclick="openCampaignItemApprove(${idx})">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
+          <button class="tbtn" style="height:30px;padding:0 12px;font-size:11.5px;border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;" title="Approve copies" onclick="openCampaignItemApprove(${idx})">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
             Approve
           </button>
-          <button class="tbtn html" style="height:28px;padding:0 11px;font-size:11px;" title="Editar traduções" onclick="openCampaignItemEdit(${idx})">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          <button class="tbtn html" style="height:30px;padding:0 12px;font-size:11.5px;" title="Edit translations" onclick="openCampaignItemEdit(${idx})">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             Edit
           </button>
-          ${it.type === 'email' && _campaign ? `<button class="tbtn" style="height:28px;padding:0 11px;font-size:11px;" title="Remove from folder (back to a standalone email)" onclick="removeItemFromFolder('${escJsAttr(_campaign.id)}','${escJsAttr(it.id)}')">↩</button>` : ''}
+          ${it.type === 'email' && _campaign ? `<button class="tbtn camp-item-btn-remove" style="height:30px;padding:0 12px;font-size:11.5px;" title="Remove this email from the folder — it goes back to the standalone list" onclick="removeItemFromFolder('${escJsAttr(_campaign.id)}','${escJsAttr(it.id)}')">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 015 5v1"/></svg>
+            Remove from folder
+          </button>` : ''}
+          <button class="tbtn camp-item-btn-delete" style="height:30px;padding:0 11px;font-size:11.5px;" title="Delete this item permanently" onclick="deleteContentItem(${idx})">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
+            Delete
+          </button>
         </div>
       </div>
     </div>
