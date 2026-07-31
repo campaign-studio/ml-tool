@@ -6088,6 +6088,40 @@ function projectHasApproval(){
   return !!(S.approvalDoneByLang && Object.keys(S.approvalDoneByLang).some(l => isLangApproved(S.approvalDoneByLang, l)));
 }
 
+// Insere {%translation idN%}...{%endtranslation%} em volta do src das imagens NOVAS (linhas
+// isImg cujo id ainda não aparece no HTML tageado), SEM re-tagear o resto (evita tags aninhadas).
+// Necessário porque um projeto JÁ tageado não passa pelo buildTaggedHtml no save — sem isto, uma
+// imagem adicionada depois ("esquecida") fica só na memória/CSV e SOME no reload, porque ao
+// reabrir as linhas vêm das tags do HTML (parseSavedProjectHtml). Retorna o HTML atualizado.
+function mergeNewImageTagsIntoHtml(html, rows){
+  if(!html) return html;
+  let out = html;
+  (rows||[]).forEach(r => {
+    if(!r.isImg) return;
+    if(out.indexOf('{%translation ' + r.id + '%}') !== -1) return; // essa linha já tem tag
+    // Acha o <img> desta imagem: prefere o imgTag guardado; senão localiza pelo src.
+    let imgStr = null, pos = -1;
+    if(r.imgTag){ const p = out.indexOf(r.imgTag); if(p !== -1){ imgStr = r.imgTag; pos = p; } }
+    if(pos === -1 && r.src){
+      const p = out.indexOf(r.src);
+      if(p !== -1){
+        let s = p; while(s > 0 && out[s] !== '<') s--;
+        let e = p; while(e < out.length && out[e] !== '>') e++;
+        if(out[s] === '<' && out[e] === '>' && /^<img[\s>]/i.test(out.slice(s, s+5))){ imgStr = out.slice(s, e+1); pos = s; }
+      }
+    }
+    if(pos === -1 || !imgStr) return;                 // não achou — não mexe (não quebra o HTML)
+    if(/\{%translation/.test(imgStr)) return;         // esse <img> já está tageado
+    const newImgStr = imgStr.replace(/\bsrc=(?:"([^"]*)"|'([^']*)')/i, (m, dq, sq) => {
+      const val = (dq !== undefined ? dq : sq);
+      return `src="{%translation ${r.id}%}${val}{%endtranslation%}"`;
+    });
+    if(newImgStr === imgStr) return;                  // sem src pra envolver
+    out = out.slice(0, pos) + newImgStr + out.slice(pos + imgStr.length);
+  });
+  return out;
+}
+
 function buildCSV() {
   // Se já temos rows (de import OU de um build anterior), preserva as traduções existentes
   // e apenas sincroniza os langs com os targets atuais — sem recriar rows do zero.
@@ -6158,6 +6192,14 @@ function buildCSV() {
           translations: Object.fromEntries(S.csv.langs.map(l => [l, '']))
         });
       });
+
+    // Projeto JÁ tageado (reaberto/continue editing): o save não passa pelo buildTaggedHtml, então
+    // é AQUI que a imagem nova precisa ganhar sua tag {%translation%} DENTRO do HTML — senão ela
+    // fica só na memória/CSV e some no reload. (Projeto novo ainda não tageado é tageado inteiro
+    // no buildTaggedHtml ao construir, então não precisa disto.)
+    if(S.htmlAlreadyTagged && S.rawHtml){
+      S.rawHtml = mergeNewImageTagsIntoHtml(S.rawHtml, S.csv.rows);
+    }
 
     const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
     S.vLang = origLang;
