@@ -1,0 +1,76 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: voltar a etapas anteriores do wizard sem perder o trabalho — remover destino ESTACIONA a
+tradução (reversível), goTo(1) não reseta projeto existente, origem é troca de rótulo (não
+re-extrai), e troca de imagem em versão aprovada reusa a regra silenciosa + pendente.
+
+===============================================================================
+PEDIDO
+===============================================================================
+Poder voltar a qualquer etapa já preenchida (Origem, Destinos, Imagens) e salvar sem perder as
+etapas seguintes; cada mudança persiste no banco substituindo o valor antigo. Decisões
+confirmadas (todas as "recomendadas"): remover destino = ESTACIONAR (não apagar); trocar origem
+= só o rótulo (re-extração é ação separada); goTo(1) em projeto existente = carregar, não
+resetar; troca de imagem em versão aprovada = mesma regra silenciosa + pendente.
+
+===============================================================================
+DIAGNÓSTICO (estado anterior)
+===============================================================================
+- goTo(step) já PRESERVA S ao navegar — MENOS goTo(1), que fazia resetAll() sempre (inclusive
+  num projeto existente aberto do Dashboard → voltar às primeiras etapas zerava tudo).
+- buildCSV tem ramo de re-entrada (rows>0) que preserva traduções e sincroniza imagens, mas só
+  ADICIONAVA idiomas novos: um destino REMOVIDO continuava na lista e no CSV. E, como
+  buildCsvStringForSave só exporta os langs ativos, a tradução de um idioma removido sumia no
+  save (perda de trabalho).
+- pickOrigin já é não-destrutivo (só troca S.origin, não re-extrai) — a recomendação (a) pra
+  origem já era o comportamento; faltava garantir que navegar de volta não resetasse.
+- Formatos de lang: parseBrazeCsv (reopen) e expandLang (wizard) usam AMBOS hífen (pt-BR) —
+  confirmado com projeto real, sem desalinhamento.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Arquivo: index.html
+
+1) Remover destino ESTACIONA (não apaga) — buildCSV ramo rows>0:
+   - Antes de adicionar os idiomas novos, remove os que saíram dos destinos: guarda
+     {rowId: tradução} em S.parkedLangs[lang] e deleta a coluna (r.translations[lang]).
+   - Ao (re)adicionar um idioma, se houver estacionado pra ele, RESTAURA as traduções e limpa o
+     estacionamento (consumido). Reversível e não-destrutivo.
+   - S.parkedLangs novo no estado; persistido em data.parkedLangs (projSaveOnBuild + autosave),
+     carregado em restoreProjectContent, resetado ao fechar.
+
+2) goTo(1) não reseta projeto existente:
+   - `if(step === 1 && !currentProjectId) resetAll();` — projeto novo ainda zera no passo 1;
+     projeto já salvo preserva o estado ao voltar pela breadcrumb. Re-upload/re-extração continua
+     possível como ação explícita, não como efeito de navegar.
+
+3) Origem = troca de rótulo (recomendado a): pickOrigin já não re-extrai; data.origin persiste no
+   save normal. Re-extrair o texto-fonte (que renumeraria ids e limparia traduções) fica como
+   ação separada e explícita — NÃO implementada aqui de propósito.
+
+4) Troca de imagem em versão aprovada: reusa o mecanismo já existente (nextRowId + pendingImgIds):
+   trocar = tirar a imagem antiga (deseleciona → remove a linha) e pôr a nova (entra com o próximo
+   id livre e, se o projeto já estava aprovado, marcada como "pendente"); a aprovação NUNCA é
+   resetada. Sem código novo — só reaproveitamento.
+
+===============================================================================
+EDGE CASES (cobertos)
+===============================================================================
+- Remover idioma com tradução em andamento: ESTACIONADO, não apagado; re-adicionar restaura.
+- Trocar origem depois do CSV gerado: só troca o rótulo (não reprocessa). Reprocessamento real =
+  ação separada com confirmação (fora do escopo desta entrega).
+- Trocar imagem de versão aprovada: silencioso, aprovação mantida, nova imagem pendente.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado:
+1. Estacionamento (formato real hífen): remover destino 'es-MX' → coluna some, {id1,id2}
+   estacionados; re-adicionar 'es-MX' → traduções restauradas ('es-MX-Hello'...), 'pt-BR'
+   intacto, estacionamento consumido.
+2. Formato de lang: parseBrazeCsv de um projeto real devolve hífen (de-DE...), igual expandLang —
+   sem desalinhamento no reopen.
+3. Round-trip de persistência: S.parkedLangs → data.parkedLangs → restore → restaurado igual.
+4. goTo(1): reseta só quando currentProjectId é nulo (projeto novo).
+5. Sem erros de console após recarregar.

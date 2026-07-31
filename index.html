@@ -5452,6 +5452,10 @@ const S = {
   // resetada (mesma regra silenciosa da edição manual de HTML), mas a imagem nova fica marcada
   // como "pendente de revisão" até uma nova aprovação. Persistido em data.pendingRowIds.
   pendingImgIds: [],
+  // Traduções "estacionadas" de idiomas removidos dos destinos: { lang: { rowId: tradução } }.
+  // Remover um destino tira a coluna mas NÃO apaga o trabalho — re-adicionar o idioma restaura.
+  // Persistido em data.parkedLangs.
+  parkedLangs: {},
   selImgs: new Set(), // images selected for localisation
   isImport: false,    // true while in Continue Editing flow
   // "Start from scratch" também parte de um HTML já tageado, mas PRECISA passar pela
@@ -5617,7 +5621,11 @@ function updateBreadcrumb(page) {
 const PAGES = ['page1','page2','page3','page3i','page4','page5'];
 
 function goTo(step) {
-  if(step === 1) resetAll();
+  // Passo 1 (Upload) zera tudo SÓ no fluxo de projeto NOVO. Num projeto já existente (aberto do
+  // Dashboard), voltar às primeiras etapas pela breadcrumb deve PRESERVAR o estado — senão
+  // reeditar Origem/Destinos exigiria refazer o projeto do zero. (Re-upload/re-extração continua
+  // possível como ação explícita dentro da tela, não como efeito colateral de navegar.)
+  if(step === 1 && !currentProjectId) resetAll();
 
   // If leaving page3i, restore right-col to app-body and reset left-col width
   const slot = document.getElementById('imgViewerSlot');
@@ -5684,6 +5692,7 @@ function resetAll() {
   S.condRevealRow = null;
   S.maxIdIssued = 0;
   S.pendingImgIds = [];
+  S.parkedLangs = {};
   S.approvalComments = [];
   S.approvalDoneByLang = {};
   S.approvalActivity = [];
@@ -6086,11 +6095,30 @@ function buildCSV() {
   if(S.csv.rows.length > 0){
     const tgts = S.targets.map(code=>S.allC.find(c=>c.code===code)).filter(Boolean);
     const newLangs = [...new Set(tgts.flatMap(c => expandLang(c.lang)))];
-    // Adiciona novos idiomas (colunas novas, preservando as existentes)
+    const desired = new Set(newLangs);
+    S.parkedLangs = S.parkedLangs || {};
+
+    // 1) REMOVE idiomas que saíram dos destinos — mas ESTACIONA as traduções em vez de apagar:
+    // guarda {rowId: tradução} em S.parkedLangs[lang] e tira a coluna. Se a pessoa re-adicionar o
+    // idioma depois, o progresso volta (não-destrutivo, reversível). Sem isso, remover um destino
+    // perdia a tradução no save (buildCsvStringForSave só exporta os langs ativos).
+    S.csv.langs.filter(l => !desired.has(l)).forEach(lang => {
+      const stash = {};
+      S.csv.rows.forEach(r => {
+        if((r.translations[lang] || '') !== '') stash[r.id] = r.translations[lang];
+        delete r.translations[lang];
+      });
+      if(Object.keys(stash).length) S.parkedLangs[lang] = stash;
+      S.csv.langs = S.csv.langs.filter(l => l !== lang);
+    });
+
+    // 2) ADICIONA idiomas novos — restaurando o que estava estacionado, se houver.
     newLangs.forEach(l => {
       if(!S.csv.langs.includes(l)){
         S.csv.langs.push(l);
-        S.csv.rows.forEach(r => { r.translations[l] = r.translations[l] || ''; });
+        const parked = S.parkedLangs[l] || null;
+        S.csv.rows.forEach(r => { r.translations[l] = (parked && parked[r.id]) || r.translations[l] || ''; });
+        delete S.parkedLangs[l]; // consumido — não fica duplicado
       }
     });
 
@@ -6234,7 +6262,8 @@ function projSaveOnBuild(wasImport) {
     approvalActivity: [...S.approvalActivity],
     approvalDeletedIds: [...S.approvalDeletedIds],
     maxIdIssued: ensureMaxIdIssued(),          // high-water mark do contador de ids
-    pendingRowIds: [...(S.pendingImgIds||[])]   // imagens adicionadas pós-aprovação, pendentes
+    pendingRowIds: [...(S.pendingImgIds||[])],  // imagens adicionadas pós-aprovação, pendentes
+    parkedLangs: { ...(S.parkedLangs||{}) }     // traduções de idiomas removidos, guardadas
   };
 
   if(currentProjectId) {
@@ -6409,6 +6438,7 @@ function restoreProjectContent(data, readOnly) {
   // (projeto antigo sem o campo inicializa a partir do estado atual — ver computeMaxIdFromState).
   S.pendingImgIds = Array.isArray(data.pendingRowIds) ? [...data.pendingRowIds] : [];
   S.maxIdIssued = Math.max(typeof data.maxIdIssued === 'number' ? data.maxIdIssued : 0, computeMaxIdFromState());
+  S.parkedLangs = (data.parkedLangs && typeof data.parkedLangs === 'object') ? { ...data.parkedLangs } : {};
 
   // (S.selImgs, montado acima a partir de S.csv.rows, já marca como selecionadas as
   // imagens que vieram tageadas no HTML salvo.)
@@ -8132,6 +8162,7 @@ function autosaveProject() {
     p.data.maxIdIssued = Math.max(ensureMaxIdIssued(), p.data.maxIdIssued || 0);
     if(p.data.maxIdIssued > S.maxIdIssued) S.maxIdIssued = p.data.maxIdIssued;
     p.data.pendingRowIds = [...(S.pendingImgIds||[])];
+    p.data.parkedLangs = { ...(S.parkedLangs||{}) };
   }
   // NÃO grava approvalComments/approvalDoneByLang/approvalActivity/approvalDeletedIds aqui.
   // Essa função salva a cada tecla digitada numa tradução (scheduleAutosave, 150ms) e lê
