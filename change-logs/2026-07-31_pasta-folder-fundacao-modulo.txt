@@ -1,0 +1,62 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: Pasta/Folder — FUNDAÇÃO (estágio 1 de vários). Módulo isolado + modelo de dados +
+conversão avulso<->item testada como lossless. AINDA NÃO liga nenhuma UI nem escreve nada.
+
+===============================================================================
+CONTEXTO / DECISÃO DE ARQUITETURA
+===============================================================================
+Pedido: aba "Pasta/Folder" que agrupa e-mails/in-apps/pushes multi-idioma da mesma campanha,
+compartilhável, com filtros Todos/Fora-de-pasta e busca. Construir "à parte", sem duplicar
+lógica.
+
+Descoberta: o app JÁ tem "campanha" (kind:'campaign' com items[] por tipo email/inapp/push, na
+mesma tela, com aprovação por item, in-app/push/tagueamento reaproveitados). A "Pasta/Folder" é
+essencialmente isso. Confirmado com o usuário: REAPROVEITAR o motor de campanha e ISOLAR só o
+código novo num módulo próprio (arquivo separado), em vez de um módulo 100% do zero (que
+duplicaria tagueamento/aprovação/push — o oposto de "sem duplicar").
+
+Decisões confirmadas: arquivo separado (modules/folders.js via <script src>); mover = mover de
+verdade (some dos soltos); remover da pasta = volta a solto (não deleta); item pertence a UMA
+pasta só.
+
+===============================================================================
+ESTÁGIO 1 — O QUE ENTROU (seguro, sem efeito colateral)
+===============================================================================
+Arquivo NOVO: modules/folders.js (IIFE, expõe window.Folders). Carregado no fim do index.html,
+depois do script inline, pra chamar os globais do app em runtime. NÃO reimplementa nada — só
+chama projGetAll/campaignGetAll/parseSavedProjectHtml/parseBrazeCsv/etc.
+
+Funções (todas PURAS/somente-leitura neste estágio):
+- all() / looseProjects() — pastas (kind:'campaign') e projetos soltos.
+- listView(filter) — 'unfoldered' (só soltos), 'all' (pastas no topo + soltos + itens achatados),
+  default (pastas no topo + soltos; itens de pasta NÃO aparecem soltos).
+- search(query) / searchInFolder(folderId, query) — busca por nome, inclui itens dentro de pastas.
+- projectToFolderItem(project, type) — converte um projeto avulso no shape de item de campanha
+  ({id,type,name,rawHtml,origin,langs,rows:[{id,src,isImg,imgTag,translations}]}), parseando
+  data.html + data.csv com as MESMAS funções do restoreProjectContent. Aprovação viaja junto
+  (regra silenciosa: mover não reseta). Guarda _fromProjectId/_fromProjectData pra reversão.
+- folderItemToProject(item, owner) — inverso, pra "remover da pasta" restaurar o solto byte-fiel.
+
+Mudança no index.html: só a linha <script src="modules/folders.js"></script> antes de </body>.
+Nenhuma função existente foi alterada; nada chama Folders ainda → comportamento do app inalterado.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado:
+- window.Folders carrega (arquivo irmão servido pelo serve . — confirma a abordagem de arquivo
+  separado).
+- Round-trip lossless com projeto real (p_1785225189242): projectToFolderItem → 7 idiomas, 11
+  linhas, 77/77 traduções preservadas (== CSV original), aprovação mantida, rawHtml intacto;
+  folderItemToProject restaura id e data byte-fiéis.
+- listView/search rodam sem erro. Sem erros de console.
+
+===============================================================================
+PRÓXIMOS ESTÁGIOS (não entram neste commit — envolvem ESCRITA, serão feitos com teste pesado)
+===============================================================================
+2. UI: aba "Pastas", listagem (pastas no topo) + filtros Todos/Fora-de-pasta + busca ampliada.
+3. Ação "mover para pasta" (escrita: cria/atualiza a campanha com o item, remove o solto) —
+   com backup/verificação, dado o risco (é migração de dados, a classe do incidente de hoje).
+4. Botão de compartilhar no card da pasta (reusa canShareProject/openShareModal).
+5. "Remover da pasta" → volta a solto. Edge cases (aprovado, uma-pasta-só) já modelados aqui.

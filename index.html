@@ -11185,5 +11185,8 @@ function saveAvEditModal() {
   scheduleAutosave();
 }
 </script>
+<!-- Módulo "Pasta/Folder" — ISOLADO (ver modules/folders.js). Carregado DEPOIS do script inline
+     pra poder chamar os globais do app (projGetAll, parseSavedProjectHtml, etc.) em runtime. -->
+<script src="modules/folders.js"></script>
 </body>
 </html>
