@@ -178,8 +178,33 @@
     return { ok: true, newLooseProject: loose, folderWithoutItem, item };
   }
 
+  // ── APPROVE BY LOCALE ────────────────────────────────────────────────────────────────────────
+  // Locales presentes em ALGUM item de ALGUMA campanha visível, na ORDEM FIXA do app.
+  function localesInUse(email) {
+    const camps = email ? visibleTo(email) : all();
+    const set = new Set();
+    camps.forEach(c => (c.items || []).forEach(it => (it.langs || []).forEach(l => set.add(l))));
+    const arr = [...set];
+    return global.sortLangsForDisplay ? global.sortLangsForDisplay(arr) : arr.sort();
+  }
+  // Para um locale: as campanhas (visíveis) que TÊM item nesse locale, com os itens filtrados.
+  // Agrupado por campanha (o "nome da campanha" agrupa email/inapp/push). Vazios não entram.
+  function byLocale(locale, email) {
+    const camps = email ? visibleTo(email) : all();
+    return camps
+      .map(c => ({ campaign: c, items: (c.items || []).filter(it => (it.langs || []).includes(locale)) }))
+      .filter(g => g.items.length);
+  }
+  // Esse item está aprovado NESSE locale? Reusa a mesma regra/campo da aprovação por item.
+  function itemApprovedForLocale(item, locale) {
+    return global.isLangApproved
+      ? global.isLangApproved(item && item.approvalDoneByLang, locale)
+      : !!(item && item.approvalDoneByLang && item.approvalDoneByLang[locale] && !item.approvalDoneByLang[locale].undone);
+  }
+
   global.Folders = {
     isCampaign, isLoose, all, visibleTo, isOwner, looseProjects, listView, search, searchInFolder,
     projectToFolderItem, folderItemToProject, planMoveIntoFolder, planRemoveFromFolder,
+    localesInUse, byLocale, itemApprovedForLocale,
   };
 })(typeof window !== 'undefined' ? window : this);

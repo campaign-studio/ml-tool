@@ -1,0 +1,32 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: Approve by Locale — aprovar por região (um locale por vez, todos os itens da campanha).
+
+MODELO (opção A, confirmada): a campanha (pasta, kind:'campaign') é o agrupador; seu name é o
+"nome da campanha". Approve by Locale percorre as campanhas VISÍVEIS e, para o locale ativo,
+mostra os itens (email/inapp/push) cujo langs inclui esse locale, agrupados pelo nome da campanha.
+
+modules/folders.js:
+- localesInUse(email): locales presentes em algum item de alguma campanha visível, na ORDEM FIXA
+  (sortLangsForDisplay).
+- byLocale(locale, email): [{campaign, items[]}] das campanhas que têm item nesse locale (vazias
+  fora).
+- itemApprovedForLocale(item, locale): reusa isLangApproved(item.approvalDoneByLang, locale).
+
+index.html:
+- Botão "Approve by Locale" no topo do Dashboard → tela #approveByLocaleScreen.
+- Abas de locale (estilo planilha) em cima, ordem fixa, SÓ locales com conteúdo.
+- Corpo: por campanha (📁 nome) → itens (tipo + nome + botão Approve/Approved). Mostra só o que
+  existe naquele locale (sem seções vazias). Estado vazio por locale sem conteúdo.
+- ablToggleApproval: alterna item.approvalDoneByLang[locale] — MESMO campo/regra da aprovação por
+  item (undone:true pra desaprovar, nunca deleta a chave). Aprovar aqui = aprovar o item; é o
+  mesmo dado, só outro recorte (por locale em vez de por item). projSaveAll grava.
+
+VERIFICADO (sbClient bloqueado, mocks): locales na ordem fixa (es-MX, pt-BR); byLocale filtra por
+locale (push só onde tem push; campanha sem o locale não aparece); item já aprovado lê true; tela
+abre com 2 abas; grupos por campanha; Approve toggla o campo; troca de locale re-renderiza. Sem
+erros de console.
+
+NOTA: o toggle grava via projSaveAll direto (sem o merge concorrente de aprovação) — suficiente
+pro uso single-user; o merge concorrente pode ser um follow-up. O item "nome sempre no upload"
+(#3 do pedido) fica pra o próximo passo.

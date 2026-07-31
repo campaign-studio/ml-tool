@@ -554,6 +554,19 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .del-scope-btn:hover{border-color:var(--accent);}
 .del-scope-btn.active{border-color:var(--accent);background:var(--acc-bg);}
 
+/* ═══════════ APPROVE BY LOCALE — abas de locale + itens ═══════════ */
+.abl-tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid var(--border);}
+.abl-tab{padding:9px 16px;border:1px solid var(--border);border-bottom:none;border-radius:9px 9px 0 0;background:var(--s2);color:var(--text2);font-size:12.5px;font-weight:700;cursor:pointer;position:relative;top:2px;font-family:var(--sans);}
+.abl-tab:hover{color:var(--accent);}
+.abl-tab.active{background:var(--surface);color:var(--text);box-shadow:0 -2px 6px rgba(0,0,0,.04);}
+.abl-group{margin-bottom:26px;}
+.abl-group-head{font-size:15px;font-weight:800;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+.abl-item{display:flex;align-items:center;gap:14px;padding:12px 16px;border:1px solid var(--border);border-radius:12px;background:var(--surface);margin-bottom:10px;}
+.abl-item-type{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:3px 9px;border-radius:20px;background:var(--s2);color:var(--text3);flex-shrink:0;}
+.abl-item-name{flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.abl-approved{display:inline-flex;align-items:center;gap:6px;padding:7px 15px;border-radius:9px;border:1px solid #a7f3d0;background:#ecfdf5;color:#059669;font-size:12px;font-weight:700;cursor:pointer;}
+.abl-approved:hover{background:#d1fae5;}
+
 /* ═══════════ CARD DE ITEM DENTRO DA PASTA (e-mail/in-app/push) — cores sólidas ═══════════ */
 .camp-item-card{position:relative;display:flex;flex-direction:column;border-radius:18px;overflow:hidden;
   background:var(--surface);border:1px solid var(--border);
@@ -991,6 +1004,12 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
         <h1 class="dash-title">Dashboard</h1>
         <span id="dashSyncStatus" class="dash-sync"></span>
       </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn-back" style="width:auto;padding:9px 16px;margin-top:0;" onclick="openApproveByLocale()" title="Approve every asset of a campaign, one region at a time">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:5px;"><path d="M20 6L9 17l-5-5"/></svg>
+          Approve by Locale
+        </button>
+      </div>
     </div>
 
     <!-- TAB: PROJECTS -->
@@ -1074,6 +1093,22 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
      ela já está olhando o projeto/item certo. Não passa pelo tokenizador de novo, não mexe
      em aprovação. Ver openTaggedHtmlEditorForCurrentProject()/openTaggedHtmlEditorForCampaignItem()
      mais abaixo. Textarea direto sobre o HTML já tageado. ═══ -->
+<!-- ═══ APPROVE BY LOCALE — aprova por região: um locale por vez, com TODOS os e-mails/in-apps/
+     pushes de cada campanha (agrupados pelo nome da campanha). Abas de locale em cima. ═══ -->
+<div id="approveByLocaleScreen" style="display:none;position:fixed;inset:48px 0 0 0;background:var(--bg);z-index:520;overflow-y:auto;">
+  <div class="dash-shell">
+    <div class="dash-head">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <button class="btn-back" style="width:auto;padding:8px 14px;margin-top:0;" onclick="closeApproveByLocale()">← Back</button>
+        <h1 class="dash-title" style="margin:0;">Approve by Locale</h1>
+      </div>
+    </div>
+    <!-- Abas de locale (estilo planilha), ordem fixa, só os que têm conteúdo. -->
+    <div id="ablTabs" class="abl-tabs"></div>
+    <div id="ablBody" style="margin-top:18px;"></div>
+  </div>
+</div>
+
 <div id="editHtmlEditorScreen" style="display:none;position:fixed;inset:48px 0 0 0;background:var(--bg);z-index:500;overflow-y:auto;">
   <div class="dash-shell">
     <div class="dash-head" style="align-items:flex-start;">
@@ -5649,6 +5684,71 @@ async function confirmDeleteFolder() {
   closeDeleteFolderModal();
   showNotif(scope === 'folderonly' ? 'Folder deleted — the emails went back to the standalone list.' : 'Folder and all its content deleted.', 'ok', 3000);
   renderDashboard();
+}
+
+// ── APPROVE BY LOCALE ────────────────────────────────────────────────────────────────────────
+// Aprova por REGIÃO: um locale por vez, com TODOS os itens (email/inapp/push) de cada campanha
+// que têm aquele locale, agrupados pelo nome da campanha. Reusa o mesmo campo de aprovação por
+// item (item.approvalDoneByLang[locale]) — não é camada nova, é o mesmo dado por outro recorte.
+let _ablLocale = null;
+function openApproveByLocale() {
+  const me = authCurrentUser(); if(!me) return;
+  document.getElementById('dashboardScreen').style.display = 'none';
+  document.getElementById('approveByLocaleScreen').style.display = 'block';
+  const locales = window.Folders ? Folders.localesInUse(me.email) : [];
+  if(!_ablLocale || !locales.includes(_ablLocale)) _ablLocale = locales[0] || null;
+  renderApproveByLocale();
+}
+function closeApproveByLocale() {
+  document.getElementById('approveByLocaleScreen').style.display = 'none';
+  document.getElementById('dashboardScreen').style.display = '';
+  renderDashboard();
+}
+function setAblLocale(l) { _ablLocale = l; renderApproveByLocale(); }
+function renderApproveByLocale() {
+  const me = authCurrentUser(); if(!me) return;
+  const locales = window.Folders ? Folders.localesInUse(me.email) : [];
+  // Abas (ordem fixa, só locales com conteúdo).
+  const tabs = document.getElementById('ablTabs');
+  if(tabs) tabs.innerHTML = locales.map(l =>
+    `<button class="abl-tab ${l === _ablLocale ? 'active' : ''}" onclick="setAblLocale('${escJsAttr(l)}')">${escHtml(toBrazeLang(l))}</button>`
+  ).join('');
+  // Corpo.
+  const body = document.getElementById('ablBody'); if(!body) return;
+  if(!_ablLocale) { body.innerHTML = `<div class="empty-state"><p>No campaign content yet. Create a folder and add emails, in-apps or pushes.</p></div>`; return; }
+  const groups = window.Folders ? Folders.byLocale(_ablLocale, me.email) : [];
+  if(!groups.length) { body.innerHTML = `<div class="empty-state"><p>Nothing to approve in ${escHtml(toBrazeLang(_ablLocale))} yet.</p></div>`; return; }
+  const typeLabel = { email: 'Email', inapp: 'In-app', push: 'Push' };
+  body.innerHTML = groups.map(g => `
+    <div class="abl-group">
+      <div class="abl-group-head">📁 ${escHtml(g.campaign.name)}</div>
+      ${g.items.map(it => {
+        const approved = Folders.itemApprovedForLocale(it, _ablLocale);
+        return `<div class="abl-item">
+          <span class="abl-item-type">${escHtml(typeLabel[it.type] || it.type)}</span>
+          <span class="abl-item-name">${escHtml(it.name)}</span>
+          ${approved
+            ? `<button class="abl-approved" title="Approved for ${escHtml(toBrazeLang(_ablLocale))} — click to undo" onclick="ablToggleApproval('${escJsAttr(g.campaign.id)}','${escJsAttr(it.id)}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Approved</button>`
+            : `<button class="btn-next" style="width:auto;padding:7px 16px;margin-top:0;font-size:12px;" onclick="ablToggleApproval('${escJsAttr(g.campaign.id)}','${escJsAttr(it.id)}')">Approve</button>`}
+        </div>`;
+      }).join('')}
+    </div>`).join('');
+}
+// Alterna a aprovação de UM item NESSE locale — mesmo campo/regra da aprovação por item
+// (approvalDoneByLang; "undone:true" pra desaprovar, nunca deleta a chave — ver isLangApproved).
+function ablToggleApproval(campaignId, itemId) {
+  const me = authCurrentUser(); if(!me || !_ablLocale) return;
+  const projects = projGetAll();
+  const camp = projects.find(p => p.id === campaignId && p.kind === 'campaign'); if(!camp) return;
+  const item = (camp.items || []).find(it => it.id === itemId); if(!item) return;
+  item.approvalDoneByLang = item.approvalDoneByLang || {};
+  const cur = isLangApproved(item.approvalDoneByLang, _ablLocale);
+  item.approvalDoneByLang[_ablLocale] = cur
+    ? { by: me.email, at: Date.now(), undone: true }
+    : { by: me.email, at: Date.now() };
+  camp.updatedAt = Date.now();
+  projSaveAll(projects);
+  renderApproveByLocale();
 }
 
 let _renameProjectId = null;
