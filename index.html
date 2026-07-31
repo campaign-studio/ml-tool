@@ -6102,15 +6102,24 @@ function buildCSV() {
     // guarda {rowId: tradução} em S.parkedLangs[lang] e tira a coluna. Se a pessoa re-adicionar o
     // idioma depois, o progresso volta (não-destrutivo, reversível). Sem isso, remover um destino
     // perdia a tradução no save (buildCsvStringForSave só exporta os langs ativos).
-    S.csv.langs.filter(l => !desired.has(l)).forEach(lang => {
-      const stash = {};
-      S.csv.rows.forEach(r => {
-        if((r.translations[lang] || '') !== '') stash[r.id] = r.translations[lang];
-        delete r.translations[lang];
+    //
+    // TRAVA DE SEGURANÇA (crítica — evita perda de dados): só remove idiomas quando há destinos
+    // de verdade (newLangs.length > 0). Um projeto REABERTO não popula S.targets; se buildCSV
+    // rodar nesse estado, newLangs fica vazio e, sem esta trava, TODOS os idiomas eram tratados
+    // como "removidos" e as traduções apagadas (bug real: projetos perdendo tradução ao abrir).
+    // Destinos vazios nunca é intenção legítima de "remover tudo" (o wizard nem deixa avançar com
+    // 0 destinos) — então, nesse caso, não mexe em nada.
+    if(newLangs.length > 0){
+      S.csv.langs.filter(l => !desired.has(l)).forEach(lang => {
+        const stash = {};
+        S.csv.rows.forEach(r => {
+          if((r.translations[lang] || '') !== '') stash[r.id] = r.translations[lang];
+          delete r.translations[lang];
+        });
+        if(Object.keys(stash).length) S.parkedLangs[lang] = stash;
+        S.csv.langs = S.csv.langs.filter(l => l !== lang);
       });
-      if(Object.keys(stash).length) S.parkedLangs[lang] = stash;
-      S.csv.langs = S.csv.langs.filter(l => l !== lang);
-    });
+    }
 
     // 2) ADICIONA idiomas novos — restaurando o que estava estacionado, se houver.
     newLangs.forEach(l => {
