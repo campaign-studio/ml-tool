@@ -663,6 +663,17 @@ td.tl.tl-cell{padding:0;}
 td.tl.tl-missing{background:#fef2f2;}
 td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
 
+/* ═══════════ SELEÇÃO ESTILO PLANILHA (grid de tradução) ═══════════ */
+/* Célula ativa (seleção única) — borda forte tipo Excel. box-shadow em vez de outline pra
+   não deslocar o layout. */
+td.tl-cell.cell-active{box-shadow:inset 0 0 0 2px var(--accent);}
+/* Células dentro de um intervalo (Shift+setas / arrastar) — realce suave. */
+td.tl-cell.cell-range{background:rgba(37,99,235,.10);}
+/* Em modo de NAVEGAÇÃO (textarea/input readonly) o cursor é seta, não texto — deixa claro que
+   ali você seleciona/navega; pra editar entra em modo de edição (Enter/F2/duplo-clique/digitar). */
+td.tl-cell.cell-nav textarea,td.tl-cell.cell-nav input{cursor:default;}
+td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
+
 /* Aviso amarelo de "texto de referência diferente do CSV" numa linha — não bloqueia
    nada, só chama atenção pra pessoa conferir com calma. Clicar marca como visto:
    fica verde por um instante e depois some, sem precisar recarregar a tabela. */
@@ -7541,6 +7552,8 @@ function buildTable() {
   </thead>`;
 
   if(t) t.innerHTML = thead + `<tbody id="gstb">${rowsHTML()}</tbody>`;
+  wireGridController();       // liga navegação/paste estilo planilha (uma vez, delegado no #gst)
+  gridReapplyHighlight();     // re-aplica o realce da célula selecionada após re-render
   setTimeout(syncAllRowHeights, 0);
   openPendingCommentTarget();
   openPendingApprovalTarget();
@@ -7583,12 +7596,12 @@ function rowsHTML() {
       const id  = (row.id||'').replace(/"/g,'&quot;');
       const src = (row.src||'').replace(/"/g,'&quot;');
       const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
-      const tls = langsOrdered.map(l=>{
+      const tls = langsOrdered.map((l,ci)=>{
         const v=(row.translations[l]||'').replace(/"/g,'&quot;');
         const isEmpty = !(row.translations[l]||'').trim();
-        return `<td class="tl tl-cell${isEmpty ? ' tl-missing' : ''}">
+        return `<td class="tl tl-cell cell-nav${isEmpty ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}">
           <div class="tl-inner">
-            <input class="img-url" type="text" placeholder="URL for ${l}…" value="${v}"
+            <input class="img-url" type="text" readonly placeholder="URL for ${l}…" value="${v}"
               onfocus="switchAndHL(${ri},'${l}')"
               oninput="setCellV(${ri},'${l}',this.value);sendHL(${ri},'${l}')"
             />
@@ -7616,12 +7629,12 @@ function rowsHTML() {
     // custom_attribute, context) no meio da frase, mesmo já tendo sido "limpo" só no CSV.
     const displaySrc = csvSourceText(row).replace(/</g,'&lt;').replace(/"/g,'&quot;');
     const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
-    const tls = langsOrdered.map(l=>{
+    const tls = langsOrdered.map((l,ci)=>{
       const v=(row.translations[l]||'').replace(/</g,'&lt;').replace(/"/g,'&quot;');
       const isEmpty = !(row.translations[l]||'').trim();
-      return `<td class="tl tl-cell${isEmpty ? ' tl-missing' : ''}">
+      return `<td class="tl tl-cell cell-nav${isEmpty ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}">
         <div class="tl-inner">
-          <textarea rows="1"
+          <textarea rows="1" readonly
             onfocus="switchAndHL(${ri},'${l}')"
             oninput="autoH(this);setCellV(${ri},'${l}',this.value);sendHL(${ri},'${l}')"
           >${v}</textarea>
@@ -7730,6 +7743,234 @@ function setCellV(ri,l,v){
   }
   updatePreviewText(ri,l);
   scheduleAutosave();
+}
+
+/* ═══════════ NAVEGAÇÃO/SELEÇÃO/COLAR ESTILO PLANILHA (grid de tradução) ═══════════
+   Camada leve (sem lib) sobre a tabela já existente. Só atua nas COLUNAS DE IDIOMA
+   (td.tl-cell, com data-r=linha e data-c=índice da coluna de idioma na ordem fixa
+   sortLangsForDisplay). Dois modos: NAVEGAÇÃO (campo readonly; setas/Tab/Enter movem a
+   seleção) e EDIÇÃO (Enter/F2/duplo-clique/digitar; setas movem o cursor no texto). */
+let _grid = { r:0, c:0, aR:0, aC:0, editing:false, editOrig:null, wired:false };
+
+function gridLangs(){ return sortLangsForDisplay(S.csv.langs); }
+function gridBody(){ return document.getElementById('gstb'); }
+function gridCellEl(r,c){ const b=gridBody(); return b ? b.querySelector(`td.tl-cell[data-r="${r}"][data-c="${c}"]`) : null; }
+function gridField(td){ return td ? td.querySelector('textarea,input') : null; }
+function gridDims(){ return { rows: S.csv.rows.length, cols: gridLangs().length }; }
+// Placeholder do lock de célula (ex: linha de currency travada — recurso de outro prompt que
+// ainda não existe no código). Copiar sempre pode; colar/editar respeitam isto quando existir.
+function isCellPasteBlocked(row, lang){ return false; }
+
+function gridClearClasses(){
+  const b=gridBody(); if(!b) return;
+  b.querySelectorAll('td.tl-cell.cell-active,td.tl-cell.cell-range,td.tl-cell.cell-editing')
+    .forEach(td=>td.classList.remove('cell-active','cell-range','cell-editing'));
+}
+
+// Re-aplica o realce da seleção atual (chamado após buildTable re-renderizar o corpo).
+function gridReapplyHighlight(){
+  gridClearClasses();
+  const { rows, cols } = gridDims();
+  if(!rows || !cols) return;
+  _grid.r = Math.min(_grid.r, rows-1); _grid.c = Math.min(_grid.c, cols-1);
+  const r0=Math.min(_grid.r,_grid.aR), r1=Math.max(_grid.r,_grid.aR);
+  const c0=Math.min(_grid.c,_grid.aC), c1=Math.max(_grid.c,_grid.aC);
+  for(let r=r0;r<=r1;r++) for(let c=c0;c<=c1;c++){
+    const td=gridCellEl(r,c); if(td) td.classList.add('cell-range');
+  }
+  const act=gridCellEl(_grid.r,_grid.c);
+  if(act){ act.classList.remove('cell-range'); act.classList.add(_grid.editing?'cell-editing':'cell-active'); }
+}
+
+function gridSetActive(r,c,extend){
+  const { rows, cols } = gridDims();
+  if(!rows || !cols) return;
+  r=Math.max(0,Math.min(r,rows-1)); c=Math.max(0,Math.min(c,cols-1));
+  _grid.r=r; _grid.c=c;
+  if(!extend){ _grid.aR=r; _grid.aC=c; }
+  gridReapplyHighlight();
+  const td=gridCellEl(r,c);
+  if(td){ const f=gridField(td); if(f){ try{ f.focus({preventScroll:true}); }catch(e){ f.focus(); } td.scrollIntoView({block:'nearest',inline:'nearest'}); } }
+}
+
+function gridMove(dr,dc,extend){
+  if(extend){ gridSetActive(_grid.r+dr,_grid.c+dc,true); }
+  else { gridSetActive(_grid.r+dr,_grid.c+dc,false); }
+}
+
+function gridEnterEdit(initialChar){
+  const td=gridCellEl(_grid.r,_grid.c); const f=gridField(td); if(!f) return;
+  const lang=gridLangs()[_grid.c], row=S.csv.rows[_grid.r];
+  if(!lang||!row||isCellPasteBlocked(row,lang)) return; // célula travada não edita
+  _grid.editing=true; _grid.editOrig=f.value;
+  td.classList.remove('cell-nav');
+  f.removeAttribute('readonly');
+  if(initialChar!=null){ // digitou algo em cima da célula: substitui (igual Excel)
+    f.value=initialChar;
+    setCellV(_grid.r,lang,f.value);
+    td.classList.toggle('tl-missing', !f.value.trim());
+  }
+  gridReapplyHighlight();
+  try{ f.focus({preventScroll:true}); }catch(e){ f.focus(); }
+  const end=f.value.length; try{ f.setSelectionRange(end,end); }catch(e){}
+}
+
+function gridExitEdit(){
+  const td=gridCellEl(_grid.r,_grid.c); const f=gridField(td);
+  _grid.editing=false; _grid.editOrig=null;
+  if(f){ f.setAttribute('readonly',''); }
+  if(td){ td.classList.add('cell-nav'); }
+  gridReapplyHighlight();
+}
+
+// Escreve uma célula programaticamente (paste/delete) — persiste via setCellV e atualiza o DOM
+// (o campo é readonly, então oninput não dispara sozinho). Respeita lock e a regra "pular vazio".
+function gridWriteCell(r,c,value,skipEmpty){
+  const lang=gridLangs()[c], row=S.csv.rows[r];
+  if(!lang||!row) return false;
+  if(skipEmpty && !String(value||'').length) return false;   // colar vazio NÃO apaga (igual Excel)
+  if(isCellPasteBlocked(row,lang)) return false;              // não cola sobre célula travada
+  setCellV(r,lang,value);
+  const td=gridCellEl(r,c); if(td){ const f=gridField(td); if(f) f.value=value; td.classList.toggle('tl-missing', !String(value||'').trim()); }
+  return true;
+}
+
+// TSV quote-aware: linhas por \n, colunas por \t, campos entre aspas podem conter \t e \n.
+// É o formato que Excel/Google Sheets colocam no clipboard ao copiar um intervalo.
+function parseTSV(text){
+  const rows=[]; let row=[], cur='', i=0, q=false;
+  text=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  while(i<text.length){
+    const ch=text[i];
+    if(q){
+      if(ch==='"'){ if(text[i+1]==='"'){ cur+='"'; i+=2; continue; } q=false; i++; continue; }
+      cur+=ch; i++; continue;
+    }
+    if(ch==='"'){ q=true; i++; continue; }
+    if(ch==='\t'){ row.push(cur); cur=''; i++; continue; }
+    if(ch==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; i++; continue; }
+    cur+=ch; i++;
+  }
+  row.push(cur); rows.push(row);
+  // remove uma última linha vazia acidental (Excel costuma terminar com \n)
+  if(rows.length>1 && rows[rows.length-1].length===1 && rows[rows.length-1][0]==='') rows.pop();
+  return rows;
+}
+
+function buildTSV(){
+  const r0=Math.min(_grid.r,_grid.aR), r1=Math.max(_grid.r,_grid.aR);
+  const c0=Math.min(_grid.c,_grid.aC), c1=Math.max(_grid.c,_grid.aC);
+  const langs=gridLangs(); const lines=[];
+  for(let r=r0;r<=r1;r++){
+    const cells=[];
+    for(let c=c0;c<=c1;c++){
+      let v=String((S.csv.rows[r]&&S.csv.rows[r].translations[langs[c]])||'');
+      if(/[\t\n"]/.test(v)) v='"'+v.replace(/"/g,'""')+'"';  // quota campo com tab/quebra/aspas
+      cells.push(v);
+    }
+    lines.push(cells.join('\t'));
+  }
+  return lines.join('\n');
+}
+
+// Distribui o conteúdo colado a partir da célula ativa, pra direita/baixo (padrão planilha).
+function gridPasteMatrix(matrix){
+  const { rows, cols } = gridDims();
+  let wrote=0, overflow=false;
+  for(let dr=0;dr<matrix.length;dr++){
+    const r=_grid.r+dr; if(r>=rows){ overflow=true; break; }
+    const line=matrix[dr];
+    for(let dc=0;dc<line.length;dc++){
+      const c=_grid.c+dc; if(c>=cols){ overflow=true; continue; }
+      if(gridWriteCell(r,c,line[dc],true)) wrote++;
+    }
+  }
+  if(wrote) gridReapplyHighlight();
+  if(typeof showNotif==='function'){
+    if(overflow) showNotif(`Colado ${wrote} célula(s); o excedente além da grade foi ignorado.`,'warn',3500);
+    else if(wrote) showNotif(`Colado em ${wrote} célula(s).`,'ok',2000);
+  }
+}
+
+function gridOnKeydown(e){
+  // Só age quando o foco está numa célula de tradução (não em modais/comentários/outros inputs).
+  const td=e.target.closest && e.target.closest('td.tl-cell');
+  if(!td || !gridBody() || !gridBody().contains(td)) return;
+  const r=+td.getAttribute('data-r'), c=+td.getAttribute('data-c');
+  if(!Number.isInteger(r)||!Number.isInteger(c)) return;
+  if(r!==_grid.r||c!==_grid.c){ _grid.r=r; _grid.c=c; if(!e.shiftKey){ _grid.aR=r; _grid.aC=c; } }
+
+  if(_grid.editing){
+    if(e.key==='Escape'){ const f=gridField(td); if(f && _grid.editOrig!=null){ f.value=_grid.editOrig; setCellV(r,gridLangs()[c],f.value); td.classList.toggle('tl-missing', !f.value.trim()); } gridExitEdit(); e.preventDefault(); }
+    else if(e.key==='Enter' && !e.shiftKey && !e.altKey){ gridExitEdit(); gridMove(1,0,false); e.preventDefault(); }
+    else if(e.key==='Tab'){ gridExitEdit(); gridMove(0,e.shiftKey?-1:1,false); e.preventDefault(); }
+    // Alt+Enter/Shift+Enter e setas: deixa o textarea tratar (quebra de linha / mover cursor).
+    return;
+  }
+  // ── modo NAVEGAÇÃO ──
+  switch(e.key){
+    case 'ArrowUp':    gridMove(-1,0,e.shiftKey); e.preventDefault(); return;
+    case 'ArrowDown':  gridMove(1,0,e.shiftKey);  e.preventDefault(); return;
+    case 'ArrowLeft':  gridMove(0,-1,e.shiftKey); e.preventDefault(); return;
+    case 'ArrowRight': gridMove(0,1,e.shiftKey);  e.preventDefault(); return;
+    case 'Tab':        gridMove(0,e.shiftKey?-1:1,false); e.preventDefault(); return;
+    case 'Enter':      if(e.altKey){ gridEnterEdit(null); } else { gridMove(1,0,false); } e.preventDefault(); return;
+    case 'F2':         gridEnterEdit(null); e.preventDefault(); return;
+    case 'Backspace':
+    case 'Delete':     gridWriteCell(r,c,'',false); e.preventDefault(); return;
+    default:
+      // Ctrl/Cmd+C/V ficam pros handlers de copy/paste. Copiar/colar não entram em edição.
+      if((e.metaKey||e.ctrlKey)) return;
+      // Digitou um caractere imprimível → entra em edição substituindo (igual Excel).
+      if(e.key && e.key.length===1){ gridEnterEdit(e.key); e.preventDefault(); return; }
+  }
+}
+
+function gridOnPaste(e){
+  const td=e.target.closest && e.target.closest('td.tl-cell');
+  if(!td || !gridBody() || !gridBody().contains(td)) return;
+  if(_grid.editing) return;  // editando uma célula → deixa colar normal (só nela)
+  const text=(e.clipboardData||window.clipboardData).getData('text/plain');
+  if(text==null) return;
+  e.preventDefault();
+  gridPasteMatrix(parseTSV(text));
+}
+
+function gridOnCopy(e){
+  const td=e.target.closest && e.target.closest('td.tl-cell');
+  if(!td || !gridBody() || !gridBody().contains(td)) return;
+  if(_grid.editing) return;  // editando → copiar seleção de texto normal
+  const tsv=buildTSV();
+  if(e.clipboardData){ e.clipboardData.setData('text/plain', tsv); e.preventDefault(); }
+}
+
+function gridOnMousedown(e){
+  const td=e.target.closest && e.target.closest('td.tl-cell');
+  if(!td) return;
+  const r=+td.getAttribute('data-r'), c=+td.getAttribute('data-c');
+  if(!Number.isInteger(r)||!Number.isInteger(c)) return;
+  if(_grid.editing && (r!==_grid.r||c!==_grid.c)) gridExitEdit(); // clicou fora da célula em edição
+  gridSetActive(r,c, e.shiftKey);
+}
+
+function gridOnDblclick(e){
+  const td=e.target.closest && e.target.closest('td.tl-cell');
+  if(!td) return;
+  const r=+td.getAttribute('data-r'), c=+td.getAttribute('data-c');
+  gridSetActive(r,c,false);
+  gridEnterEdit(null);
+}
+
+// Liga os listeners UMA vez, delegados no #gst (persiste entre re-renders do corpo).
+function wireGridController(){
+  if(_grid.wired) return;
+  const host=document.getElementById('gst'); if(!host) return;
+  host.addEventListener('keydown', gridOnKeydown, true);
+  host.addEventListener('paste', gridOnPaste, true);
+  host.addEventListener('copy', gridOnCopy, true);
+  host.addEventListener('mousedown', gridOnMousedown, true);
+  host.addEventListener('dblclick', gridOnDblclick, true);
+  _grid.wired=true;
 }
 
 /* ═══════════════════════════════════════════════════════════════════

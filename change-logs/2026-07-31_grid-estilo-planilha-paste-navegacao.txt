@@ -1,0 +1,64 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: editor de tradução com comportamento estilo Excel/Sheets — colar linha inteira
+distribuindo pelas colunas, navegação por teclado, seleção visível, range e copiar.
+
+===============================================================================
+PEDIDO
+===============================================================================
+Colar uma linha copiada do Excel/Sheets e distribuir cada valor na coluna certa (ordem fixa
+de_de..ro_ro), a partir do cursor, ignorando excedente. Navegação por setas/Tab/Enter, célula
+ativa destacada, seleção de intervalo (Shift+setas), e copiar (Ctrl/Cmd+C) compatível com
+planilha. Decisões confirmadas: colar vazio PULA (não apaga, igual Excel); sobrescrever direto;
+escopo = grid de tradução (não o de campanha); lock de currency ainda não existe no código.
+
+===============================================================================
+IMPLEMENTAÇÃO (leve, sem lib de planilha)
+===============================================================================
+Arquivo: index.html — camada fina sobre a tabela existente (rowsHTML/setCellV), só nas colunas
+de idioma (td.tl-cell, com data-r=linha e data-c=índice na ordem fixa sortLangsForDisplay).
+
+- Dois modos: NAVEGAÇÃO (campo readonly por padrão; setas/Tab/Enter movem a seleção) e EDIÇÃO
+  (Enter/F2/duplo-clique/digitar; setas movem o cursor no texto; Esc reverte; Enter/Tab confirmam
+  e movem). readonly é alternado ao entrar/sair da edição.
+- Estado _grid {r,c,aR,aC,editing}. Realce via classes CSS (.cell-active, .cell-range,
+  .cell-editing) — box-shadow inset, não desloca layout. gridReapplyHighlight() re-aplica após
+  cada re-render de buildTable.
+- Colar: parseTSV() quote-aware (linhas \n, colunas \t, campos entre aspas com \t/\n internos —
+  o formato do clipboard do Excel/Sheets). gridPasteMatrix() distribui a partir da célula ativa
+  pra direita/baixo, na ordem fixa; vazio PULA (não sobrescreve); excedente além da grade é
+  ignorado com toast. Escreve via setCellV (persiste + preview + autosave) e atualiza o DOM
+  (campo readonly não dispara oninput sozinho).
+- Copiar: buildTSV() do range selecionado, com aspas onde há tab/quebra/aspas — cola de volta na
+  ferramenta e no Excel/Sheets.
+- Listeners delegados UMA vez no #gst (persiste entre re-renders): keydown, paste, copy,
+  mousedown (seleciona; Shift estende), dblclick (edita). Escopados a td.tl-cell — não conflitam
+  com nada (não há atalho global de teclado no app).
+- isCellPasteBlocked(row,lang): placeholder (retorna false) pro futuro lock de currency — copiar
+  sempre pode; colar/editar já respeitam quando o lock existir.
+- Preserva o texto ao pé da letra (setCellV guarda o valor cru; escaping só no render/export).
+
+===============================================================================
+EDGE CASES
+===============================================================================
+- Colar vazio → pula (não apaga preenchido).           [confirmado: igual Excel]
+- Colar em bloco sobre preenchidas → sobrescreve direto (sem confirmação).
+- Colar várias linhas → matriz 2D preenche pra baixo.
+- Quebra de linha dentro da célula → parser quote-aware mantém como UMA célula.
+- Setas em modo de edição → movem o cursor no texto, não trocam de célula.
+- Overflow (mais colunas/linhas do que cabe) → ignora o excedente + toast, sem quebrar.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado:
+1. parseTSV: linha simples, multi-linha, campo multi-linha entre aspas, tab dentro de aspas,
+   \n final descartado — todos corretos.
+2. gridPasteMatrix (grid mock 3x3): colar 2x2 a partir de (0,1) → valores nas colunas certas na
+   ordem fixa, célula vazia PULADA, coluna não-colada intacta; overflow ignora extras sem crash;
+   buildTSV do range gera TSV correto.
+3. Editor real (projeto p_1785225189242, 7 idiomas): células com data-r/data-c + readonly +
+   cell-nav; ArrowRight/Tab movem a seleção; Enter desce; Shift+ArrowRight forma range; F2/digitar
+   entra em edição e grava via setCellV; Esc/saída volta readonly; PASTE real (ClipboardEvent +
+   DataTransfer) distribui "P1\tP2\tP3" nas colunas na ordem fixa.
+4. Sem erros de console. Escopo respeitado (grid de campanha não tocado).
