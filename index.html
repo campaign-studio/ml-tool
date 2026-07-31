@@ -571,8 +571,13 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .abl-section-head{font-size:15px;font-weight:800;color:var(--text);margin:0 0 14px;display:flex;align-items:center;gap:9px;}
 .abl-section-count{font-size:11px;font-weight:800;color:var(--text3);background:var(--s2);border-radius:20px;padding:2px 10px;}
 .abl-grid{display:grid;gap:20px;}
-.abl-grid-email{grid-template-columns:repeat(auto-fill,minmax(420px,1fr));}
 .abl-grid-inapp{grid-template-columns:repeat(auto-fill,minmax(300px,320px));}
+/* E-mails no formato "Approve copies": faixa de canvas com scroll horizontal, frames largura real
+   um ao lado do outro. */
+.abl-ecanvas{display:flex;gap:48px;align-items:flex-start;overflow-x:auto;padding:8px 4px 22px;background:var(--s2);border-radius:14px;}
+.abl-eframe{flex-shrink:0;background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.06);}
+.abl-eframe-head{display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;left:0;}
+.abl-eframe-vp{background:#fff;}
 .abl-grid-push{grid-template-columns:repeat(auto-fill,minmax(320px,360px));}
 .abl-card{border:1px solid var(--border);border-radius:14px;background:var(--surface);overflow:hidden;display:flex;flex-direction:column;}
 .abl-card-preview{overflow:hidden;background:var(--s2);}
@@ -5762,24 +5767,39 @@ function renderCampaignByLocale() {
   if(!items.length) { body.innerHTML = `<div style="text-align:center;color:var(--text3);font-size:13px;padding:60px 12px;">Nothing in ${escHtml(toBrazeLang(loc))} yet.</div>`; return; }
   const typeOrder = ['email', 'inapp', 'push'];
   const typeLabel = { email: 'Emails', inapp: 'In-apps', push: 'Pushes' };
+  const approveBtnHtml = (it, idx) => isLangApproved(it.approvalDoneByLang, loc)
+    ? `<button class="abl-approved" title="Approved for ${escHtml(toBrazeLang(loc))} — click to undo" onclick="campToggleLocaleApproval(${idx})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Approved</button>`
+    : `<button class="abl-approve-btn" onclick="campToggleLocaleApproval(${idx})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6L9 17l-5-5"/></svg> Approve</button>`;
   body.innerHTML = typeOrder.map(type => {
     const group = items.filter(x => x.it.type === type);
     if(!group.length) return '';
-    return `<div class="abl-section">
-      <div class="abl-section-head">${typeLabel[type]} <span class="abl-section-count">${group.length}</span></div>
+    const head = `<div class="abl-section-head">${typeLabel[type]} <span class="abl-section-count">${group.length}</span></div>`;
+    // E-MAIL: mesmo formato do "Approve copies" — frames em largura real (680px), um ao lado do
+    // outro numa faixa de canvas com scroll horizontal, cada iframe crescendo até a altura real.
+    if(type === 'email') {
+      return `<div class="abl-section">${head}
+        <div class="abl-ecanvas">
+          ${group.map(({ it, idx }) => `
+            <div class="abl-eframe" style="width:${AV_FRAME_W}px;">
+              <div class="abl-eframe-head">
+                <div class="abl-card-name" title="${escJsAttr(it.name)}">${escHtml(it.name)}</div>
+                ${approveBtnHtml(it, idx)}
+              </div>
+              <div class="abl-eframe-vp" id="campLocPrev-${idx}" style="width:${AV_FRAME_W}px;"></div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    }
+    // IN-APP / PUSH: cards compactos em grade (conteúdo curto, não precisa de largura de e-mail).
+    return `<div class="abl-section">${head}
       <div class="abl-grid abl-grid-${type}">
-        ${group.map(({ it, idx }) => {
-          const approved = isLangApproved(it.approvalDoneByLang, loc);
-          return `<div class="abl-card">
+        ${group.map(({ it, idx }) => `<div class="abl-card">
             <div class="abl-card-preview abl-card-preview-${it.type}" id="campLocPrev-${idx}"></div>
             <div class="abl-card-foot">
               <div class="abl-card-name" title="${escJsAttr(it.name)}">${escHtml(it.name)}</div>
-              ${approved
-                ? `<button class="abl-approved" title="Approved for ${escHtml(toBrazeLang(loc))} — click to undo" onclick="campToggleLocaleApproval(${idx})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Approved</button>`
-                : `<button class="abl-approve-btn" onclick="campToggleLocaleApproval(${idx})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6L9 17l-5-5"/></svg> Approve</button>`}
+              ${approveBtnHtml(it, idx)}
             </div>
-          </div>`;
-        }).join('')}
+          </div>`).join('')}
       </div>
     </div>`;
   }).join('');
@@ -5810,10 +5830,39 @@ function renderCampaignLocaleThumb(item, idx, loc) {
   }
   activateCampaignItemIntoS(item);
   if(!S.rawHtml) { wrap.innerHTML = `<p style="text-align:center;color:var(--text3);font-size:12px;padding:40px 12px;">No HTML uploaded.</p>`; return; }
-  const html = buildPreviewHtml(loc);
-  const srcdoc = html.replace(/"/g, '&quot;');
   const isInapp = item.type === 'inapp';
-  wrap.innerHTML = `<iframe style="width:100%;height:100%;border:none;background:${isInapp ? 'transparent' : '#fff'};" srcdoc="${srcdoc}"></iframe>`;
+  if(isInapp) {
+    // In-app: cartão de celular, altura fixa (preenche o card).
+    const srcdoc = buildPreviewHtml(loc).replace(/"/g, '&quot;');
+    wrap.innerHTML = `<iframe style="width:100%;height:100%;border:none;background:transparent;" srcdoc="${srcdoc}"></iframe>`;
+    return;
+  }
+  // E-mail: largura real (680px) e altura AUTO — igual ao "Approve copies". Injeta um reporter
+  // de altura (postMessage 'abl-height') pra o iframe crescer até a altura real do e-mail em vez
+  // de ficar espremido num box fixo.
+  const frameId = 'ablFrame-' + idx;
+  const html = injectAblHeightReporter(buildPreviewHtml(loc), frameId);
+  const srcdoc = html.replace(/"/g, '&quot;');
+  wrap.innerHTML = `<iframe id="${frameId}" style="width:${AV_FRAME_W}px;height:900px;border:none;background:#fff;display:block;" srcdoc="${srcdoc}"></iframe>`;
+}
+
+// Anexa um reporter de altura ao HTML do preview: quando carrega, mede o conteúdo e avisa o pai
+// (postMessage 'abl-height') pra ele esticar o iframe até a altura real do e-mail.
+function injectAblHeightReporter(html, frameId) {
+  const sc = '<scr' + 'ipt>', scEnd = '</scr' + 'ipt>';
+  const script = sc + `(function(){
+    function rh(){ var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight,300); window.parent.postMessage({type:'abl-height',id:${JSON.stringify(frameId)},height:h},'*'); }
+    window.addEventListener('load', function(){ rh(); setTimeout(rh,120); setTimeout(rh,400); });
+  })();` + scEnd;
+  return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, script + '</body>') : (html + script);
+}
+if(!window.__ablHeightListener) {
+  window.__ablHeightListener = true;
+  window.addEventListener('message', function(e){
+    if(!e.data || e.data.type !== 'abl-height' || !e.data.id) return;
+    const fr = document.getElementById(e.data.id);
+    if(fr) fr.style.height = Math.max(200, e.data.height) + 'px';
+  });
 }
 
 // Alterna a aprovação de UM item NESSE locale — mesmo campo/regra da aprovação por item

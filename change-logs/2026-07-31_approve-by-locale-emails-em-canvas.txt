@@ -1,0 +1,44 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: Approve by Locale (dentro da pasta) — e-mails agora exibidos como no "Approve copies":
+      frames em LARGURA REAL, um ao lado do outro, numa faixa de canvas com scroll horizontal.
+
+===============================================================================
+O QUE MUDOU
+===============================================================================
+Antes, no modo "By Locale", os e-mails vinham em cards de altura fixa (iframe espremido num box
+~420px). Agora seguem o mesmo formato do "Approve copies":
+- Cada e-mail é um FRAME em largura real (AV_FRAME_W = 680px), com cabeçalho (nome do asset +
+  Approve/Approved daquele locale) e o preview embaixo.
+- Os frames ficam UM AO LADO DO OUTRO numa faixa (.abl-ecanvas) com scroll horizontal — o "canvas".
+- O iframe do e-mail cresce até a ALTURA REAL do conteúdo: injeta um reporter de altura
+  (injectAblHeightReporter → postMessage 'abl-height'); um listener único no pai estica o iframe.
+  Mesmo mecanismo que a Approval View clássica já usa (av-height).
+In-apps e pushes seguem em cards compactos em grade (conteúdo curto, não precisam de largura de
+e-mail) — só os e-mails ganharam o canvas.
+
+===============================================================================
+DETALHE TÉCNICO (index.html)
+===============================================================================
+- renderCampaignByLocale(): a seção de type==='email' agora monta .abl-ecanvas + .abl-eframe (680px)
+  em vez da grade; in-app/push continuam em .abl-grid.
+- renderCampaignLocaleThumb(): e-mail vira iframe 680px de altura AUTO com injectAblHeightReporter;
+  in-app continua iframe de altura fixa (cartão de celular); push continua cartão.
+- injectAblHeightReporter(html, frameId): anexa <script> que mede e posta 'abl-height' no load.
+- Listener único (window.__ablHeightListener) que seta iframe.style.height ao receber 'abl-height'.
+- CSS: .abl-ecanvas (flex + overflow-x + fundo cinza + radius), .abl-eframe (fundo branco, borda,
+  sombra), .abl-eframe-head (cabeçalho sticky-left), .abl-eframe-vp. Removido .abl-grid-email.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado, mocks (nenhuma escrita no banco):
+- Pasta com Email 1 (de-DE, pt-BR) + Email 2 (de-DE), buildPreviewHtml stubado (doc de 1300px).
+- Seção Emails: .abl-ecanvas com display:flex + overflow-x:auto; 2 .abl-eframe de 680px lado a lado;
+  2 iframes de 680px (ablFrame-0/1); botão Approve no cabeçalho de cada frame.
+- Reporter de altura: o listener 'abl-height' atualiza iframe.style.height (partiu de 900px inicial
+  e reagiu às mensagens). Altura real só cresce com o frame VISÍVEL (no teste o container estava
+  oculto, então bateu no mínimo). O mecanismo é o mesmo já provado pela Approval View clássica.
+- Sem erros de console.
+NOTA: conferência visual final (e-mail real renderizado no canvas, altura crescendo) fica pra você
+no dashboard logado — a estrutura e o mecanismo de altura estão provados.
