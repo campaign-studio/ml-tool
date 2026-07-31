@@ -7095,8 +7095,11 @@ function renderOriginGrid() {
 }
 
 function pickOrigin(code) {
+  // Trocar a origem NÃO mexe em mais nada: só troca o rótulo de idioma-fonte. Não remove o
+  // idioma dos destinos, não toca em traduções, ids, HTML tageado nem estacionamento. (Antes,
+  // escolher a origem removia esse idioma de S.targets — o que podia alterar/estacionar a
+  // tradução dele sem a pessoa pedir. Removido de propósito.)
   S.origin = S.origin===code ? null : code;
-  S.targets = S.targets.filter(c=>c!==code);
   renderOriginGrid();
 }
 
