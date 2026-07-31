@@ -4,7 +4,7 @@
   "private": true,
   "description": "Braze Multilanguage Tool — Campaign Studio",
   "scripts": {
-    "dev": "serve . -l 5173"
+    "dev": "serve ."
   },
   "devDependencies": {
     "serve": "^14.2.1"
