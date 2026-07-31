@@ -1,0 +1,48 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: Pasta/Folder — ESTÁGIO 3: mover um e-mail avulso PARA DENTRO de uma pasta (a escrita
+crítica), com trava de segurança que NUNCA perde o avulso.
+
+===============================================================================
+O QUE ENTROU
+===============================================================================
+modules/folders.js:
+- planMoveIntoFolder(projects, projectId, folderId) — PLANO puro (não escreve): converte o
+  avulso em item (projectToFolderItem, lossless) + checagem de integridade (nº de linhas bate)
+  + guard anti-duplicata (mesmo projeto já na pasta) → devolve {ok, folderWithItem, item,
+  deleteProjectId} ou {ok:false, error}.
+
+index.html:
+- moveProjectToFolder(projectId, folderId) — ORDEM DE SEGURANÇA (nunca perde o avulso):
+  1) pull do estado mais novo; 2) aplica o plano e SALVA a pasta com o item (o avulso CONTINUA
+  na lista aqui); 3) VERIFICA na leitura local que o item entrou (mesma contagem de linhas) —
+  se NÃO entrou, avisa e ABORTA, mantendo o avulso intacto; 4) só ENTÃO remove o avulso
+  (markProjectDeleted + filtra + salva). O item guarda _fromProjectData pra permitir "remover
+  da pasta" recriar o avulso (estágio 5).
+- UI: botão "📂 Move to folder" no card do e-mail avulso (só dono); modal moveToFolderModal
+  lista as pastas que a pessoa controla (cada uma move ao clicar) + "➕ Criar nova pasta e
+  mover" (createFolderAndMove, cria campanha com o MESMO shape do createCampaign e move).
+
+Reaproveita projectToFolderItem/projGetAll/projSaveAll/markProjectDeleted/canShareProject.
+Aprovação viaja junto (mover não reseta — regra silenciosa).
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado, com mocks locais (NENHUMA escrita no banco):
+1. Sucesso: mover projeto real-ish (2 linhas, tradução "Hallo", aprovação) → a pasta fica com
+   o item (2 linhas, "Hallo" preservado, approvalDoneByLang mantido) e o avulso some. Notif "ok".
+2. FAIL-SAFE (crítico): forçando a gravação a NÃO persistir o item na pasta → o avulso
+   SOBREVIVE (não é deletado) e mostra aviso. Ou seja, se a pasta não recebeu o conteúdo, o
+   e-mail original nunca se perde.
+3. Modal: abre, lista as pastas com os ids certos (moveProjectToFolder('p1','c1')), botão de
+   criar-e-mover presente, fecha. Sem erros de console.
+
+NOTA: o teste end-to-end com clique real no dashboard logado precisa da sua conferência visual;
+a LÓGICA de escrita e a trava anti-perda estão provadas por mock.
+
+===============================================================================
+PRÓXIMO ESTÁGIO
+===============================================================================
+5. Remover item da pasta → volta a solto (folderItemToProject já pronto; recria o avulso com id
+   novo pra não colidir com o tombstone do id antigo).

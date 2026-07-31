@@ -1440,6 +1440,20 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
   </div>
 </div>
 
+<!-- ═══════════ MOVE TO FOLDER (mover e-mail avulso pra dentro de uma Pasta/campanha) ═══════════ -->
+<div id="moveToFolderModal" class="modal-ov" style="display:none;">
+  <div class="card modal-card" style="width:100%;max-width:440px;">
+    <div class="ci" style="padding:28px;">
+      <h1 style="margin:0 0 6px;">Mover para uma pasta</h1>
+      <p class="sub" id="moveToFolderSub" style="margin-bottom:16px;"></p>
+      <div id="moveToFolderList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;max-height:320px;overflow:auto;"></div>
+      <div style="display:flex;gap:10px;margin-top:8px;">
+        <button class="btn-back" style="flex:1;" onclick="closeMoveToFolderModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════ LOCK TAKEOVER WARNING (someone else grabbed the lock after 3min) ═══════════ -->
 <!-- ═══════════ SYNC WARNING TOAST ═══════════ -->
 <div id="syncWarningToast" class="sync-toast"></div>
@@ -4745,6 +4759,7 @@ function projRowHtml(p, isOwner) {
         </div>
       </div>
       <div class="proj-actions">
+        ${isOwner ? `<button class="btn-back" title="Mover este e-mail para dentro de uma pasta" onclick="openMoveToFolderModal('${p.id}')">📂 Move to folder</button>` : ''}
         ${canShare ? `<button class="btn-back" onclick="openShareModal('${p.id}')">Share with your team</button>` : ''}
         ${isApprover ? `<button class="btn-go" style="background:#6d28d9;" ${locked ? 'disabled' : ''} onclick="approverOpenProject('${p.id}')">Approve copies</button>` : ''}
         ${!isApprover ? `<button class="btn-go" id="openBtn-${p.id}" ${(locked && !lockedByMe) || reviewers.length ? 'disabled' : ''} onclick="projOpen('${p.id}', this)">Open Project</button>` : ''}
@@ -5284,6 +5299,76 @@ async function confirmProjDelete() {
   if(currentProjectId === id) currentProjectId = null;
   closeDeleteConfirmModal();
   renderDashboard();
+}
+
+// ── MOVER um e-mail avulso PARA DENTRO de uma pasta (escrita crítica) ────────────────────────
+// Ordem de segurança (nunca perde o avulso): 1) converte (lossless, via Folders) e adiciona o
+// item na pasta; 2) SALVA; 3) VERIFICA na leitura que o item entrou de verdade; 4) só ENTÃO
+// remove o avulso. Se qualquer passo falhar antes do 4, o avulso continua intacto.
+async function moveProjectToFolder(projectId, folderId) {
+  const me = authCurrentUser(); if(!me) return;
+  if(!window.Folders) { showNotif('Módulo de pastas não carregou — recarregue a página.', 'warn'); return; }
+  // Puxa o estado mais novo antes de mexer (mesmo cuidado do delete) pra não sobrescrever
+  // mudança concorrente de outra aba/pessoa.
+  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+
+  let projects = projGetAll();
+  const plan = Folders.planMoveIntoFolder(projects, projectId, folderId);
+  if(!plan.ok) { showNotif(plan.error, 'warn'); return; }
+
+  // 1+2) aplica (troca a pasta pela versão com o item) e salva — o avulso CONTINUA na lista aqui.
+  plan.folderWithItem.updatedAt = Date.now();
+  const withItem = projects.map(p => p.id === folderId ? plan.folderWithItem : p);
+  await withTimeout(projSaveAll(withItem), 8000, 'projSaveAll (add item)');
+
+  // 3) VERIFICA na leitura local que o item entrou (mesma contagem de linhas) ANTES de deletar.
+  const check = projGetAll().find(p => p.id === folderId);
+  const landed = check && (check.items||[]).some(it => it.id === plan.item.id && (it.rows||[]).length === plan.item.rows.length);
+  if(!landed) { showNotif('Não consegui gravar o item na pasta — o e-mail avulso foi MANTIDO intacto.', 'warn'); return; }
+
+  // 4) agora sim remove o avulso (tombstone + filtra + salva). O conteúdo já está seguro na pasta,
+  // e o item guarda _fromProjectData pra permitir "remover da pasta" recriar o avulso depois.
+  await withTimeout(markProjectDeleted(projectId), 8000, 'markProjectDeleted');
+  const after = projGetAll().filter(p => p.id !== projectId);
+  await withTimeout(projSaveAll(after), 8000, 'projSaveAll (remove avulso)');
+
+  closeMoveToFolderModal();
+  showNotif('E-mail movido para a pasta.', 'ok', 2600);
+  renderDashboard();
+}
+
+let _moveToFolderProjId = null;
+function openMoveToFolderModal(projectId) {
+  const me = authCurrentUser(); if(!me) return;
+  const p = projGetAll().find(x => x.id === projectId && x.kind !== 'campaign');
+  if(!p) { showNotif('Projeto não encontrado.', 'warn'); return; }
+  _moveToFolderProjId = projectId;
+  const sub = document.getElementById('moveToFolderSub');
+  if(sub) sub.textContent = `"${p.name}" vira um item de e-mail dentro da pasta escolhida (sai da lista de soltos).`;
+  // Só dá pra mover pra pasta que você controla (dono ou pode compartilhar).
+  const folders = (window.Folders ? Folders.all() : campaignGetAll())
+    .filter(f => (f.owner||'').toLowerCase() === me.email.toLowerCase() || canShareProject(f));
+  const rows = folders.map(f =>
+    `<button class="btn-back" style="justify-content:flex-start;text-align:left;" onclick="moveProjectToFolder('${escJsAttr(_moveToFolderProjId)}','${escJsAttr(f.id)}')">📁 ${escHtml(f.name)} <span style="color:var(--text3);font-size:11px;margin-left:6px;">${(f.items||[]).length} item(s)</span></button>`
+  ).join('');
+  const list = document.getElementById('moveToFolderList');
+  if(list) list.innerHTML = (rows || `<p class="sub" style="margin:0 0 6px;">Você ainda não tem nenhuma pasta.</p>`) +
+    `<button class="btn-next" style="margin-top:6px;" onclick="createFolderAndMove()">➕ Criar nova pasta e mover</button>`;
+  document.getElementById('moveToFolderModal').style.display = 'flex';
+}
+function closeMoveToFolderModal() {
+  const m = document.getElementById('moveToFolderModal'); if(m) m.style.display = 'none';
+  _moveToFolderProjId = null;
+}
+async function createFolderAndMove() {
+  const projId = _moveToFolderProjId; if(!projId) return;
+  const me = authCurrentUser(); if(!me) return;
+  const name = (prompt('Nome da nova pasta:') || '').trim(); if(!name) return;
+  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+  const folder = { id:'camp_'+Date.now(), kind:'campaign', name, owner:me.email, sharedWith:[], approvers:[], items:[], createdAt:Date.now(), updatedAt:Date.now() };
+  const projects = projGetAll(); projects.push(folder);
+  await withTimeout(projSaveAll(projects), 8000, 'projSaveAll (nova pasta)');
+  await moveProjectToFolder(projId, folder.id);
 }
 
 let _renameProjectId = null;

@@ -137,8 +137,32 @@
     };
   }
 
+  // ── MOVER projeto avulso → pasta (PLANO puro, não escreve) ──────────────────────────────────
+  // Recebe o array de projetos e retorna { ok, error, folderWithItem, item, deleteProjectId }.
+  // NÃO muta nada: quem chama aplica, SALVA a pasta, VERIFICA que o item entrou e só ENTÃO deleta
+  // o avulso (assim, se algo falhar no meio, o avulso nunca se perde). Faz uma checagem de
+  // integridade da conversão (nº de linhas bate) antes de liberar.
+  function planMoveIntoFolder(projects, projectId, folderId) {
+    const P = (projects || []).find(x => x.id === projectId && x.kind !== 'campaign');
+    const F = (projects || []).find(x => x.id === folderId && x.kind === 'campaign');
+    if (!P) return { ok: false, error: 'Projeto avulso não encontrado.' };
+    if (!F) return { ok: false, error: 'Pasta não encontrada.' };
+    const item = projectToFolderItem(P, 'email');
+    // Integridade: a conversão precisa ter linhas (senão algo deu errado no parse do HTML/CSV).
+    const taggedRows = app.parseHtml((P.data && P.data.html) || '');
+    if (taggedRows.length && item.rows.length !== taggedRows.length) {
+      return { ok: false, error: 'Conversão inconsistente (contagem de linhas não bate) — move abortado.' };
+    }
+    // Já existe um item vindo desse mesmo projeto nesta pasta? (evita duplicar num duplo-clique)
+    if ((F.items || []).some(it => it._fromProjectId === P.id)) {
+      return { ok: false, error: 'Este projeto já está nesta pasta.' };
+    }
+    const folderWithItem = { ...F, items: [...(F.items || []), item] };
+    return { ok: true, folderWithItem, item, deleteProjectId: P.id };
+  }
+
   global.Folders = {
     isCampaign, isLoose, all, visibleTo, isOwner, looseProjects, listView, search, searchInFolder,
-    projectToFolderItem, folderItemToProject,
+    projectToFolderItem, folderItemToProject, planMoveIntoFolder,
   };
 })(typeof window !== 'undefined' ? window : this);
