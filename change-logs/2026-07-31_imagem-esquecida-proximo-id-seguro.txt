@@ -1,0 +1,82 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: adicionar imagem "esquecida" a um projeto JÁ PROCESSADO entra sempre como o PRÓXIMO id
+livre (maior + 1), nunca reusa número, nunca sobrescreve id existente; se o projeto já estava
+aprovado, a imagem entra "pendente" sem resetar a aprovação.
+
+===============================================================================
+PEDIDO
+===============================================================================
+Se a pessoa esquecer uma imagem e voltar depois pra adicioná-la: (1) entra como novo id, sempre
+o último da sequência (maior número + 1); (2) nunca substitui/sobrescreve id existente (conteúdo
+nem posição); (3) ids existentes ficam idênticos. Decisões confirmadas com o usuário: "último" =
+maior NÚMERO de id; persistir um contador; aprovação = manter aprovado e marcar a nova como
+pendente; acionar pelo passo "Images" já existente.
+
+===============================================================================
+DIAGNÓSTICO (estado anterior)
+===============================================================================
+- IDs eram atribuídos por POSIÇÃO na extração (id'+(i+1)), mas reabrir PRESERVA o id da tag
+  ({%translation idN%}, lido em parseSavedProjectHtml) — então o espaço de ids é estável.
+- buildTaggedHtml usa r.id de cada linha (não a posição) — tags/posições dos ids existentes não
+  mudam quando outra linha entra.
+- BUG: ao re-adicionar imagem (buildCSV, ramo rows>0), o id novo vinha de
+  `idSeed = S.csv.rows.length + 1` — CONTAGEM de linhas, não "maior id + 1". Se algum id tivesse
+  sido removido, isso COLIDIA com um id existente ou REUSAVA o número de um removido (que ainda
+  aparece em log/comentário) — exatamente o que o pedido proíbe.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Arquivo: index.html
+
+1) Contador monotônico persistente (high-water mark):
+   - S.maxIdIssued (persistido em data.maxIdIssued). Novo id = maxIdIssued+1; nunca decrementa,
+     nunca recalcula das linhas atuais.
+   - Helpers: idNum(id); computeMaxIdFromState() (maior id em linhas ∪ approvalComments ∪
+     approvalDeletedIds — pega até id removido registrado no histórico); ensureMaxIdIssued()
+     (inicializa/defende: nunca abaixo do maior já usado); nextRowId() (monotônico).
+   - buildCSV ramo rows>0: troca idSeed=rows.length+1 por nextRowId() por imagem adicionada.
+   - buildCSV primeiro build: ensureMaxIdIssued() no fim, pra o contador refletir o maior id
+     atribuído por posição.
+   - Persistência: gravado em projSaveOnBuild (data{}) e em autosaveProject (nunca deixa
+     REGREDIR: Math.max com o valor já salvo no banco). Carregado em restoreProjectContent
+     (max entre data.maxIdIssued e computeMaxIdFromState). Resetado ao fechar projeto.
+
+2) Imagem nova tageada/no CSV igual às outras, só depois cronologicamente:
+   - É uma linha isImg normal; buildTaggedHtml acha o imgTag no HTML e envolve o src com
+     {%translation idNovo%}; buildCsvStringForSave a lista por último (maior id). Nenhuma linha
+     existente muda de id/posição → tags e posições delas saem idênticas.
+
+3) Aprovação (opção "manter + pendente"):
+   - Se o projeto já tinha algum idioma aprovado (projectHasApproval), o id da imagem nova entra
+     em S.pendingImgIds (persistido em data.pendingRowIds). A aprovação NÃO é resetada (mesma
+     regra silenciosa da edição manual de HTML).
+   - Badge "⏳ novo — revisar" na coluna Origin do editor pras linhas pendentes (buildTable).
+   - Limpa quando a imagem é de fato tratada (tradução/URL localizada preenchida em setCellV) —
+     gatilho no domínio do editor, persistido pelo autosave normal; não toca no merge de
+     aprovação (sensível a concorrência). O badge persiste ATRAVÉS da aprovação de propósito
+     (o approver precisa ver que entrou item novo).
+
+===============================================================================
+EDGE CASES (cobertos e testados)
+===============================================================================
+- Duas imagens esquecidas em momentos diferentes: cada nextRowId incrementa (id43, id44...),
+  inclusive entre sessões (o contador é persistido) — sem colisão.
+- Projeto com id removido no meio (ou o MAIOR removido): o contador não reusa. Mesmo com
+  maxIdIssued zerado, ensureMaxIdIssued recompõe o piso a partir de approvalDeletedIds/rows.
+- Imagem adicionada pós-aprovação: aprovação mantida; imagem marcada pendente; badge some ao
+  traduzir.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado (nenhuma escrita no banco):
+1. Unit do contador: init(42 linhas)=42; nextRowId → id43, id44 (dois adds não colidem);
+   remover o MAIOR (id44, registrado em approvalDeletedIds) → próximo id45; com maxIdIssued
+   zerado, ensureMaxIdIssued recompõe o piso do histórico (44).
+2. Integração (HTML sintético, projeto já aprovado): voltar em Images e selecionar a imagem →
+   id4 (próximo livre); id1..id3 e suas traduções intactos; pendente marcado; aprovação intacta;
+   imagem tageada no HTML e no CSV (por último), tags antigas intactas; campos de persistência
+   (maxIdIssued=4, pendingRowIds=['id4']) corretos; traduzir a imagem limpa o pending.
+3. Sem erros de console após recarregar.
