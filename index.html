@@ -1177,7 +1177,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
     </button>
     <span id="campaignScreenTitle" style="font-size:13px;font-weight:700;color:var(--text);flex-shrink:0;margin-right:8px;">Project</span>
     <div id="campaignTabs" style="display:flex;gap:6px;flex:1;"></div>
-    <button class="dash-sort-btn" style="background:var(--s2);flex-shrink:0;" onclick="openManageContentModal()" title="Add content">+ Add content</button>
+    <button id="campAddContentBtn" class="dash-sort-btn" style="background:var(--s2);flex-shrink:0;" onclick="openManageContentModal()" title="Add content">+ Add content</button>
   </div>
   <div id="campaignItemEmpty" style="display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--text3);">
     <p style="font-size:13px;">No content yet — click "+ Add content" to add an email, in-app message, or push.</p>
@@ -3668,6 +3668,12 @@ function openCampaignEditor(id) {
   _campaignItemIndex = -1;
   _campaignViewMode = 'gallery';
   _campaignActiveType = 'email';
+  // APPROVER-ONLY: quem foi compartilhado como approver (está em p.approvers e não é dono) abre a
+  // pasta só pra APROVAR — sem editar tradução/HTML, sem adicionar/remover/excluir conteúdo. Mesma
+  // regra dos projetos avulsos, agora aplicada à pasta. _approverMode gate as ações de edição.
+  const me = authCurrentUser();
+  const isOwner = me && p.owner && p.owner.toLowerCase() === me.email.toLowerCase();
+  _approverMode = !!(me && !isOwner && (p.approvers || []).some(e => e.toLowerCase() === me.email.toLowerCase()));
   currentProjectId = p.id; // pro código de aprovação (notificações/lock) resolver o projeto certo
   document.getElementById('dashboardScreen').style.display = 'none';
   document.getElementById('campaignScreen').style.display = 'flex';
@@ -3793,6 +3799,9 @@ function renderCampaignMain() {
   const galleryEl = document.getElementById('campaignGallery');
   const bodyEl = document.getElementById('campaignItemBody');
   if(!_campaign) return;
+  // Approver-only não adiciona conteúdo — esconde o "+ Add content".
+  const addBtn = document.getElementById('campAddContentBtn');
+  if(addBtn) addBtn.style.display = _approverMode ? 'none' : '';
   const items = _campaign.items || [];
 
   if(_campaignViewMode === 'edit' && _campaignItemIndex >= 0 && items[_campaignItemIndex]) {
@@ -3857,18 +3866,18 @@ function renderCampaignGallery(pairs) {
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
             Approve
           </button>
-          <button class="tbtn html" style="height:30px;padding:0 12px;font-size:11.5px;" title="Edit translations" onclick="openCampaignItemEdit(${idx})">
+          ${_approverMode ? '' : `<button class="tbtn html" style="height:30px;padding:0 12px;font-size:11.5px;" title="Edit translations" onclick="openCampaignItemEdit(${idx})">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             Edit
-          </button>
-          ${it.type === 'email' && _campaign ? `<button class="tbtn camp-item-btn-remove" style="height:30px;padding:0 12px;font-size:11.5px;" title="Remove this email from the folder — it goes back to the standalone list" onclick="removeItemFromFolder('${escJsAttr(_campaign.id)}','${escJsAttr(it.id)}')">
+          </button>`}
+          ${(!_approverMode && it.type === 'email' && _campaign) ? `<button class="tbtn camp-item-btn-remove" style="height:30px;padding:0 12px;font-size:11.5px;" title="Remove this email from the folder — it goes back to the standalone list" onclick="removeItemFromFolder('${escJsAttr(_campaign.id)}','${escJsAttr(it.id)}')">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 015 5v1"/></svg>
             Remove from folder
           </button>` : ''}
-          <button class="tbtn camp-item-btn-delete" style="height:30px;padding:0 11px;font-size:11.5px;" title="Delete this item permanently" onclick="deleteContentItem(${idx})">
+          ${_approverMode ? '' : `<button class="tbtn camp-item-btn-delete" style="height:30px;padding:0 11px;font-size:11.5px;" title="Delete this item permanently" onclick="deleteContentItem(${idx})">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
             Delete
-          </button>
+          </button>`}
         </div>
       </div>
     </div>
