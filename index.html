@@ -10623,7 +10623,11 @@ function renderAvOnlineStack(presenceState) {
 // renderizaria empilhado feito celular, mesmo essa vitrine querendo mostrar o desktop.
 const AV_FRAME_W = 680, AV_FRAME_GAP = 90, AV_FRAME_TOP = 50;
 const AV_INAPP_FRAME_W = 320, AV_INAPP_FRAME_H = 640; // in-app é overlay fixed em tela cheia — vira uma "tela de celular" de tamanho fixo, não uma altura auto tipo e-mail
-function avFrameW() { return _campaignInappPreview ? AV_INAPP_FRAME_W : AV_FRAME_W; }
+const AV_PUSH_FRAME_W = 380;   // push é um card de notificação pequeno — NÃO deve seguir a largura de e-mail
+// Largura do frame por tipo: e-mail (680), in-app (320, tela de celular), push (380, card pequeno).
+function avFrameW() { return _campaignInappPreview ? AV_INAPP_FRAME_W : (_campaignPushPreview ? AV_PUSH_FRAME_W : AV_FRAME_W); }
+// Gap ENTRE frames: push/in-app são pequenos, então ficam mais PRÓXIMOS (44) que os e-mails (90).
+function avFrameGap() { return (_campaignPushPreview || _campaignInappPreview) ? 44 : AV_FRAME_GAP; }
 let _avView = { scale: 1, tx: 40, ty: 60 };
 let _avPan = { active: false, moved: false, startX: 0, startY: 0, startTx: 0, startTy: 0 };
 let _avSuppressNextClick = false;
@@ -10641,7 +10645,7 @@ function applyAvTransform() {
 // mesma conta usada em avFitToFrames pra caber tudo na tela.
 function avContentWidth() {
   const { langs } = approvalLangs();
-  return langs.length ? langs.length * (avFrameW() + AV_FRAME_GAP) : 0;
+  return langs.length ? langs.length * (avFrameW() + avFrameGap()) : 0;
 }
 
 // Barra de rolagem horizontal "de verdade" pro canvas com pan/zoom via transform —
@@ -10744,7 +10748,7 @@ function avFitToFrames() {
   const { langs } = approvalLangs();
   const vp = document.getElementById('avCanvasViewport');
   if(!vp || !langs.length) return;
-  const totalW = langs.length * (avFrameW() + AV_FRAME_GAP);
+  const totalW = langs.length * (avFrameW() + avFrameGap());
   const availW = vp.clientWidth - 80;
   _avView.scale = Math.max(0.15, Math.min(1, availW / totalW));
   _avView.tx = 40;
@@ -10825,11 +10829,12 @@ function renderApprovalGrid() {
     return;
   }
   const frameW = avFrameW();
-  canvas.style.width = (langs.length * (frameW + AV_FRAME_GAP)) + 'px';
+  const frameGap = avFrameGap();
+  canvas.style.width = (langs.length * (frameW + frameGap)) + 'px';
   canvas.innerHTML = langs.map((lang, i) => {
     const isOrig = lang === origLang;
     const country = S.allC.find(c => c.lang === lang);
-    const x = i * (frameW + AV_FRAME_GAP);
+    const x = i * (frameW + frameGap);
     return `
       <div class="av-canvas-frame" style="left:${x}px;top:${AV_FRAME_TOP}px;width:${frameW}px;">
         <div class="av-canvas-frame-title">
