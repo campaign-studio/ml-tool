@@ -1,0 +1,42 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: FASE 3/3 — "By Locale" agora ABRE DIRETO o canvas de aprovação (mesma tela do Approve
+      copies: zoom/pan + comentários + threads), com ABAS DE PAÍS DENTRO do canvas.
+
+===============================================================================
+O QUE MUDOU
+===============================================================================
+- A aba "By Locale" (openCampaignByLocale) não abre mais a grade custom antiga — abre DIRETO o
+  canvas de aprovação (openApprovalViewByLocale) no primeiro locale (ou no último usado).
+- Abas de LOCALE dentro do header do canvas (#avLocaleTabs), só no modo locale: lista todos os
+  idiomas presentes na pasta (campaignLocalesInUse), o ativo destacado; clicar troca o idioma sem
+  sair do canvas (switchAvLocale → reconstrói os frames pro novo locale). No modo single (Approve
+  copies) as abas ficam escondidas.
+- Título do header muda por modo: "Approve copies" (single) / "Approve by Locale" (locale).
+- Fechar o canvas no modo locale volta pra galeria da pasta e LEMBRA o último locale escolhido
+  (_campaignLocale) pra reabrir onde parou.
+- CSS .av-locale-tabs / .av-locale-tab (aba ativa roxa).
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado, mocks (nenhuma escrita no banco):
+- Pasta com Email 1 (de-DE, pt-BR), Email 2 (de-DE), Inapp 1 (pt-BR).
+- Clicar "By Locale": canvas abre (mode=locale, locale=de-DE), header "Approve by Locale", abas
+  de país [de_de ativo, pt_br]; frames de-DE = Email 1 + Email 2.
+- switchAvLocale('pt-BR'): aba pt_br fica ativa, frames = Email 1 + Inapp 1 (Email 2 some, só tem
+  de-DE) — filtro por locale correto.
+- Fechar: modo volta a single, canvas some, _campaignLocale lembra 'pt-BR'.
+- Zero erros de console.
+
+===============================================================================
+FEATURE "APPROVE BY LOCALE" — COMPLETA (3 fases)
+===============================================================================
+1. Canvas de aprovação EXTRAÍDO pra modules/approval-canvas.js (sem mudança de comportamento).
+2. Canvas GENERALIZADO pra fonte por-frame {item, locale} — reusa 100% comentários/threads/
+   @menção/verify/presença/aprovação/PNG; single mode intacto; escritas roteadas pro item dono.
+3. "By Locale" abre o canvas direto, com abas de país dentro (esta fase).
+
+NOTA: a grade custom antiga de By Locale (renderCampaignByLocale/renderCampaignLocaleThumb/
+injectAblHeightReporter + #campaignLocaleView + CSS .abl-*) ficou ÓRFÃ (inalcançável) — remoção
+opcional num passo de limpeza à parte. campaignLocalesInUse continua em uso (abas do canvas).

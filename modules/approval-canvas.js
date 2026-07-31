@@ -126,6 +126,8 @@ function openApprovalView() {
   _avMode = 'single'; _avLocale = null; // entrada clássica: um item × idiomas (single)
   if(!S.rawHtml && !_campaignPushPreview) { uiAlert('Upload an HTML first.'); return; }
   document.getElementById('approvalView').classList.add('show');
+  const t = document.getElementById('avHdrTitle'); if(t) t.textContent = 'Approve copies';
+  renderAvLocaleTabs();
   const sub = document.getElementById('avSubtitle');
   if(sub) sub.textContent = S.csv.name || '';
   renderApprovalGrid();
@@ -143,12 +145,35 @@ function openApprovalViewByLocale(locale) {
   const frames = avBuildFrames();
   if(!frames.length) { _avMode = 'single'; _avLocale = null; uiAlert('Nothing to approve in this language yet.'); return; }
   document.getElementById('approvalView').classList.add('show');
+  const t = document.getElementById('avHdrTitle'); if(t) t.textContent = 'Approve by Locale';
+  renderAvLocaleTabs();
   const sub = document.getElementById('avSubtitle');
-  if(sub) sub.textContent = ((_campaign && _campaign.name) || '') + ' — ' + toBrazeLang(locale);
+  if(sub) sub.textContent = ((_campaign && _campaign.name) || '');
   renderApprovalGrid();
   renderApprovalSidebar();      // já chama renderApprovalDoneBanner() internamente no fim
   renderApprovalActivityFeed();
   avPresenceJoin();
+}
+
+// Abas de LOCALE dentro do canvas (só no modo locale) — troca o idioma sem sair, mantendo a
+// mesma tela. As locales são todas as presentes na pasta aberta (campaignLocalesInUse, do index).
+function renderAvLocaleTabs() {
+  const el = document.getElementById('avLocaleTabs');
+  if(!el) return;
+  if(_avMode !== 'locale') { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const locales = (typeof campaignLocalesInUse === 'function') ? campaignLocalesInUse() : [_avLocale];
+  el.style.display = 'flex';
+  el.innerHTML = locales.map(l =>
+    `<button class="av-locale-tab ${l === _avLocale ? 'active' : ''}" onclick="switchAvLocale('${escJsAttr(l)}')">${escHtml(toBrazeLang(l))}</button>`
+  ).join('');
+}
+
+// Troca o locale ativo sem fechar o canvas. Comita o item corrente antes (as escritas já são
+// síncronas via avCommitIfLocale, mas por segurança) e reconstrói os frames pro novo locale.
+function switchAvLocale(l) {
+  if(l === _avLocale) return;
+  if(_campaign) commitCampaignItemApprovalState();
+  openApprovalViewByLocale(l);
 }
 
 function closeApprovalView() {
@@ -165,10 +190,12 @@ function closeApprovalView() {
     const wasLocale = _avMode === 'locale';
     commitCampaignItemApprovalState();
     saveCampaignProject();
+    // Lembra o último locale escolhido pra reabrir onde parou (a var mora no index).
+    if(wasLocale && _avLocale && typeof _campaignLocale !== 'undefined') _campaignLocale = _avLocale;
     _avMode = 'single'; _avLocale = null; // reseta o modo ao sair
-    // No modo locale, volta pra visão "By Locale" da pasta (não pra galeria/edit).
-    if(wasLocale && typeof renderCampaignByLocale === 'function') renderCampaignByLocale();
-    else renderCampaignMain();
+    // Volta pra galeria da pasta (a visão "By Locale" agora É o próprio canvas).
+    if(wasLocale) { _campaignByLocale = false; renderCampaignTabs(); }
+    renderCampaignMain();
     return;
   }
   _avMode = 'single'; _avLocale = null; // reseta o modo ao sair (fluxo single clássico)

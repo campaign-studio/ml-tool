@@ -855,6 +855,10 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 .av-hdr-title{font-size:15px;font-weight:700;color:var(--text);}
 .av-hdr-sub{font-size:11.5px;color:var(--text3);}
 .av-hdr-actions{display:flex;align-items:center;gap:8px;margin-left:auto;}
+.av-locale-tabs{display:flex;align-items:center;gap:4px;margin-left:18px;flex-wrap:nowrap;overflow-x:auto;max-width:52vw;}
+.av-locale-tab{flex-shrink:0;padding:6px 13px;border:1px solid var(--border);border-radius:8px;background:var(--s2);color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans);white-space:nowrap;}
+.av-locale-tab:hover{color:var(--accent);}
+.av-locale-tab.active{background:#6d28d9;border-color:#6d28d9;color:#fff;}
 .av-body{flex:1;display:flex;overflow:hidden;}
 
 /* Infinite pannable/zoomable canvas — all country frames laid out side by side, like a Figma page */
@@ -2004,9 +2008,12 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 <div id="approvalView">
   <div class="av-hdr">
     <div>
-      <div class="av-hdr-title">Approve copies</div>
+      <div class="av-hdr-title" id="avHdrTitle">Approve copies</div>
       <div class="av-hdr-sub" id="avSubtitle"></div>
     </div>
+    <!-- Abas de LOCALE (só no modo "Approve by Locale"): troca o idioma sem sair do canvas —
+         "lá dentro tem abas para os outros países". Escondidas no modo single (Approve copies). -->
+    <div class="av-locale-tabs" id="avLocaleTabs" style="display:none;"></div>
     <div class="av-hdr-actions">
       <div class="av-online-stack" id="avOnlineStack"></div>
       <button class="btn-back" onclick="closeApprovalView()">Close</button>
@@ -5735,15 +5742,15 @@ function campaignLocalesInUse() {
   return sortLangsForDisplay([...set]);
 }
 
+// "By Locale" abre DIRETO o canvas de aprovação (mesma tela do "Approve copies", com zoom/pan +
+// comentários + threads), recortado por idioma — um frame por asset da pasta naquele locale.
+// As abas de país ficam DENTRO do canvas (renderAvLocaleTabs).
 function openCampaignByLocale() {
   if(!_campaign) return;
-  _campaignByLocale = true;
-  _campaignViewMode = 'gallery';
-  _campaignItemIndex = -1;
   const locales = campaignLocalesInUse();
-  if(!_campaignLocale || !locales.includes(_campaignLocale)) _campaignLocale = locales[0] || null;
-  renderCampaignTabs();
-  renderCampaignMain();
+  if(!locales.length) { uiAlert('No translated content yet — add content with at least one language first.'); return; }
+  if(!_campaignLocale || !locales.includes(_campaignLocale)) _campaignLocale = locales[0];
+  openApprovalViewByLocale(_campaignLocale);
 }
 
 function setCampaignLocale(l) { _campaignLocale = l; renderCampaignByLocale(); }
