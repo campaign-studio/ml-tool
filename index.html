@@ -18,7 +18,7 @@
   --text2: #57574f;
   --text3: #9a9a90;
   --accent: #d8385e;
-  --acc-bg: #fdf0f3;
+  --acc-bg: #fdf0f3;åç
   --acc-bd: #f3c2cf;
   --green: #034036;
   --grn-bg: #f3fadc;
@@ -6882,7 +6882,16 @@ function extractStr() {
     // sozinho logo abaixo, fazendo a tag sumir do CSV sem deixar rastro nenhum.
     const soleTokens = splitLiquid(t);
     const isSoleMergeTag = soleTokens.length === 1 && soleTokens[0].type === 'liquid' && soleTokens[0].val.startsWith('{{') && isRecognizedMergeTag(soleTokens[0].val);
-    const isEffectivelyEmpty = textOnly.length < 4 && !isSoleMergeTag;
+    // "Efetivamente vazio" = pequeno demais pra ser texto traduzível de verdade. O critério
+    // ANTIGO era só textOnly.length < 4 — mas isso descartava palavras curtas LEGÍTIMAS, como
+    // as abreviações de dia da semana "Mon/Tue/Wed/Thu/Fri/Sat/Sun" (3 letras), que ficavam de
+    // fora do CSV mesmo aparecendo no e-mail (bug reportado no "Phase 2 - Non WH+ - Email 4").
+    // Critério novo, ADITIVO (nunca descarta o que já era capturado): só é vazio se for curto
+    // (<4 chars) E tiver menos de 2 LETRAS. Assim "Mon" entra (3 letras), preços/números longos
+    // tipo "$29.99"/"100%" continuam entrando (>=4 chars), e símbolos/espaçadores soltos
+    // ("→", "•", "|", "-", um caractere só) seguem barrados.
+    const letterCount = (textOnly.match(/[A-Za-zÀ-ÖØ-öø-ÿ]/g) || []).length;
+    const isEffectivelyEmpty = textOnly.length < 4 && letterCount < 2 && !isSoleMergeTag;
 
     if(isPureControl || isEffectivelyEmpty){
       if(styleStack.length>0) styleStack[styleStack.length-1].parts.push(workTok);
