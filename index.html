@@ -530,6 +530,55 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .folder-chip-icon{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border:none;background:var(--s2);color:var(--text3);border-radius:50%;font-size:10.5px;cursor:pointer;flex-shrink:0;}
 .folder-chip-icon:hover{background:var(--acc-bg);color:var(--accent);}
 
+/* ═══════════ CARD DE PASTA (listagem externa) — clicável, glass, ações no hover ═══════════ */
+.folder-card{position:relative;display:flex;align-items:center;gap:16px;padding:16px 18px;border-radius:18px;
+  background:rgba(255,255,255,.55);border:1px solid var(--border);cursor:pointer;
+  backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);
+  box-shadow:0 1px 3px rgba(20,20,40,.05);transition:border-color .18s,box-shadow .18s,transform .18s,background .18s;}
+.folder-card:hover{border-color:var(--border-s);box-shadow:0 14px 32px rgba(20,20,40,.10);transform:translateY(-2px);background:rgba(255,255,255,.72);}
+.folder-card-icon{flex-shrink:0;width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;
+  color:#fff;background:linear-gradient(150deg,var(--wh-navy,#1d2b4a),var(--wh-navy2,#2a3d63));box-shadow:0 4px 12px rgba(20,20,40,.18);}
+.folder-card-body{flex:1;min-width:0;}
+.folder-card-name{display:flex;align-items:center;gap:8px;font-size:14.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.folder-card-summary{margin-top:3px;font-size:12px;color:var(--text3);font-weight:600;}
+.folder-shared-tag{font-size:10px;font-weight:700;color:#6d28d9;background:#f5f3ff;border:1px solid #e9e5ff;border-radius:20px;padding:1px 8px;white-space:nowrap;}
+.folder-card-actions{display:flex;gap:6px;flex-shrink:0;opacity:0;transition:opacity .14s;}
+.folder-card:hover .folder-card-actions{opacity:1;}
+.folder-icon-btn{width:32px;height:32px;border-radius:9px;border:1px solid var(--border-s);background:var(--surface);color:var(--text2);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .12s,color .12s,border-color .12s;}
+.folder-icon-btn:hover{background:var(--acc-bg);color:var(--accent);border-color:var(--accent);}
+.folder-icon-btn.danger:hover{background:#fef2f2;color:#dc2626;border-color:#fca5a5;}
+/* Botões de escopo do delete de pasta */
+.del-scope-btn{display:block;width:100%;text-align:left;padding:11px 14px;border-radius:11px;border:1.5px solid var(--border-s);background:var(--surface);cursor:pointer;font-family:var(--sans);transition:border-color .12s,background .12s;}
+.del-scope-btn strong{display:block;font-size:13px;color:var(--text);}
+.del-scope-btn span{display:block;font-size:11.5px;color:var(--text3);margin-top:2px;}
+.del-scope-btn:hover{border-color:var(--accent);}
+.del-scope-btn.active{border-color:var(--accent);background:var(--acc-bg);}
+
+/* ═══════════ CARD DE ITEM DENTRO DA PASTA (e-mail/in-app/push) — moderno, glass ═══════════ */
+.camp-item-card{position:relative;display:flex;flex-direction:column;border-radius:18px;overflow:hidden;
+  background:rgba(255,255,255,.55);border:1px solid var(--border);
+  backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);
+  box-shadow:0 1px 3px rgba(20,20,40,.05);transition:border-color .18s,box-shadow .18s,transform .18s;}
+.camp-item-card:hover{border-color:var(--border-s);box-shadow:0 16px 36px rgba(20,20,40,.12);transform:translateY(-3px);}
+.camp-item-preview{height:300px;overflow:hidden;background:#f2f1f6;position:relative;}
+.camp-item-preview iframe{width:100%;height:100%;border:none;}
+.camp-item-foot{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--border);background:rgba(255,255,255,.35);}
+.camp-item-info{flex:1;min-width:0;}
+.camp-item-name{font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.camp-item-progress{margin-top:4px;}
+.camp-item-actions{display:flex;gap:6px;flex-shrink:0;opacity:0;transform:translateY(2px);transition:opacity .15s,transform .15s;}
+.camp-item-card:hover .camp-item-actions{opacity:1;transform:none;}
+@media (prefers-color-scheme: dark){
+  .camp-item-card{background:rgba(30,32,44,.5);}
+  .camp-item-card:hover{background:rgba(30,32,44,.66);}
+  .camp-item-foot{background:rgba(30,32,44,.35);}
+}
+@media (prefers-color-scheme: dark){
+  .folder-card{background:rgba(30,32,44,.5);}
+  .folder-card:hover{background:rgba(30,32,44,.68);}
+}
+
 .proj-row{position:relative;overflow:hidden;display:flex;flex-direction:column;gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:24px 26px 22px 32px;box-shadow:0 1px 3px rgba(20,20,40,.05);transition:border-color .2s,box-shadow .2s,transform .2s;}
 .proj-row::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--wh-navy),var(--wh-navy2));opacity:.85;transition:width .2s;}
 .proj-row:hover{border-color:var(--border-s);box-shadow:0 14px 32px rgba(20,20,40,.09);transform:translateY(-2px);}
@@ -1449,6 +1498,36 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
       <div id="moveToFolderList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;max-height:320px;overflow:auto;"></div>
       <div style="display:flex;gap:10px;margin-top:8px;">
         <button class="btn-back" style="flex:1;" onclick="closeMoveToFolderModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ DELETAR PASTA — escopo (só a pasta / tudo) + código de confirmação aleatório ═══════════ -->
+<div id="deleteFolderModal" class="modal-ov" style="display:none;">
+  <div class="card modal-card" style="width:100%;max-width:470px;">
+    <div class="ci" style="padding:28px;">
+      <h1 style="margin:0 0 6px;">Deletar pasta</h1>
+      <p class="sub" style="margin-bottom:16px;">Deletar <strong id="deleteFolderName"></strong>. <span style="color:#dc2626;font-weight:700;">Esta ação é irreversível.</span></p>
+      <div id="deleteFolderScopeRow" style="margin-bottom:16px;">
+        <label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:8px;">Deseja deletar os projetos que estão dentro?</label>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button type="button" id="scopeFolderOnly" class="del-scope-btn" onclick="setDeleteFolderScope('folderonly')">
+            <strong>Só a pasta</strong><span id="scopeFolderOnlyHint">— os e-mails voltam pra lista de soltos</span>
+          </button>
+          <button type="button" id="scopeContents" class="del-scope-btn" onclick="setDeleteFolderScope('contents')">
+            <strong>A pasta E tudo dentro</strong><span>— apaga e-mails, in-apps e pushes junto</span>
+          </button>
+        </div>
+      </div>
+      <div id="deleteFolderSharedWarn" style="display:none;margin-bottom:14px;font-size:12px;font-weight:600;color:#b45309;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:9px 11px;"></div>
+      <div class="field" style="margin-bottom:0;">
+        <label>Digite <code id="deleteFolderCode" style="font-size:15px;font-weight:800;letter-spacing:2px;background:var(--s2);padding:2px 9px;border-radius:6px;color:var(--text);"></code> para confirmar</label>
+        <input id="deleteFolderCodeInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Código de confirmação" oninput="updateDeleteFolderBtn()" onkeydown="if(event.key==='Enter'){event.preventDefault();if(!document.getElementById('deleteFolderBtn').disabled)confirmDeleteFolder();}">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:22px;">
+        <button class="btn-back" style="flex:1;" onclick="closeDeleteFolderModal()">Cancelar</button>
+        <button class="btn-danger" id="deleteFolderBtn" style="flex:1;" disabled onclick="confirmDeleteFolder()">Deletar</button>
       </div>
     </div>
   </div>
@@ -3472,42 +3551,40 @@ function renderCampaignsList() {
   list.innerHTML = sortDashProjects(filtered).map(campaignRowHtml).join('');
 }
 
+// Card EXTERNO da pasta (na listagem): só ícone de pasta + nome + resumo do conteúdo. O card
+// INTEIRO é clicável (abre a pasta) — sem botão "Open" separado, sem tags de tradução/status.
+// Share/Delete ficam como ícones discretos que aparecem no hover (com stopPropagation pra não
+// abrir a pasta ao clicar neles).
 function campaignRowHtml(p) {
   const items = p.items || [];
-  const typeCounts = {};
-  items.forEach(it => { typeCounts[it.type] = (typeCounts[it.type] || 0) + 1; });
-  const typeLabel = { email: 'Email', inapp: 'In-app', push: 'Push' };
-  const badges = Object.keys(typeCounts).map(t =>
-    `<span class="lang-chip">${escHtml(typeLabel[t] || t)} ×${typeCounts[t]}</span>`
-  ).join('');
-  const progressBadge = translationProgressBadgeHtml(campaignTranslationStats(p));
+  const counts = { email: 0, inapp: 0, push: 0 };
+  items.forEach(it => { if(counts[it.type] != null) counts[it.type]++; });
+  const plural = { email: ['e-mail', 'e-mails'], inapp: ['in-app', 'in-apps'], push: ['push', 'pushes'] };
+  const parts = ['email','inapp','push'].filter(t => counts[t] > 0).map(t => `${counts[t]} ${plural[t][counts[t] > 1 ? 1 : 0]}`);
+  const summary = parts.length ? parts.join(' · ') : 'Pasta vazia';
   const me = authCurrentUser();
   const isOwner = me && p.owner && p.owner.toLowerCase() === me.email.toLowerCase();
-  // Compartilhar pasta reusa EXATAMENTE o fluxo dos projetos soltos (canShareProject +
-  // openShareModal + setMemberRole). Compartilhar a pasta dá acesso a tudo dentro (os itens
-  // vivem em p.items, então o acesso é herdado). Só dono/superadmin deletam; um editor
-  // compartilhado abre mas não deleta.
   const canShare = isOwner || canShareProject(p);
-  const sharedBadge = (!isOwner) ? `<span class="lang-chip" title="Shared with you by ${escHtml(p.owner||'')}">🔗 Shared</span>` : '';
+  const canDelete = isOwner || (me && isSuperadmin(me.role));
+  const sharedTag = (!isOwner && p.owner) ? `<span class="folder-shared-tag" title="Compartilhada por ${escHtml(p.owner)}">🔗 Shared</span>` : '';
   return `
-    <div class="proj-row">
-      <div class="proj-body">
-        <div class="proj-info">
-          <div class="proj-header">
-            <div class="proj-name">
-              ${escHtml(p.name)}
-              ${isOwner ? `<button class="proj-rename-btn" title="Rename project" onclick="event.stopPropagation();renameCampaign('${p.id}')">✎</button>` : ''}
-            </div>
-          </div>
-          <div class="proj-meta">Created on ${new Date(p.createdAt).toLocaleDateString('en-US')}${p.updatedAt ? ` · Last edited ${relativeTime(p.updatedAt)}` : ''}${!isOwner && p.owner ? ` · by ${escHtml(authorName(p.owner))}` : ''}</div>
-          <div class="proj-flags" style="margin-top:6px;">${sharedBadge}${badges || '<span style="font-size:11px;color:var(--text3);">No content yet</span>'}</div>
-          ${progressBadge ? `<div class="proj-badges" style="margin-top:6px;">${progressBadge}</div>` : ''}
-        </div>
+    <div class="folder-card" onclick="openCampaignEditor('${escJsAttr(p.id)}')" title="Abrir pasta">
+      <div class="folder-card-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
       </div>
-      <div class="proj-actions">
-        <button class="btn-go" onclick="openCampaignEditor('${p.id}')">Open Project</button>
-        ${canShare ? `<button class="btn-back" onclick="openShareModal('${p.id}')">Share with your team</button>` : ''}
-        ${isOwner || (me && isSuperadmin(me.role)) ? `<button class="btn-danger" onclick="deleteCampaign('${p.id}')">Delete</button>` : ''}
+      <div class="folder-card-body">
+        <div class="folder-card-name">${escHtml(p.name)} ${sharedTag}
+          ${isOwner ? `<button class="proj-rename-btn" title="Renomear pasta" onclick="event.stopPropagation();renameCampaign('${escJsAttr(p.id)}')">✎</button>` : ''}
+        </div>
+        <div class="folder-card-summary">${escHtml(summary)}</div>
+      </div>
+      <div class="folder-card-actions">
+        ${canShare ? `<button class="folder-icon-btn" title="Compartilhar" onclick="event.stopPropagation();openShareModal('${escJsAttr(p.id)}')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+        </button>` : ''}
+        ${canDelete ? `<button class="folder-icon-btn danger" title="Deletar pasta" onclick="event.stopPropagation();openDeleteFolderModal('${escJsAttr(p.id)}')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
+        </button>` : ''}
       </div>
     </div>
   `;
@@ -3774,21 +3851,25 @@ function renderCampaignGallery(pairs) {
   const grid = document.getElementById('campaignGalleryGrid');
   if(!grid) return;
   grid.innerHTML = pairs.map(({ it, idx }) => `
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;">
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);">
-        <span style="flex:1;min-width:0;font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(it.name)}</span>
-        ${translationProgressBadgeHtml(campaignItemTranslationStats(it), 'flex-shrink:0;font-size:10px;padding:2px 8px;')}
-        <button class="tbtn" style="height:26px;padding:0 10px;font-size:11px;border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;" onclick="openCampaignItemApprove(${idx})">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
-          Approve
-        </button>
-        <button class="tbtn html" style="height:26px;padding:0 10px;font-size:11px;" onclick="openCampaignItemEdit(${idx})">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          Edit
-        </button>
-        ${it.type === 'email' && _campaign ? `<button class="tbtn" style="height:26px;padding:0 10px;font-size:11px;" title="Tirar da pasta e voltar a ser e-mail avulso" onclick="removeItemFromFolder('${escJsAttr(_campaign.id)}','${escJsAttr(it.id)}')">↩ Remove</button>` : ''}
+    <div class="camp-item-card">
+      <div class="camp-item-preview" id="campAssetPreview-${idx}"></div>
+      <div class="camp-item-foot">
+        <div class="camp-item-info">
+          <div class="camp-item-name">${escHtml(it.name)}</div>
+          <div class="camp-item-progress">${translationProgressBadgeHtml(campaignItemTranslationStats(it), 'font-size:10px;padding:2px 8px;')}</div>
+        </div>
+        <div class="camp-item-actions">
+          <button class="tbtn" style="height:28px;padding:0 11px;font-size:11px;border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;" title="Aprovar cópias" onclick="openCampaignItemApprove(${idx})">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
+            Approve
+          </button>
+          <button class="tbtn html" style="height:28px;padding:0 11px;font-size:11px;" title="Editar traduções" onclick="openCampaignItemEdit(${idx})">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Edit
+          </button>
+          ${it.type === 'email' && _campaign ? `<button class="tbtn" style="height:28px;padding:0 11px;font-size:11px;" title="Tirar da pasta e voltar a ser e-mail avulso" onclick="removeItemFromFolder('${escJsAttr(_campaign.id)}','${escJsAttr(it.id)}')">↩</button>` : ''}
+        </div>
       </div>
-      <div id="campAssetPreview-${idx}" style="flex:1;background:#f2f1f6;"></div>
     </div>
   `).join('');
   pairs.forEach(({ it, idx }) => renderCampaignAssetThumb(it, idx));
@@ -3822,10 +3903,9 @@ function renderCampaignAssetThumb(item, idx) {
   const html = buildPreviewHtml(origLangName);
   const srcdoc = html.replace(/"/g, '&quot;');
   const isInapp = item.type === 'inapp';
-  const h = 340;
-  wrap.innerHTML = `<div style="height:${h}px;overflow:hidden;">
-    <iframe style="width:100%;height:${h}px;border:none;background:${isInapp ? 'transparent' : '#fff'};" srcdoc="${srcdoc}"></iframe>
-  </div>`;
+  // Preenche o container do card (.camp-item-preview, altura fixa via CSS) — sem altura fixa
+  // aqui, pra a casca visual do card mandar no tamanho.
+  wrap.innerHTML = `<iframe style="width:100%;height:100%;border:none;background:${isInapp ? 'transparent' : '#fff'};" srcdoc="${srcdoc}"></iframe>`;
 }
 
 // "Approve copies" de um item de campanha — reaproveita a MESMA Approval View
@@ -5410,6 +5490,101 @@ async function removeItemFromFolder(folderId, itemId) {
     if(typeof renderCampaignMain === 'function') renderCampaignMain();
   }
   showNotif('Item removido da pasta — voltou pra lista de e-mails soltos.', 'ok', 2800);
+  renderDashboard();
+}
+
+// ── DELETAR PASTA: escopo (só a pasta / tudo) + código aleatório de confirmação ──────────────
+let _deleteFolderId = null, _deleteFolderCode = '', _deleteFolderScope = 'folderonly';
+// Código curto, MAIÚSCULO, sem caracteres ambíguos (0/O, 1/I/L) — via crypto (não Math.random).
+function genConfirmCode(len) {
+  const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';  // sem 0 O 1 I L (ambíguos)
+  const n = len || 5, arr = new Uint32Array(n);
+  (window.crypto || window.msCrypto).getRandomValues(arr);
+  let s = ''; for(let i=0;i<n;i++) s += A[arr[i] % A.length];
+  return s;
+}
+function openDeleteFolderModal(folderId) {
+  const me = authCurrentUser(); if(!me) return;
+  const p = projGetAll().find(x => x.id === folderId && x.kind === 'campaign'); if(!p) return;
+  _deleteFolderId = folderId;
+  _deleteFolderCode = genConfirmCode(5);       // regenerado a cada abertura; só vive com o modal
+  const items = p.items || [];
+  const isEmpty = items.length === 0;
+  const emails = items.filter(it => it.type === 'email').length;
+  const others = items.length - emails;
+  // Pasta vazia: nada a preservar → pula a pergunta de escopo (é sempre "só a pasta").
+  _deleteFolderScope = isEmpty ? 'folderonly' : 'folderonly';
+  document.getElementById('deleteFolderName').textContent = p.name;
+  document.getElementById('deleteFolderScopeRow').style.display = isEmpty ? 'none' : '';
+  const hint = document.getElementById('scopeFolderOnlyHint');
+  if(hint) hint.textContent = others > 0
+    ? `— ${emails} e-mail(s) voltam pra soltos; ${others} in-app/push são apagados`
+    : '— os e-mails voltam pra lista de soltos';
+  // Aviso de compartilhamento: deletar remove o acesso de quem tem a pasta.
+  const sharedWith = [...new Set([...(p.sharedWith||[]), ...(p.approvers||[])].map(e => (e||'').toLowerCase()))].filter(Boolean);
+  const warn = document.getElementById('deleteFolderSharedWarn');
+  if(warn){
+    if(sharedWith.length){ warn.style.display = ''; warn.textContent = `⚠ Esta pasta está compartilhada com ${sharedWith.length} pessoa(s) — elas perderão o acesso a todo o conteúdo.`; }
+    else warn.style.display = 'none';
+  }
+  document.getElementById('deleteFolderCode').textContent = _deleteFolderCode;
+  const input = document.getElementById('deleteFolderCodeInput'); if(input) input.value = '';
+  setDeleteFolderScope(_deleteFolderScope);
+  updateDeleteFolderBtn();
+  document.getElementById('deleteFolderModal').style.display = 'flex';
+}
+function setDeleteFolderScope(scope) {
+  _deleteFolderScope = (scope === 'contents') ? 'contents' : 'folderonly';
+  const a = document.getElementById('scopeFolderOnly'), b = document.getElementById('scopeContents');
+  if(a) a.classList.toggle('active', _deleteFolderScope === 'folderonly');
+  if(b) b.classList.toggle('active', _deleteFolderScope === 'contents');
+}
+function updateDeleteFolderBtn() {
+  const input = (document.getElementById('deleteFolderCodeInput').value || '').trim().toUpperCase();
+  const btn = document.getElementById('deleteFolderBtn');
+  if(btn) btn.disabled = (input !== _deleteFolderCode);
+}
+function closeDeleteFolderModal() {
+  const m = document.getElementById('deleteFolderModal'); if(m) m.style.display = 'none';
+  _deleteFolderId = null; _deleteFolderCode = '';
+}
+async function confirmDeleteFolder() {
+  const folderId = _deleteFolderId, scope = _deleteFolderScope;
+  if(!folderId) return;
+  // Guard duplo (o botão já fica desabilitado): o código digitado precisa bater.
+  const typed = (document.getElementById('deleteFolderCodeInput').value || '').trim().toUpperCase();
+  if(typed !== _deleteFolderCode) { showNotif('Código de confirmação incorreto.', 'warn'); return; }
+  const me = authCurrentUser(); if(!me) return;
+  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+  const projects = projGetAll();
+  const folder = projects.find(p => p.id === folderId && p.kind === 'campaign');
+  if(!folder) { closeDeleteFolderModal(); renderDashboard(); return; }
+
+  if(scope === 'folderonly') {
+    // Preserva os e-mails como avulsos (in-app/push somem com a pasta). Trava anti-perda:
+    // recria TODOS os e-mails + verifica que entraram ANTES de apagar a pasta.
+    const now = Date.now();
+    const restored = (folder.items || []).filter(it => it.type === 'email').map((it, i) => {
+      const lp = window.Folders.folderItemToProject(it, folder.owner);
+      lp.id = 'p_' + now + '_' + i;   // id novo (dodgeia tombstone de move anterior)
+      lp.createdAt = now; lp.updatedAt = now;
+      return lp;
+    });
+    if(restored.length){
+      await withTimeout(projSaveAll(projects.concat(restored)), 8000, 'projSaveAll (restaura avulsos)');
+      const after1 = projGetAll();
+      const allLanded = restored.every(r => after1.some(p => p.id === r.id && p.data && typeof p.data.html === 'string'));
+      if(!allLanded){ showNotif('Falha ao recriar os e-mails avulsos — a pasta foi MANTIDA intacta.', 'warn'); return; }
+    }
+  }
+  // Tombstone da pasta (tanto no 'contents' quanto DEPOIS do restore no 'folderonly').
+  await withTimeout(markProjectDeleted(folderId), 8000, 'markProjectDeleted');
+  await withTimeout(deleteNotifsForProject(folderId), 8000, 'deleteNotifsForProject');
+  const finalList = projGetAll().filter(p => p.id !== folderId);
+  await withTimeout(projSaveAll(finalList), 8000, 'projSaveAll (remove pasta)');
+  if(currentProjectId === folderId) currentProjectId = null;
+  closeDeleteFolderModal();
+  showNotif(scope === 'folderonly' ? 'Pasta deletada — os e-mails voltaram pra lista de soltos.' : 'Pasta e todo o conteúdo deletados.', 'ok', 3000);
   renderDashboard();
 }
 

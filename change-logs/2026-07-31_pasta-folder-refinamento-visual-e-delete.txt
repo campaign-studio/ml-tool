@@ -1,0 +1,56 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: Pasta/Folder — refinamento visual e de fluxo: card externo limpo/clicável, delete com
+escopo + código aleatório, e visão interna moderna (glass).
+
+===============================================================================
+1) CARD EXTERNO DA PASTA (campaignRowHtml, redesenhado)
+===============================================================================
+Agora mostra só: ícone de pasta + nome + resumo do conteúdo ("2 e-mails · 1 in-app · 2 pushes"
+ou "Pasta vazia"). Removidos: tags de tradução/status e o botão "Open" separado — o CARD INTEIRO
+é clicável (abre a pasta). Share/Delete viraram ícones discretos que aparecem no HOVER (com
+event.stopPropagation pra não abrir a pasta). Estilo glass (backdrop-filter blur+saturate),
+tokens do resto da plataforma, dark-mode. Não-dono vê badge "Shared" e não vê rename/delete.
+
+===============================================================================
+2) DELETAR PASTA — escopo + código de confirmação
+===============================================================================
+Novo modal deleteFolderModal (substitui o genérico pra pasta):
+- Pergunta o ESCOPO primeiro: "Só a pasta" (e-mails voltam pra soltos; in-apps/pushes são
+  apagados) x "A pasta E tudo dentro". Pasta VAZIA pula essa pergunta.
+- Aviso de irreversível + aviso se a pasta está COMPARTILHADA ("N pessoas perderão o acesso").
+- CÓDIGO aleatório de 5 caracteres, MAIÚSCULO, sem ambíguos (0 O 1 I L), gerado via
+  crypto.getRandomValues, regenerado a cada abertura (vive só com o modal). O botão "Deletar" só
+  habilita quando o código digitado bate (case-insensitive). Enter confirma se habilitado.
+- confirmDeleteFolder:
+  * 'folderonly' → trava anti-perda: recria TODOS os e-mails como avulsos (id novo, dodgeia
+    tombstone) + VERIFICA que entraram ANTES de apagar a pasta; in-app/push somem com a pasta.
+  * 'contents'  → tombstone da campanha inteira.
+  * cancelar a qualquer momento não deleta nada (a exclusão só dispara no clique final com
+    código válido) — delete parcial é impossível.
+
+===============================================================================
+3) VISÃO INTERNA DA PASTA (renderCampaignGallery, moderno/glass)
+===============================================================================
+Cards de item (e-mail/in-app/push) redesenhados: superfície glass, preview grande no topo, e no
+rodapé o nome + progresso de tradução, com as ações (Approve / Edit / ↩ Remove) aparecendo no
+HOVER pra não poluir. Separação por tipo (abas) mantida como já era. renderCampaignAssetThumb
+passou a preencher 100% do container do card (a casca visual manda no tamanho).
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado, mocks (nenhuma escrita no banco):
+- Card: classe folder-card, card clicável (openCampaignEditor), SEM "Open"/badge de tradução,
+  resumo "2 e-mails · 1 in-app · 2 pushes", ícones Share/Delete (delete abre o novo modal).
+- Código: 5 chars, só [A-HJ-KMNP-Z2-9], zero ambíguos (após tirar o L).
+- Modal: abre, mostra o código, escopo visível (some se vazia), aviso de compartilhamento,
+  botão desabilitado até o código bater (case-insensitive), troca de escopo.
+- confirmDeleteFolder: 'folderonly' recria os 2 e-mails (com html, id novo) e apaga pasta+push;
+  'contents' apaga tudo sem recriar; FAIL-SAFE (gravação quebrada) → a pasta SOBREVIVE.
+- Galeria: cards .camp-item-card com glass (backdrop-filter), preview, rodapé, ações no hover;
+  e-mail tem ↩ Remove (quando a pasta está aberta), in-app/push não.
+- Sem erros de console.
+
+NOTA: verificação foi de LÓGICA/estrutura via mock; o visual final (glass, hover, layout) precisa
+da sua conferência no dashboard/pasta logados.
