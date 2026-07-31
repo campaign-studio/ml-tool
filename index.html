@@ -4481,7 +4481,7 @@ function onAddItemHtmlFile(f) {
   r.readAsText(f);
 }
 
-function confirmAddItem() {
+async function confirmAddItem() {
   if(!_campaign || !_addItemState.origin || !_addItemState.targets.length) return;
   const type = _manageContentTab;
   if(type !== 'push' && !_addItemState.html) return;
@@ -4493,11 +4493,16 @@ function confirmAddItem() {
 
   _campaign.items = _campaign.items || [];
   const n = _campaign.items.filter(x => x.type === type).length + 1;
+  // Nome SEMPRE perguntado ao subir conteúdo (default = auto). É o que rotula o item na campanha
+  // e no Approve by Locale. Cancelar não adiciona.
+  const defName = (type === 'push' ? 'Push ' : type === 'inapp' ? 'In-app ' : 'Email ') + n;
+  const nm = ((await uiPrompt('Name this content:', { title: 'Content name', def: defName })) || '').trim();
+  if(!nm) return;
   let item;
 
   if(type === 'push') {
     item = {
-      id: 'item_' + Date.now(), type: 'push', name: 'Push ' + n, origin: _addItemState.origin,
+      id: 'item_' + Date.now(), type: 'push', name: nm, origin: _addItemState.origin,
       langs: targetLangs,
       rows: [
         { id: 'id1', label: 'Title', src: '', isImg: false, translations: Object.fromEntries(targetLangs.map(l => [l, ''])) },
@@ -4516,7 +4521,7 @@ function confirmAddItem() {
     }));
     item = {
       id: 'item_' + Date.now(), type,
-      name: (type === 'inapp' ? 'In-app ' : 'Email ') + n,
+      name: nm,
       rawHtml: _addItemState.html, origin: _addItemState.origin, langs: targetLangs, rows
     };
   }
