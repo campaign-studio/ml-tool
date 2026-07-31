@@ -18,7 +18,7 @@
   --text2: #57574f;
   --text3: #9a9a90;
   --accent: #d8385e;
-  --acc-bg: #fdf0f3;åç
+  --acc-bg: #fdf0f3;
   --acc-bd: #f3c2cf;
   --green: #034036;
   --grn-bg: #f3fadc;
@@ -5443,6 +5443,19 @@ const S = {
   rawHtml: null, filename: '', strings: [],
   allC: [], origin: null, targets: [],
   csv: { name:'', rows:[], langs:[] },
+  // Contador MONOTÔNICO de ids já emitidos (high-water mark). Novo id = maxIdIssued+1; nunca
+  // decrementa, nunca recalcula das linhas atuais — assim uma imagem "esquecida" adicionada
+  // depois pega sempre o próximo número livre e NUNCA reusa o de um id removido (que ainda pode
+  // aparecer em log/comentário). Persistido em data.maxIdIssued.
+  maxIdIssued: 0,
+  // Ids de imagens adicionadas DEPOIS que o projeto já tinha aprovação — aprovação NÃO é
+  // resetada (mesma regra silenciosa da edição manual de HTML), mas a imagem nova fica marcada
+  // como "pendente de revisão" até uma nova aprovação. Persistido em data.pendingRowIds.
+  pendingImgIds: [],
+  // Traduções "estacionadas" de idiomas removidos dos destinos: { lang: { rowId: tradução } }.
+  // Remover um destino tira a coluna mas NÃO apaga o trabalho — re-adicionar o idioma restaura.
+  // Persistido em data.parkedLangs.
+  parkedLangs: {},
   selImgs: new Set(), // images selected for localisation
   isImport: false,    // true while in Continue Editing flow
   // "Start from scratch" também parte de um HTML já tageado, mas PRECISA passar pela
@@ -5608,7 +5621,11 @@ function updateBreadcrumb(page) {
 const PAGES = ['page1','page2','page3','page3i','page4','page5'];
 
 function goTo(step) {
-  if(step === 1) resetAll();
+  // Passo 1 (Upload) zera tudo SÓ no fluxo de projeto NOVO. Num projeto já existente (aberto do
+  // Dashboard), voltar às primeiras etapas pela breadcrumb deve PRESERVAR o estado — senão
+  // reeditar Origem/Destinos exigiria refazer o projeto do zero. (Re-upload/re-extração continua
+  // possível como ação explícita dentro da tela, não como efeito colateral de navegar.)
+  if(step === 1 && !currentProjectId) resetAll();
 
   // If leaving page3i, restore right-col to app-body and reset left-col width
   const slot = document.getElementById('imgViewerSlot');
@@ -5673,6 +5690,9 @@ function resetAll() {
   S.vLang = null;
   S.condBranch = 0;
   S.condRevealRow = null;
+  S.maxIdIssued = 0;
+  S.pendingImgIds = [];
+  S.parkedLangs = {};
   S.approvalComments = [];
   S.approvalDoneByLang = {};
   S.approvalActivity = [];
@@ -6036,6 +6056,38 @@ function unwrapLiquidOnlyCode(html){
   });
 }
 
+// ── Contador seguro de ids ("próximo id disponível", nunca reusa) ─────────────────────────
+// Extrai o número de um id ("id42" -> 42; qualquer coisa que não seja idN -> 0).
+function idNum(id){ const m = /^id(\d+)$/.exec(String(id||'')); return m ? +m[1] : 0; }
+
+// Maior número de id JÁ USADO no projeto, considerando não só as linhas atuais mas também o
+// histórico (pins de aprovação e ids deletados) — pra o contador nunca reaproveitar um número
+// que já apareceu em algum log/comentário, mesmo que a linha correspondente tenha sido removida.
+function computeMaxIdFromState(){
+  let mx = 0;
+  (S.csv.rows||[]).forEach(r => { const n = idNum(r.id); if(n > mx) mx = n; });
+  (S.approvalComments||[]).forEach(c => { const n = idNum(c && c.rowId); if(n > mx) mx = n; });
+  (S.approvalDeletedIds||[]).forEach(id => { const n = idNum(id); if(n > mx) mx = n; });
+  return mx;
+}
+
+// Garante que o high-water mark esteja pelo menos no maior id já usado (init de projeto antigo
+// sem o campo, ou defesa contra um valor persistido menor que a realidade).
+function ensureMaxIdIssued(){
+  const floor = computeMaxIdFromState();
+  if(typeof S.maxIdIssued !== 'number' || S.maxIdIssued < floor) S.maxIdIssued = floor;
+  return S.maxIdIssued;
+}
+
+// Próximo id livre, monotônico. Duas chamadas seguidas dão números diferentes (43, 44...),
+// então adicionar duas imagens esquecidas em momentos diferentes nunca colide.
+function nextRowId(){ ensureMaxIdIssued(); S.maxIdIssued += 1; return 'id' + S.maxIdIssued; }
+
+// Há pelo menos um idioma aprovado? (usado pra decidir se a imagem nova entra como "pendente")
+function projectHasApproval(){
+  return !!(S.approvalDoneByLang && Object.keys(S.approvalDoneByLang).some(l => isLangApproved(S.approvalDoneByLang, l)));
+}
+
 function buildCSV() {
   // Se já temos rows (de import OU de um build anterior), preserva as traduções existentes
   // e apenas sincroniza os langs com os targets atuais — sem recriar rows do zero.
@@ -6043,11 +6095,30 @@ function buildCSV() {
   if(S.csv.rows.length > 0){
     const tgts = S.targets.map(code=>S.allC.find(c=>c.code===code)).filter(Boolean);
     const newLangs = [...new Set(tgts.flatMap(c => expandLang(c.lang)))];
-    // Adiciona novos idiomas (colunas novas, preservando as existentes)
+    const desired = new Set(newLangs);
+    S.parkedLangs = S.parkedLangs || {};
+
+    // 1) REMOVE idiomas que saíram dos destinos — mas ESTACIONA as traduções em vez de apagar:
+    // guarda {rowId: tradução} em S.parkedLangs[lang] e tira a coluna. Se a pessoa re-adicionar o
+    // idioma depois, o progresso volta (não-destrutivo, reversível). Sem isso, remover um destino
+    // perdia a tradução no save (buildCsvStringForSave só exporta os langs ativos).
+    S.csv.langs.filter(l => !desired.has(l)).forEach(lang => {
+      const stash = {};
+      S.csv.rows.forEach(r => {
+        if((r.translations[lang] || '') !== '') stash[r.id] = r.translations[lang];
+        delete r.translations[lang];
+      });
+      if(Object.keys(stash).length) S.parkedLangs[lang] = stash;
+      S.csv.langs = S.csv.langs.filter(l => l !== lang);
+    });
+
+    // 2) ADICIONA idiomas novos — restaurando o que estava estacionado, se houver.
     newLangs.forEach(l => {
       if(!S.csv.langs.includes(l)){
         S.csv.langs.push(l);
-        S.csv.rows.forEach(r => { r.translations[l] = r.translations[l] || ''; });
+        const parked = S.parkedLangs[l] || null;
+        S.csv.rows.forEach(r => { r.translations[l] = (parked && parked[r.id]) || r.translations[l] || ''; });
+        delete S.parkedLangs[l]; // consumido — não fica duplicado
       }
     });
 
@@ -6056,13 +6127,19 @@ function buildCSV() {
     const existingImgKeys = new Set(S.csv.rows.filter(r => r.isImg).map(r => r.imgKey || r.src));
     // 1) Remove linhas de imagem cuja seleção foi tirada
     S.csv.rows = S.csv.rows.filter(r => !r.isImg || S.selImgs.has(r.imgKey || r.src));
-    // 2) Adiciona linhas pras imagens selecionadas que ainda não estavam no CSV
-    let idSeed = S.csv.rows.length + 1;
+    // 2) Adiciona linhas pras imagens selecionadas que ainda não estavam no CSV.
+    // Cada imagem esquecida entra com o PRÓXIMO id livre (nextRowId = maxIdIssued+1) — sempre o
+    // maior número da sequência, nunca reaproveitando um id removido, nunca colidindo com um
+    // existente (o antigo idSeed = rows.length+1 podia colidir/reusar quando algo fora removido).
+    // Se o projeto já tinha aprovação, a nova imagem entra como "pendente" (aprovação intacta).
+    const projApproved = projectHasApproval();
     S.strings
       .filter(s => s.isImg && S.selImgs.has(s.imgKey || s.src) && !existingImgKeys.has(s.imgKey || s.src))
       .forEach(s => {
+        const newId = nextRowId();
+        if(projApproved && !S.pendingImgIds.includes(newId)) S.pendingImgIds.push(newId);
         S.csv.rows.push({
-          id: 'id' + (idSeed++),
+          id: newId,
           src: s.src,
           imgKey: s.imgKey || s.src,
           display: s.display || s.src,
@@ -6102,7 +6179,7 @@ function buildCSV() {
     }));
   const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
   S.vLang = origLang;
-
+  ensureMaxIdIssued(); // primeira montagem: contador passa a refletir o maior id atribuído
 }
 
 function buildAndGo() {
@@ -6183,7 +6260,10 @@ function projSaveOnBuild(wasImport) {
     approvalComments: [...S.approvalComments],
     approvalDoneByLang: { ...S.approvalDoneByLang },
     approvalActivity: [...S.approvalActivity],
-    approvalDeletedIds: [...S.approvalDeletedIds]
+    approvalDeletedIds: [...S.approvalDeletedIds],
+    maxIdIssued: ensureMaxIdIssued(),          // high-water mark do contador de ids
+    pendingRowIds: [...(S.pendingImgIds||[])],  // imagens adicionadas pós-aprovação, pendentes
+    parkedLangs: { ...(S.parkedLangs||{}) }     // traduções de idiomas removidos, guardadas
   };
 
   if(currentProjectId) {
@@ -6354,6 +6434,11 @@ function restoreProjectContent(data, readOnly) {
   S.approvalDoneByLang = (data.approvalDoneByLang && typeof data.approvalDoneByLang === 'object') ? { ...data.approvalDoneByLang } : {};
   S.approvalActivity = Array.isArray(data.approvalActivity) ? [...data.approvalActivity] : [];
   S.approvalDeletedIds = Array.isArray(data.approvalDeletedIds) ? [...data.approvalDeletedIds] : [];
+  // Contador de ids: usa o salvo se houver, mas nunca abaixo do maior id já presente/registrado
+  // (projeto antigo sem o campo inicializa a partir do estado atual — ver computeMaxIdFromState).
+  S.pendingImgIds = Array.isArray(data.pendingRowIds) ? [...data.pendingRowIds] : [];
+  S.maxIdIssued = Math.max(typeof data.maxIdIssued === 'number' ? data.maxIdIssued : 0, computeMaxIdFromState());
+  S.parkedLangs = (data.parkedLangs && typeof data.parkedLangs === 'object') ? { ...data.parkedLangs } : {};
 
   // (S.selImgs, montado acima a partir de S.csv.rows, já marca como selecionadas as
   // imagens que vieram tageadas no HTML salvo.)
@@ -7010,8 +7095,11 @@ function renderOriginGrid() {
 }
 
 function pickOrigin(code) {
+  // Trocar a origem NÃO mexe em mais nada: só troca o rótulo de idioma-fonte. Não remove o
+  // idioma dos destinos, não toca em traduções, ids, HTML tageado nem estacionamento. (Antes,
+  // escolher a origem removia esse idioma de S.targets — o que podia alterar/estacionar a
+  // tradução dele sem a pessoa pedir. Removido de propósito.)
   S.origin = S.origin===code ? null : code;
-  S.targets = S.targets.filter(c=>c!==code);
   renderOriginGrid();
 }
 
@@ -7500,10 +7588,15 @@ function rowsHTML() {
     const vmlBadge = row.vmlTag
       ? `<span class="vml-badge" title="Este trecho está dentro de uma forma VML (fallback Outlook): &lt;${escHtml(row.vmlTag)}&gt;">VML: ${escHtml(row.vmlTag)}</span>`
       : '';
+    // Imagem adicionada DEPOIS que o projeto já tinha aprovação: a aprovação foi mantida (regra
+    // silenciosa), mas o item fica marcado como "novo — revisar" até uma nova aprovação.
+    const pendingBadge = (S.pendingImgIds||[]).includes(id)
+      ? `<span class="vml-badge" style="background:#fff3cd;border-color:#ffe08a;color:#8a6d3b;" title="Imagem adicionada depois que o projeto já tinha aprovação. A aprovação existente foi mantida, mas este item entrou depois e precisa de revisão.">⏳ novo — revisar</span>`
+      : '';
     return `<tr>
       <td class="rn" style="width:22px!important;max-width:22px!important">${ri+1}</td>
       <td class="cid" style="width:38px!important;max-width:38px!important">${id}</td>
-      <td class="src" onclick="highlightFromTable(${ri},'${origLang||''}')">${warnBadge}${vmlBadge}<textarea rows="1" readonly style="${row.isLiquidFull ? 'color:var(--text3);font-size:10.5px;' : ''}cursor:default;">${displaySrc}</textarea></td>
+      <td class="src" onclick="highlightFromTable(${ri},'${origLang||''}')">${warnBadge}${vmlBadge}${pendingBadge}<textarea rows="1" readonly style="${row.isLiquidFull ? 'color:var(--text3);font-size:10.5px;' : ''}cursor:default;">${displaySrc}</textarea></td>
       ${tls}
       <td class="del"><button onclick="event.stopPropagation();delRow(${ri})">×</button></td>
     </tr>`;
@@ -7575,7 +7668,18 @@ function syncAllRowHeights(){
   });
 }
 function setSrcV(ri,v){S.csv.rows[ri].src=v;updatePreviewText(ri,null);scheduleAutosave();}
-function setCellV(ri,l,v){S.csv.rows[ri].translations[l]=v;updatePreviewText(ri,l);scheduleAutosave();}
+function setCellV(ri,l,v){
+  const row=S.csv.rows[ri];
+  row.translations[l]=v;
+  // Ao localizar (traduzir) uma imagem que entrou "pendente" pós-aprovação, o item foi tratado:
+  // limpa o marcador. Persiste pelo scheduleAutosave (editor grava data.pendingRowIds). A
+  // aprovação nunca foi resetada — o badge só existia pra sinalizar que faltava revisar.
+  if(S.pendingImgIds && S.pendingImgIds.includes(row.id) && (v||'').trim()){
+    S.pendingImgIds = S.pendingImgIds.filter(id => id !== row.id);
+  }
+  updatePreviewText(ri,l);
+  scheduleAutosave();
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    ROW COMMENTS — comentário por CÉLULA (linha + idioma)
@@ -8056,6 +8160,12 @@ function autosaveProject() {
     if(!staleHtmlWouldClobberManualEdit) p.data.html = S.rawHtml;
     p.data.langs = [...S.csv.langs];
     p.data.comments = collectRowComments();
+    // Contador de ids: nunca deixa REGREDIR no banco (max com o que já estava salvo) — assim
+    // uma imagem adicionada e salva por outra aba não faz esta aba reusar um número.
+    p.data.maxIdIssued = Math.max(ensureMaxIdIssued(), p.data.maxIdIssued || 0);
+    if(p.data.maxIdIssued > S.maxIdIssued) S.maxIdIssued = p.data.maxIdIssued;
+    p.data.pendingRowIds = [...(S.pendingImgIds||[])];
+    p.data.parkedLangs = { ...(S.parkedLangs||{}) };
   }
   // NÃO grava approvalComments/approvalDoneByLang/approvalActivity/approvalDeletedIds aqui.
   // Essa função salva a cada tecla digitada numa tradução (scheduleAutosave, 150ms) e lê
