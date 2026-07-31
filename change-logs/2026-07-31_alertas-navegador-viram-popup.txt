@@ -1,0 +1,18 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: todos os alert()/confirm()/prompt() do navegador viraram pop-ups da própria plataforma.
+
+- Novo sistema reusável (modal #uiModal + uiAlert/uiConfirm/uiPrompt baseados em Promise):
+  uiAlert(msg) → void; uiConfirm(msg,{title,okLabel,danger}) → boolean; uiPrompt(msg,{def,
+  placeholder}) → string|null. Um modal só, reaproveitado; Enter confirma, Cancel/OK, alert sem
+  Cancel.
+- Convertidos os ~24 call sites: 12 alert → uiAlert (fire-and-forget); confirms → await uiConfirm;
+  prompts → await uiPrompt. Funções que eram síncronas e usavam confirm/prompt viraram async
+  (performSaveTaggedHtmlEdit, revertTaggedHtmlEditClick, delLang, deleteApprovalComment) — todas
+  são handlers de UI, então virar async é seguro (o retorno não é usado por ninguém).
+- Títulos/labels/estilo (danger em vermelho) por contexto (ex: "Remove column", "Leave project",
+  "Overwrite?").
+
+VERIFICADO (sbClient bloqueado): 0 alert/confirm/prompt de navegador restantes; as 4 funções
+viraram AsyncFunction; delLang abre o modal "Remove column" e cancelar NÃO remove a coluna.
+Sem erros de console.

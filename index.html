@@ -3435,7 +3435,7 @@ async function deleteFolderEverywhere(name) {
   const me = authCurrentUser();
   const before = projGetAll().filter(p => p.owner.toLowerCase() === me.email.toLowerCase() && p.folder === name).length;
   if(!before) return;
-  if(!confirm(`Remove the "${name}" folder? The ${before} project${before > 1 ? 's' : ''} inside won't be deleted — they'll just stop being organized under this folder.`)) return;
+  if(!(await uiConfirm(`Remove the "${name}" folder? The ${before} project${before > 1 ? 's' : ''} inside won't be deleted — they'll just stop being organized under this folder.`, {title:'Remove folder', okLabel:'Remove', danger:true}))) return;
   if(ghConfigured()) await ghPullProjects();
   const projects = projGetAll();
   projects.forEach(p => {
@@ -3640,7 +3640,7 @@ function campaignRowHtml(p) {
 async function renameCampaign(id) {
   const p = campaignGetAll().find(x => x.id === id);
   if(!p) return;
-  const name = prompt('Project name', p.name);
+  const name = await uiPrompt('Project name', {title:'Rename', def:p.name});
   if(!name || !name.trim()) return;
   if(ghConfigured()) await ghPullProjects();
   const projects = projGetAll();
@@ -3976,7 +3976,7 @@ function renderCampaignAssetThumb(item, idx) {
 function openCampaignApprovalView() {
   const item = _campaign && _campaignItemIndex >= 0 ? _campaign.items[_campaignItemIndex] : null;
   if(!item) return;
-  if(item.type !== 'push' && !item.rawHtml) { alert('Upload an HTML first.'); return; }
+  if(item.type !== 'push' && !item.rawHtml) { uiAlert('Upload an HTML first.'); return; }
   currentProjectId = _campaign.id; // pra notificações/checagem de lock apontarem pro projeto certo
   activateCampaignItemIntoS(item);
   openApprovalView();
@@ -5120,7 +5120,7 @@ function syncTaggedHtmlIntoLiveCampaign(projectId, itemId, rawHtml, taggedHtmlBe
   }
 }
 
-function performSaveTaggedHtmlEdit(force) {
+async function performSaveTaggedHtmlEdit(force) {
   if(!_editHtmlCurrentTarget) return;
   const { projectId, itemId, loadedHtml } = _editHtmlCurrentTarget;
   const newHtml = document.getElementById('editHtmlTextarea').value;
@@ -5134,7 +5134,7 @@ function performSaveTaggedHtmlEdit(force) {
   const currentStoredHtml = item ? item.rawHtml : p.data.html;
 
   if(!force && currentStoredHtml !== loadedHtml) {
-    if(!confirm('Someone else changed this HTML since you opened this editor. Save your version anyway and overwrite theirs?')) return;
+    if(!(await uiConfirm('Someone else changed this HTML since you opened this editor. Save your version anyway and overwrite theirs?', {title:'Overwrite?', okLabel:'Save anyway', danger:true}))) return;
   }
 
   target.taggedHtmlBeforeManualEdit = currentStoredHtml;
@@ -5149,9 +5149,9 @@ function performSaveTaggedHtmlEdit(force) {
   showNotif('Saved. Approval status was not changed.', 'ok', 3000);
 }
 
-function revertTaggedHtmlEditClick() {
+async function revertTaggedHtmlEditClick() {
   if(!_editHtmlCurrentTarget) return;
-  if(!confirm('Revert to the version from before the last manual edit?')) return;
+  if(!(await uiConfirm('Revert to the version from before the last manual edit?', {title:'Revert', okLabel:'Revert', danger:true}))) return;
   const { projectId, itemId } = _editHtmlCurrentTarget;
   const found = findEditableHtmlTarget(projectId, itemId);
   if(!found) return;
@@ -5297,20 +5297,20 @@ async function projOpen(id, btn) {
   const reviewers = activeApprovers(p);
   if(reviewers.length) {
     const names = reviewers.map(u => authorName(u.email)).join(', ');
-    alert(`This project is currently being reviewed by ${names}. Please try again once the review is done.`);
+    uiAlert(`This project is currently being reviewed by ${names}. Please try again once the review is done.`);
     resetBtn();
     return;
   }
 
   if(projIsLocked(p) && p.lockedBy.toLowerCase() !== me.email.toLowerCase()) {
-    alert(`This project is currently being edited by ${authorName(p.lockedBy)}. Please try again in a few minutes.`);
+    uiAlert(`This project is currently being edited by ${authorName(p.lockedBy)}. Please try again in a few minutes.`);
     resetBtn();
     return;
   }
 
   // Mesma pessoa, mas outra aba/janela já com este projeto aberto e ativo
   if(projIsLocked(p) && p.lockedBy.toLowerCase() === me.email.toLowerCase() && p.lockSessionId && p.lockSessionId !== _tabSessionId) {
-    if(!confirm('You already have this project open in another tab or window. Editing it here too can cause your changes to overwrite each other. Continue anyway?')) { resetBtn(); return; }
+    if(!(await uiConfirm('You already have this project open in another tab or window. Editing it here too can cause your changes to overwrite each other. Continue anyway?', {title:'Already open', okLabel:'Continue', danger:true}))) { resetBtn(); return; }
   }
 
   p.lockedBy = me.email;
@@ -5326,7 +5326,7 @@ async function projOpen(id, btn) {
     await ghPullProjects();
     const reChecked = projGetAll().find(x => x.id === id);
     if(reChecked && reChecked.lockedBy && reChecked.lockedBy.toLowerCase() !== me.email.toLowerCase()) {
-      alert(`${authorName(reChecked.lockedBy)} just started editing this project at the same time. Please try again in a few minutes.`);
+      uiAlert(`${authorName(reChecked.lockedBy)} just started editing this project at the same time. Please try again in a few minutes.`);
       resetBtn();
       return;
     }
@@ -5345,7 +5345,7 @@ async function projOpen(id, btn) {
     // Projeto antigo, criado antes da funcionalidade de salvar o conteúdo do projeto —
     // não tem HTML/CSV salvo pra reabrir. Não há mais um fluxo manual de re-upload
     // pra recuperar esses projetos legados; melhor avisar do que falhar em silêncio.
-    alert(`"${p.name}" was created before this tool started saving full project content, so there's nothing to reopen. Please recreate it as a new project.`);
+    uiAlert(`"${p.name}" was created before this tool started saving full project content, so there's nothing to reopen. Please recreate it as a new project.`);
     resetBtn();
   }
 }
@@ -5369,7 +5369,7 @@ let _pendingDeleteId = null;
 // Tira a própria pessoa do sharedWith/approvers de um projeto que não é dela — some
 // da lista "Shared with me"/"To approve", sem mexer no projeto pra mais ninguém.
 async function leaveSharedProject(id) {
-  if(!confirm('Leave this project? You will lose access unless someone shares it with you again.')) return;
+  if(!(await uiConfirm('Leave this project? You will lose access unless someone shares it with you again.', {title:'Leave project', okLabel:'Leave', danger:true}))) return;
   const me = authCurrentUser();
   if(!me) return;
   if(ghConfigured()) await ghPullProjects();
@@ -5421,7 +5421,7 @@ async function confirmGenericDelete() {
     await confirmProjDelete();
   } catch(e) {
     console.warn('Delete failed:', e);
-    alert('Something went wrong deleting this. Please try again.');
+    uiAlert('Something went wrong deleting this. Please try again.');
   } finally {
     if(btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
   }
@@ -5507,7 +5507,7 @@ function closeMoveToFolderModal() {
 async function createFolderAndMove() {
   const projId = _moveToFolderProjId; if(!projId) return;
   const me = authCurrentUser(); if(!me) return;
-  const name = (prompt('New folder name:') || '').trim(); if(!name) return;
+  const name = ((await uiPrompt('New folder name:', {title:'New folder', placeholder:'e.g. Summer Wave 1'})) || '').trim(); if(!name) return;
   if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
   const folder = { id:'camp_'+Date.now(), kind:'campaign', name, owner:me.email, sharedWith:[], approvers:[], items:[], createdAt:Date.now(), updatedAt:Date.now() };
   const projects = projGetAll(); projects.push(folder);
@@ -5523,7 +5523,7 @@ async function createFolderAndMove() {
 async function removeItemFromFolder(folderId, itemId) {
   const me = authCurrentUser(); if(!me) return;
   if(!window.Folders) { showNotif("The folders module didn't load — please reload the page.", 'warn'); return; }
-  if(!confirm('Remove this item from the folder? It goes back to being a standalone email in the list.')) return;
+  if(!(await uiConfirm('Remove this item from the folder? It goes back to being a standalone email in the list.', {title:'Remove from folder', okLabel:'Remove'}))) return;
   if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
 
   const now = Date.now();
@@ -9059,7 +9059,7 @@ function approvalBlockedByEdit() {
 function warnApprovalBlockedByEdit() {
   const p = projGetAll().find(x => x.id === currentProjectId);
   const who = p && p.lockedBy ? authorName(p.lockedBy) : 'someone';
-  alert(`${who} is currently editing this project. Comments and approval are paused until they're done.`);
+  uiAlert(`${who} is currently editing this project. Comments and approval are paused until they're done.`);
 }
 
 // Se alguém abre a Approval View e, enquanto está lá dentro, o dono começa a editar,
@@ -9099,8 +9099,8 @@ function updatePreviewText(ri, lang) {
     iframe.contentWindow.postMessage({type:'braze-update', ri, text: newText, src: row.src, tid: row.id}, '*');
 }
 function delRow(ri){S.csv.rows.splice(ri,1);reBody();debR();scheduleAutosave();}
-function delLang(l){
-  if(!confirm(`Remove column "${l}"?`))return;
+async function delLang(l){
+  if(!(await uiConfirm(`Remove column "${l}"?`, {title:'Remove column', okLabel:'Remove', danger:true})))return;
   S.csv.langs=S.csv.langs.filter(x=>x!==l);
   S.csv.rows.forEach(r=>delete r.translations[l]);
   S.targets=S.targets.filter(code=>S.allC.find(c=>c.code===code)?.lang!==l);
@@ -10116,9 +10116,9 @@ document.addEventListener('click', (e) => {
 });
 
 function dlXLSX(){
-  if(typeof XLSX === 'undefined'){ alert('SheetJS not loaded.'); return; }
+  if(typeof XLSX === 'undefined'){ uiAlert('SheetJS not loaded.'); return; }
   const langs = sortLangsForDisplay(S.csv.langs); // ordem fixa global (não mexe em S.csv.langs)
-  if(!langs.length){ alert('No language configured.'); return; }
+  if(!langs.length){ uiAlert('No language configured.'); return; }
   checkEmptyLangsBeforeExport(() => {
     // curlifyApostrophes(csvSourceText(r)) — mesma fonte usada no CSV/HTML exportados (ver
     // buildCsvStringForSave/buildTaggedHtml). Usar r.src cru aqui geraria uma planilha com
@@ -10206,7 +10206,7 @@ function langDisplayName(lang) {
 
 function dlCSV(){
   const langs = S.csv.langs;
-  if(!langs.length){ alert('No language configured.'); return; }
+  if(!langs.length){ uiAlert('No language configured.'); return; }
   checkEmptyLangsBeforeExport(() => {
     // Reusa buildCsvStringForSave() em vez de remontar o CSV aqui \u2014 essa fun\u00E7\u00E3o reimplementava
     // a mesma l\u00F3gica s\u00F3 que com r.src CRU (sem curlifyApostrophes, sem passar por
@@ -10514,11 +10514,11 @@ function approvalLangs() {
 function approverOpenProject(id) {
   const p = projGetAll().find(x => x.id === id);
   if(!p) return;
-  if(!(p.data && p.data.html && p.data.csv)) { alert('This project has no content yet.'); return; }
+  if(!(p.data && p.data.html && p.data.csv)) { uiAlert('This project has no content yet.'); return; }
   // Enquanto o dono/editor estiver com o projeto aberto pra edição, ninguém aprova —
   // os approvers podem coexistir livremente entre si, só não com quem está editando.
   if(projIsLocked(p)) {
-    alert(`This project is currently being edited by ${authorName(p.lockedBy)}. Please try again once editing is done.`);
+    uiAlert(`This project is currently being edited by ${authorName(p.lockedBy)}. Please try again once editing is done.`);
     return;
   }
   currentProjectId = id;
@@ -10533,7 +10533,7 @@ function approverOpenProject(id) {
 }
 
 function openApprovalView() {
-  if(!S.rawHtml && !_campaignPushPreview) { alert('Upload an HTML first.'); return; }
+  if(!S.rawHtml && !_campaignPushPreview) { uiAlert('Upload an HTML first.'); return; }
   document.getElementById('approvalView').classList.add('show');
   const sub = document.getElementById('avSubtitle');
   if(sub) sub.textContent = S.csv.name || '';
@@ -11369,7 +11369,7 @@ function renderApprovalReplyCard(r) {
 // Apaga um comentário/resposta. Uma resposta pode sempre ser apagada (não deixa nada
 // órfão); um comentário-raiz só pode ser apagado quando a thread já não tem mais
 // nenhuma resposta — senão as respostas ficariam sem o comentário original pra dar contexto.
-function deleteApprovalComment(id) {
+async function deleteApprovalComment(id) {
   const c = S.approvalComments.find(x => x.id === id);
   if(!c) return;
   const me = authCurrentUser();
@@ -11378,7 +11378,7 @@ function deleteApprovalComment(id) {
   if(!isAuthor && !isCurrentProjectOwner()) return;
   const isTopLevel = !c.parentId;
   if(isTopLevel && S.approvalComments.some(x => x.parentId === id)) return; // ainda tem respostas
-  if(!confirm('Delete this comment? This cannot be undone.')) return;
+  if(!(await uiConfirm('Delete this comment? This cannot be undone.', {title:'Delete comment', okLabel:'Delete', danger:true}))) return;
   S.approvalComments = S.approvalComments.filter(x => x.id !== id);
   S.approvalDeletedIds.push(id); // tombstone — sem isso o merge com outra aba ressuscitaria o comentário
   if(isTopLevel) renderApprovalPins(c.lang);
