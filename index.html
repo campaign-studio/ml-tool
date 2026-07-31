@@ -5756,7 +5756,9 @@ function renderCampaignByLocale() {
   const tabsEl = document.getElementById('campLocaleTabs');
   if(tabsEl) tabsEl.innerHTML = locales.map(l =>
     `<button class="abl-tab ${l === _campaignLocale ? 'active' : ''}" onclick="setCampaignLocale('${escJsAttr(l)}')">${escHtml(toBrazeLang(l))}</button>`
-  ).join('');
+  ).join('') + (_campaignLocale ?
+    `<button class="abl-tab" style="margin-left:auto;border:1px solid var(--border-s);" title="Open the Figma-style approval canvas for this language (comments, PNG, approve)" onclick="openApprovalViewByLocale('${escJsAttr(_campaignLocale)}')">🖼 Approve in canvas</button>`
+    : '');
   const body = document.getElementById('campLocaleBody'); if(!body) return;
   if(!_campaignLocale) {
     body.innerHTML = `<div style="text-align:center;color:var(--text3);font-size:13px;padding:60px 12px;">No translated content yet. Add emails, in-apps or pushes with at least one language.</div>`;
@@ -9147,7 +9149,7 @@ async function autosaveCampaignApprovalState() {
     // (ver definição) — chamar nos dois lugares só refazia o mesmo innerHTML 2x à toa.
     renderApprovalSidebar();
     renderApprovalActivityFeed();
-    approvalLangs().langs.forEach(l => renderApprovalPins(l));
+    avBuildFrames().forEach(f => renderApprovalPins(f)); // descritor-driven (single e locale)
   }
 }
 
@@ -9267,7 +9269,7 @@ async function autosaveApprovalState() {
     // renderApprovalSidebar() já chama renderApprovalDoneBanner() internamente no fim.
     renderApprovalSidebar();
     renderApprovalActivityFeed();
-    approvalLangs().langs.forEach(l => renderApprovalPins(l));
+    avBuildFrames().forEach(f => renderApprovalPins(f)); // descritor-driven (single e locale)
   }
 }
 
@@ -10476,8 +10478,13 @@ function ensureHtml2Canvas() {
 // <iframe> com blob same-origin (dá pra acessar contentDocument). useCORS:true pra desenhar
 // as imagens do braze-images.com (que mandam header de CORS — confirmado, senão sairiam em
 // branco). Captura o corpo INTEIRO do e-mail (scrollHeight), não só a parte visível.
-async function downloadApprovalFramePng(lang) {
-  const vp = document.getElementById('avVp-' + cssSafeLang(lang));
+async function downloadApprovalFramePng(key) {
+  // key é agora a KEY do frame (ver frame descriptors). Resolve o frame e aponta S pro item
+  // dele (no-op no single) pra que S.csv.name/toBrazeLang(f.lang) usem o conteúdo certo.
+  const f = (typeof _avFramesByKey !== 'undefined' && _avFramesByKey[key]) || null;
+  if(f && typeof avActivateFrame === 'function') avActivateFrame(f);
+  const lang = f ? f.lang : key;
+  const vp = document.getElementById('avVp-' + key);
   const iframe = vp && vp.querySelector('iframe');
   const doc = iframe && iframe.contentDocument;
   if(!doc || !doc.body) { showNotif('Preview not ready yet — wait a moment and try again.', 'warn'); return; }
@@ -10675,20 +10682,24 @@ window.addEventListener('message', function(e){
   }
 
   if(e.data.type === 'av-height'){
+    // Frames agora são identificados por KEY (ver frame descriptors em approval-canvas.js):
+    // no single key===cssSafeLang(lang); no locale key==='it'+índice do item.
+    const f = _avFramesByKey[e.data.key];
+    if(!f) return;
     // In-app é overlay fixed em tela cheia — scrollHeight do documento não reflete o
     // tamanho real da mensagem (o overlay some do fluxo normal), então a altura fica
     // travada na "tela de celular" fixa em vez de tentar auto-ajustar.
-    if(_campaignInappPreview) { renderApprovalPins(e.data.lang); return; }
-    const vp = document.getElementById('avVp-' + cssSafeLang(e.data.lang));
+    if(f.type === 'inapp') { renderApprovalPins(f); return; }
+    const vp = document.getElementById('avVp-' + e.data.key);
     const iframe = vp ? vp.querySelector('iframe') : null;
     const minH = vp && vp.classList.contains('av-frame-viewport-bare') ? 0 : 400;
     if(iframe) iframe.style.height = Math.max(e.data.height, minH) + 'px';
-    renderApprovalPins(e.data.lang);
+    renderApprovalPins(f);
     return;
   }
 
   if(e.data.type === 'av-selection'){
-    onFrameSelection(e.data);
+    onFrameSelection(e.data); // data.key resolve o frame dentro de onFrameSelection
     return;
   }
 
@@ -10701,7 +10712,7 @@ window.addEventListener('message', function(e){
   if(e.data.type === 'av-wheel'){
     // Traduz a posição (relativa ao iframe) pra coordenadas da página, somando a posição
     // do próprio frame na tela — daí dá pra reusar a mesma lógica de zoom/pan de sempre.
-    const vp = document.getElementById('avVp-' + cssSafeLang(e.data.lang));
+    const vp = document.getElementById('avVp-' + e.data.key);
     if(!vp) return;
     const rect = vp.getBoundingClientRect();
     avViewportWheel({

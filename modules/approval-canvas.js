@@ -36,6 +36,67 @@ function approvalLangs() {
   return { origLang, langs };
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   FASE 2 — Approval View generalizada por "frame descriptor".
+   Dois modos:
+     - 'single' (fluxo "Approve copies" clássico): UM item × TODOS os idiomas.
+       Um frame por idioma, lendo o S global do item ativo. key === cssSafeLang(lang),
+       IDÊNTICO aos ids de DOM de antes — o comportamento single é preservado byte-a-byte.
+     - 'locale' (novo "Approve by Locale" dentro de uma pasta): UM locale fixo × MUITOS
+       itens. Um frame por item (que tenha aquele locale), todos no mesmo idioma. Cada
+       frame aponta S (+ _campaignItemIndex + flags push/inapp) pro item dele via
+       avActivateFrame, então TODO o código baseado em S continua operando no item certo.
+═══════════════════════════════════════════════════════════════════ */
+let _avMode = 'single';   // 'single' | 'locale'
+let _avLocale = null;      // locale code quando mode === 'locale'
+let _avFrames = [];        // descritores reconstruídos a cada render
+let _avFramesByKey = {};
+
+function avBuildFrames() {
+  _avFrames = [];
+  if(_avMode === 'locale') {
+    (_campaign && _campaign.items || []).forEach((it, idx) => {
+      if(!(it.langs || []).includes(_avLocale)) return;
+      _avFrames.push({ key: 'it' + idx, lang: _avLocale, isOrig: false, itemIndex: idx, item: it, type: it.type, title: it.name });
+    });
+  } else {
+    const { origLang, langs } = approvalLangs();
+    const type = _campaignPushPreview ? 'push' : _campaignInappPreview ? 'inapp' : 'email';
+    langs.forEach(l => {
+      const country = S.allC.find(c => c.lang === l);
+      _avFrames.push({ key: cssSafeLang(l), lang: l, isOrig: l === origLang, itemIndex: -1, item: null, type, title: country?.name || l, country });
+    });
+  }
+  _avFramesByKey = {}; _avFrames.forEach(f => { _avFramesByKey[f.key] = f; });
+  return _avFrames;
+}
+
+// No modo locale, aponta S (+ _campaignItemIndex + flags push/inapp) pro item deste frame,
+// pra que todo o código baseado em S opere sobre ele. No-op no single (S já está correto).
+function avActivateFrame(f) {
+  if(_avMode !== 'locale' || !f || f.itemIndex < 0) return;
+  _campaignItemIndex = f.itemIndex;
+  activateCampaignItemIntoS(_campaign.items[f.itemIndex]);
+}
+
+// Persiste o estado de aprovação do item de volta em _campaign (só no modo locale).
+// Síncrono: garante que a ativação de um próximo frame não descarte a escrita recém-feita.
+function avCommitIfLocale() {
+  if(_avMode === 'locale') { commitCampaignItemApprovalState(); scheduleCampaignAutosave(); }
+}
+
+// Acha qual frame/item é dono de um comentário (por id) — usado no modo locale pela sidebar
+// agregada, pra rotear reply/verify/highlight/delete pro item certo antes de mexer em S.
+// No single mode devolve o único frame que casa o lang (ou null — o caller usa o path S normal).
+function avFrameOwningComment(id) {
+  if(_avMode !== 'locale') return null;
+  for(const f of _avFrames) {
+    const arr = (f.item && f.item.approvalComments) || [];
+    if(arr.some(c => c.id === id)) return f;
+  }
+  return null;
+}
+
 // Entra direto na Approval View de um projeto compartilhado, sem passar pelo editor —
 // usado pelo botão "Approve copies" do Dashboard quando a pessoa é só approver.
 // Não usa projOpen(): aquele fluxo reivindica o lock de edição de 3min e regrava o CSV,
@@ -62,6 +123,7 @@ function approverOpenProject(id) {
 }
 
 function openApprovalView() {
+  _avMode = 'single'; _avLocale = null; // entrada clássica: um item × idiomas (single)
   if(!S.rawHtml && !_campaignPushPreview) { uiAlert('Upload an HTML first.'); return; }
   document.getElementById('approvalView').classList.add('show');
   const sub = document.getElementById('avSubtitle');
@@ -69,6 +131,22 @@ function openApprovalView() {
   renderApprovalGrid();
   // renderApprovalSidebar() já chama renderApprovalDoneBanner() internamente no fim.
   renderApprovalSidebar();
+  renderApprovalActivityFeed();
+  avPresenceJoin();
+}
+
+// Novo entry point "Approve by Locale": UM locale fixo × MUITOS itens da pasta (um frame por
+// item que tenha esse locale). NÃO depende de S.rawHtml (S pode estar velho — cada frame
+// ativa o seu item via avActivateFrame). Reusa TODA a máquina de comentários/aprovação/PNG.
+function openApprovalViewByLocale(locale) {
+  _avMode = 'locale'; _avLocale = locale;
+  const frames = avBuildFrames();
+  if(!frames.length) { _avMode = 'single'; _avLocale = null; uiAlert('Nothing to approve in this language yet.'); return; }
+  document.getElementById('approvalView').classList.add('show');
+  const sub = document.getElementById('avSubtitle');
+  if(sub) sub.textContent = ((_campaign && _campaign.name) || '') + ' — ' + toBrazeLang(locale);
+  renderApprovalGrid();
+  renderApprovalSidebar();      // já chama renderApprovalDoneBanner() internamente no fim
   renderApprovalActivityFeed();
   avPresenceJoin();
 }
@@ -84,11 +162,16 @@ function closeApprovalView() {
   // Se vier do editor normal (dono/editor usando "Approve copies" por dentro), só fecha o
   // overlay e volta pra tabela do CSV, como sempre.
   if(_campaign) {
+    const wasLocale = _avMode === 'locale';
     commitCampaignItemApprovalState();
     saveCampaignProject();
-    renderCampaignMain(); // volta pra galeria (ou edit, se era daí que "Approve copies" foi aberto)
+    _avMode = 'single'; _avLocale = null; // reseta o modo ao sair
+    // No modo locale, volta pra visão "By Locale" da pasta (não pra galeria/edit).
+    if(wasLocale && typeof renderCampaignByLocale === 'function') renderCampaignByLocale();
+    else renderCampaignMain();
     return;
   }
+  _avMode = 'single'; _avLocale = null; // reseta o modo ao sair (fluxo single clássico)
   if(_approverMode || !document.getElementById('appBody') || document.getElementById('appBody').style.display === 'none') {
     goToDashboard();
   }
@@ -235,6 +318,11 @@ const AV_PUSH_FRAME_W = 380;   // push é um card de notificação pequeno — N
 function avFrameW() { return _campaignInappPreview ? AV_INAPP_FRAME_W : (_campaignPushPreview ? AV_PUSH_FRAME_W : AV_FRAME_W); }
 // Gap ENTRE frames: push/in-app são pequenos, então ficam mais PRÓXIMOS (44) que os e-mails (90).
 function avFrameGap() { return (_campaignPushPreview || _campaignInappPreview) ? 44 : AV_FRAME_GAP; }
+// Larguras/gaps a partir do TIPO do frame (sem ativar S) — usado nas somas de largura total
+// (avContentWidth/avFitToFrames), chamadas a cada tick de scroll: ativar o item inteiro só
+// pra medir seria caro no modo locale. Mesmos valores de avFrameW()/avFrameGap().
+function avFrameWFor(type) { return type === 'inapp' ? AV_INAPP_FRAME_W : (type === 'push' ? AV_PUSH_FRAME_W : AV_FRAME_W); }
+function avFrameGapFor(type) { return (type === 'push' || type === 'inapp') ? 44 : AV_FRAME_GAP; }
 let _avView = { scale: 1, tx: 40, ty: 60 };
 let _avPan = { active: false, moved: false, startX: 0, startY: 0, startTx: 0, startTy: 0 };
 let _avSuppressNextClick = false;
@@ -251,8 +339,10 @@ function applyAvTransform() {
 // Largura total do conteúdo do canvas, em unidades do próprio canvas (antes do scale) —
 // mesma conta usada em avFitToFrames pra caber tudo na tela.
 function avContentWidth() {
-  const { langs } = approvalLangs();
-  return langs.length ? langs.length * (avFrameW() + avFrameGap()) : 0;
+  const frames = avBuildFrames();
+  let w = 0;
+  frames.forEach(f => { w += avFrameWFor(f.type) + avFrameGapFor(f.type); });
+  return w;
 }
 
 // Barra de rolagem horizontal "de verdade" pro canvas com pan/zoom via transform —
@@ -352,10 +442,11 @@ function avHScrollTrackClick(e) {
 }
 
 function avFitToFrames() {
-  const { langs } = approvalLangs();
+  const frames = avBuildFrames();
   const vp = document.getElementById('avCanvasViewport');
-  if(!vp || !langs.length) return;
-  const totalW = langs.length * (avFrameW() + avFrameGap());
+  if(!vp || !frames.length) return;
+  let totalW = 0;
+  frames.forEach(f => { totalW += avFrameWFor(f.type) + avFrameGapFor(f.type); });
   const availW = vp.clientWidth - 80;
   _avView.scale = Math.max(0.15, Math.min(1, availW / totalW));
   _avView.tx = 40;
@@ -426,43 +517,64 @@ function avViewportMouseUp() {
 document.addEventListener('mousemove', avViewportMouseMove);
 document.addEventListener('mouseup', avViewportMouseUp);
 
+// Rótulo curto do tipo pro título do frame no modo locale.
+function avTypeLabel(type) { return type === 'push' ? 'Push' : type === 'inapp' ? 'In-app' : 'Email'; }
+
 function renderApprovalGrid() {
-  const { origLang, langs } = approvalLangs();
+  const frames = avBuildFrames();
   const canvas = document.getElementById('avCanvas');
   if(!canvas) return;
-  if(!langs.length) {
+  if(!frames.length) {
     canvas.style.width = '400px';
     canvas.innerHTML = `<div class="empty-state" style="width:360px;"><p>No languages configured yet.</p></div>`;
     return;
   }
-  const frameW = avFrameW();
-  const frameGap = avFrameGap();
-  canvas.style.width = (langs.length * (frameW + frameGap)) + 'px';
-  canvas.innerHTML = langs.map((lang, i) => {
-    const isOrig = lang === origLang;
-    const country = S.allC.find(c => c.lang === lang);
-    const x = i * (frameW + frameGap);
-    return `
-      <div class="av-canvas-frame" style="left:${x}px;top:${AV_FRAME_TOP}px;width:${frameW}px;">
-        <div class="av-canvas-frame-title">
-          <span>${country?.flag || '🌐'}</span>
-          <span>${country?.name || lang}</span>
-          <span class="av-frame-lang">${toBrazeLang(lang)}</span>
-          ${isOrig ? '<span class="av-frame-origin-badge">origin</span>' : ''}
-          <span class="av-frame-count" style="display:none;">0</span>
-          <span class="av-cb-toggle" title="Só teste de visualização — não afeta o HTML/CSV"${maxCondBranchCount(S.rawHtml)<=1?' style="display:none;"':''}>
+  // Larguras variam POR frame no modo locale (email 680 / in-app 320 / push 380), então usa
+  // um x acumulado em vez de um passo fixo. avActivateFrame aponta S/flags pro item de cada
+  // frame ANTES de medir avFrameW()/avFrameGap() e de montar o markup dependente de S.
+  let x = 0;
+  const parts = [];
+  frames.forEach(f => {
+    avActivateFrame(f);
+    const frameW = avFrameW();
+    const frameGap = avFrameGap();
+    const bare = (_campaignPushPreview || _campaignInappPreview);
+    // Título: single = bandeira/país/lang/badge-origin; locale = ícone de documento + nome do
+    // item + rótulo de tipo (Email/In-app/Push), SEM país e SEM badge de origem.
+    const titleInner = _avMode === 'locale'
+      ? `<span>📄</span>
+         <span>${escHtml(f.title || '')}</span>
+         <span class="av-frame-lang">${avTypeLabel(f.type)}</span>`
+      : `<span>${f.country?.flag || '🌐'}</span>
+         <span>${f.country?.name || f.lang}</span>
+         <span class="av-frame-lang">${toBrazeLang(f.lang)}</span>
+         ${f.isOrig ? '<span class="av-frame-origin-badge">origin</span>' : ''}`;
+    // Cond-branch é um teste do fluxo single (um item × idiomas). No modo locale (itens
+    // diferentes por frame) não faz sentido — esconde os botões.
+    const condToggle = _avMode === 'single'
+      ? `<span class="av-cb-toggle" title="Só teste de visualização — não afeta o HTML/CSV"${maxCondBranchCount(S.rawHtml)<=1?' style="display:none;"':''}>
             ${Array.from({length:maxCondBranchCount(S.rawHtml)}, (_,i) =>
               `<button class="av-cb-btn ${(S.condBranch|0)===i?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch(${i})">${condBranchLabel(i,maxCondBranchCount(S.rawHtml))}</button>`
             ).join('')}
-          </span>
-          <button class="av-cb-btn" title="Download this preview as a PNG image" style="border:1px solid var(--border-s);" onclick="event.stopPropagation();downloadApprovalFramePng('${escJsAttr(lang)}')">⬇ PNG</button>
-          <span class="av-frame-approve-slot" id="avApproveSlot-${cssSafeLang(lang)}"></span>
+          </span>`
+      : '';
+    parts.push(`
+      <div class="av-canvas-frame" style="left:${x}px;top:${AV_FRAME_TOP}px;width:${frameW}px;">
+        <div class="av-canvas-frame-title">
+          ${titleInner}
+          <span class="av-frame-count" style="display:none;">0</span>
+          ${condToggle}
+          <button class="av-cb-btn" title="Download this preview as a PNG image" style="border:1px solid var(--border-s);" onclick="event.stopPropagation();downloadApprovalFramePng('${escJsAttr(f.key)}')">⬇ PNG</button>
+          <span class="av-frame-approve-slot" id="avApproveSlot-${f.key}"></span>
         </div>
-        <div class="av-frame-viewport${(_campaignPushPreview || _campaignInappPreview) ? ' av-frame-viewport-bare' : ''}" id="avVp-${cssSafeLang(lang)}" style="width:${frameW}px;"></div>
+        <div class="av-frame-viewport${bare ? ' av-frame-viewport-bare' : ''}" id="avVp-${f.key}" style="width:${frameW}px;"></div>
       </div>
-    `;
-  }).join('');
-  langs.forEach(lang => { loadApprovalFrame(lang); renderFrameApproveSlot(lang); });
+    `);
+    x += frameW + frameGap;
+  });
+  canvas.style.width = x + 'px';
+  canvas.innerHTML = parts.join('');
+  frames.forEach(f => { loadApprovalFrame(f); renderFrameApproveSlot(f); });
   avFitToFrames();
 }
 
@@ -479,23 +591,23 @@ function setApprovalCondBranch(idx) {
     const mm = oc.match(/setApprovalCondBranch\((\d+)\)/);
     if(mm) b.classList.toggle('active', (+mm[1]) === (S.condBranch|0));
   });
-  const { langs } = approvalLangs();
-  langs.forEach(lang => loadApprovalFrame(lang));
+  avBuildFrames().forEach(f => { avActivateFrame(f); loadApprovalFrame(f); });
 }
 
-// Botão de aprovação POR IDIOMA, acima de cada frame — aprovar/desaprovar um idioma não afeta
-// os outros, e trava/destrava comentários só naquele idioma específico.
-function renderFrameApproveSlot(lang) {
-  const el = document.getElementById('avApproveSlot-' + cssSafeLang(lang));
+// Botão de aprovação POR FRAME, acima de cada frame — aprovar/desaprovar um frame não afeta
+// os outros, e trava/destrava comentários só nele. Recebe um descritor de frame.
+function renderFrameApproveSlot(f) {
+  avActivateFrame(f);
+  const el = document.getElementById('avApproveSlot-' + f.key);
   if(!el) return;
-  const done = isLangApproved(S.approvalDoneByLang, lang);
+  const done = isLangApproved(S.approvalDoneByLang, f.lang);
   el.innerHTML = done
     ? `<button class="av-frame-approved-btn" disabled>
          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
          Approved
        </button>
-       <button class="av-frame-undo-btn" onclick="undoLangApproval('${lang}')">Undo</button>`
-    : `<button class="av-frame-approve-btn" onclick="markLangApproved('${lang}')">
+       <button class="av-frame-undo-btn" onclick="undoLangApproval('${f.key}')">Undo</button>`
+    : `<button class="av-frame-approve-btn" onclick="markLangApproved('${f.key}')">
          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
          Approve
        </button>`;
@@ -507,7 +619,8 @@ function renderFrameApproveSlot(lang) {
 // Push não tem rawHtml (não é upload de HTML, são 2 campos de texto puro) — monta um
 // documento sintético com data-tid="id1"/"id2" pra que o mecanismo de comentar-por-seleção
 // (que depende de achar o data-tid mais próximo) continue funcionando sem alteração.
-function buildPushFrameHtml(lang) {
+function buildPushFrameHtml(f) {
+  const lang = f.lang;
   const item = _campaign.items[_campaignItemIndex];
   const titleRow = item.rows.find(r => r.id === 'id1');
   const bodyRow = item.rows.find(r => r.id === 'id2');
@@ -526,14 +639,15 @@ function buildPushFrameHtml(lang) {
   </body></html>`;
 }
 
-function buildApprovalFrameHtml(lang) {
-  let html = _campaignPushPreview ? buildPushFrameHtml(lang) : buildPreviewHtml(lang);
+function buildApprovalFrameHtml(f) {
+  avActivateFrame(f);
+  let html = _campaignPushPreview ? buildPushFrameHtml(f) : buildPreviewHtml(f.lang);
   const sc = '<scr' + 'ipt>';
   const scEnd = '</scr' + 'ipt>';
   const script = sc + `(function(){
     function rh(){
       var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, 400);
-      window.parent.postMessage({type:'av-height', lang:${JSON.stringify(lang)}, height:h}, '*');
+      window.parent.postMessage({type:'av-height', key:${JSON.stringify(f.key)}, height:h}, '*');
     }
     window.addEventListener('load', function(){ setTimeout(rh, 80); });
 
@@ -560,7 +674,7 @@ function buildApprovalFrameHtml(lang) {
         var tidEl = el ? el.closest('[data-tid]') : null;
         window.parent.postMessage({
           type: 'av-selection',
-          lang: ${JSON.stringify(lang)},
+          key: ${JSON.stringify(f.key)},
           text: text.length > 300 ? text.slice(0, 300) + '…' : text,
           rowId: tidEl ? tidEl.getAttribute('data-tid') : null,
           xPct: Math.min(100, Math.max(0, xPct)),
@@ -575,7 +689,7 @@ function buildApprovalFrameHtml(lang) {
     // canvas no pai — eventos de wheel não atravessam a fronteira do iframe. Encaminha manualmente.
     document.addEventListener('wheel', function(ev){
       window.parent.postMessage({
-        type: 'av-wheel', lang: ${JSON.stringify(lang)},
+        type: 'av-wheel', key: ${JSON.stringify(f.key)},
         deltaX: ev.deltaX, deltaY: ev.deltaY,
         ctrlKey: ev.ctrlKey, metaKey: ev.metaKey,
         x: ev.clientX, y: ev.clientY
@@ -588,14 +702,15 @@ function buildApprovalFrameHtml(lang) {
   return html;
 }
 
-function loadApprovalFrame(lang) {
-  const vp = document.getElementById('avVp-' + cssSafeLang(lang));
+function loadApprovalFrame(f) {
+  avActivateFrame(f);
+  const vp = document.getElementById('avVp-' + f.key);
   if(!vp) return;
-  const initH = _campaignPushPreview ? 130 : _campaignInappPreview ? AV_INAPP_FRAME_H : 900;
+  const initH = f.type === 'push' ? 130 : f.type === 'inapp' ? AV_INAPP_FRAME_H : 900;
   vp.innerHTML = `<iframe style="width:100%;height:${initH}px;"></iframe>`;
   const iframe = vp.querySelector('iframe');
-  iframe.src = URL.createObjectURL(new Blob([buildApprovalFrameHtml(lang)], { type: 'text/html' }));
-  renderApprovalPins(lang);
+  iframe.src = URL.createObjectURL(new Blob([buildApprovalFrameHtml(f)], { type: 'text/html' }));
+  renderApprovalPins(f);
 }
 
 let _pendingPin = null;
@@ -604,11 +719,13 @@ let _pendingPin = null;
 // (ver buildApprovalFrameHtml). Abre a caixinha de comentário ancorada onde o texto foi selecionado,
 // já com a citação do trecho e (se identificado) um botão pra editar a tradução na hora.
 function onFrameSelection(data) {
-  const origLang = S.allC.find(c => c.code === S.origin)?.lang;
-  if(data.lang === origLang) return; // origem é só referência — não dá pra comentar nem editar nela
-  if(isLangApproved(S.approvalDoneByLang, data.lang)) return; // comentários ficam travados enquanto ESSE idioma estiver aprovado
+  const f = _avFramesByKey[data.key];
+  if(!f) return;
+  avActivateFrame(f); // S aponta pro item deste frame (no-op no single)
+  if(f.isOrig) return; // origem é só referência — não dá pra comentar nem editar nela
+  if(isLangApproved(S.approvalDoneByLang, f.lang)) return; // comentários travados enquanto ESSE frame estiver aprovado
   if(approvalBlockedByEdit()) { warnApprovalBlockedByEdit(); return; }
-  const vp = document.getElementById('avVp-' + cssSafeLang(data.lang));
+  const vp = document.getElementById('avVp-' + f.key);
   if(!vp) return;
   const rect = vp.getBoundingClientRect();
   // Coordenadas de TELA de verdade (getBoundingClientRect já reflete o zoom/transform atual do
@@ -618,8 +735,8 @@ function onFrameSelection(data) {
   const screenY = rect.top + rect.height * (data.yPct / 100);
   // Selecionar só precisa apontar QUAL linha — a citação mostrada e o botão de editar sempre
   // trabalham com a linha INTEIRA, não só o pedacinho de texto que a pessoa arrastou o mouse por cima.
-  const quote = data.rowId ? currentRowText(data.rowId, data.lang) : data.text;
-  openNewPinBox(vp, screenX, screenY, data.xPct, data.yPct, data.lang, quote, data.rowId);
+  const quote = data.rowId ? currentRowText(data.rowId, f.lang) : data.text;
+  openNewPinBox(f, vp, screenX, screenY, data.xPct, data.yPct, f.lang, quote, data.rowId);
 }
 
 // Texto atual de uma linha, num idioma: a tradução se já existir, senão o texto de origem
@@ -632,9 +749,9 @@ function currentRowText(rowId, lang) {
   return isOrig ? row.src : (row.translations[lang] || row.src || '');
 }
 
-function openNewPinBox(vp, screenX, screenY, xPct, yPct, lang, quote, rowId) {
+function openNewPinBox(f, vp, screenX, screenY, xPct, yPct, lang, quote, rowId) {
   closeNewPinBox();
-  _pendingPin = { lang, xPct, yPct, quote: quote || '', rowId: rowId || null };
+  _pendingPin = { key: f ? f.key : cssSafeLang(lang), itemIndex: f ? f.itemIndex : -1, lang, xPct, yPct, quote: quote || '', rowId: rowId || null };
   const box = document.createElement('div');
   box.className = 'av-newpin-box';
   box.id = 'avNewPinBox';
@@ -693,6 +810,8 @@ function submitNewPin() {
   // com ele, qualquer texto ainda não enviado, sem chance de recuperação). Só avisa e
   // mantém a caixa aberta com o texto intacto — se o bloqueio for temporário (dono para
   // de editar), a pessoa ainda consegue clicar "Post" de novo depois, sem ter perdido nada.
+  const f = _pendingPin ? _avFramesByKey[_pendingPin.key] : null;
+  if(f) avActivateFrame(f); // garante S no item certo ANTES de checar aprovação e escrever
   if(_pendingPin && isLangApproved(S.approvalDoneByLang, _pendingPin.lang)) { return; }
   if(approvalBlockedByEdit()) { warnApprovalBlockedByEdit(); return; }
   const ta = document.getElementById('avNewPinText');
@@ -703,8 +822,11 @@ function submitNewPin() {
   if(!comment) return;
   comment.quote = quote || '';
   comment.rowId = rowId || null;
+  // Escrita direto em S — no modo locale, comita de volta pro item SÍNCRONO antes que uma
+  // próxima ativação de frame (ex: renderApprovalSidebar agregada) sobrescreva S e perca o novo.
+  avCommitIfLocale();
   closeNewPinBox();
-  renderApprovalPins(lang);
+  if(f) renderApprovalPins(f);
   renderApprovalSidebar();
   scheduleApprovalAutosave();
 }
@@ -746,12 +868,14 @@ function addApprovalComment(lang, xPct, yPct, text, parentId) {
   return comment;
 }
 
-function renderApprovalPins(lang) {
-  const vp = document.getElementById('avVp-' + cssSafeLang(lang));
+function renderApprovalPins(f) {
+  avActivateFrame(f);
+  const vp = document.getElementById('avVp-' + f.key);
   if(!vp) return;
   vp.querySelectorAll('.av-pin').forEach(p => p.remove());
   // Só comentários de topo (sem parentId) viram pin — respostas ficam na mesma marcação da thread.
-  const topLevel = S.approvalComments.filter(c => c.lang === lang && !c.parentId);
+  // No modo locale, S é o item deste frame, então estes são os comentários daquele item no locale.
+  const topLevel = S.approvalComments.filter(c => c.lang === f.lang && !c.parentId);
   topLevel.forEach((c, i) => {
     const pin = document.createElement('div');
     pin.className = 'av-pin' + (c.resolvedBy.length ? ' resolved' : '');
@@ -792,6 +916,45 @@ function renderApprovalSidebar() {
       openReplyBox = { id: box.id, text: box.querySelector('textarea')?.value || '' };
     }
   });
+
+  if(_avMode === 'locale') {
+    // AGREGA os comentários de TODOS os frames (itens deste locale), filtrados ao _avLocale.
+    // Cada card é renderizado com S apontando pro item DONO do comentário, pra que
+    // renderApprovalThreadCard leia o approvalDoneByLang certo. O map _cardFrameKey guarda
+    // qual frame é dono de cada comentário-topo (usado só pra ativar antes de renderizar).
+    const frames = _avFrames.length ? _avFrames : avBuildFrames();
+    const all = [];
+    const frameKeyByCommentId = {};
+    frames.forEach(f => {
+      const arr = (f.item && f.item.approvalComments) || [];
+      arr.forEach(c => { if(c.lang === _avLocale) { all.push(c); frameKeyByCommentId[c.id] = f.key; } });
+    });
+    const topLevel = all.filter(c => !c.parentId).sort((a, b) => b.createdAt - a.createdAt);
+    const repliesByParent = new Map();
+    all.forEach(r => {
+      if(!r.parentId) return;
+      if(!repliesByParent.has(r.parentId)) repliesByParent.set(r.parentId, []);
+      repliesByParent.get(r.parentId).push(r);
+    });
+    if(countEl) countEl.textContent = all.length ? String(all.length) : '';
+    list.innerHTML = topLevel.length
+      ? topLevel.map(c => {
+          const f = _avFramesByKey[frameKeyByCommentId[c.id]];
+          if(f) avActivateFrame(f); // S vira o item dono ANTES de renderizar (isLangApproved etc.)
+          return renderApprovalThreadCard(c, repliesByParent.get(c.id) || []);
+        }).join('')
+      : `<div class="empty-state" style="margin:6px;padding:24px 16px;"><p>No comments yet. Select any text in a preview to leave one.</p></div>`;
+    renderApprovalDoneBanner();
+    if(openReplyBox) {
+      const restored = document.getElementById(openReplyBox.id);
+      if(restored) {
+        restored.style.display = 'flex';
+        const ta = restored.querySelector('textarea');
+        if(ta) { ta.value = openReplyBox.text; ta.focus({preventScroll:true}); }
+      }
+    }
+    return;
+  }
 
   const all = S.approvalComments;
   const topLevel = all.filter(c => !c.parentId).sort((a, b) => b.createdAt - a.createdAt);
@@ -899,6 +1062,7 @@ function renderApprovalReplyCard(r) {
 // órfão); um comentário-raiz só pode ser apagado quando a thread já não tem mais
 // nenhuma resposta — senão as respostas ficariam sem o comentário original pra dar contexto.
 async function deleteApprovalComment(id) {
+  const of = avFrameOwningComment(id); if(of) avActivateFrame(of); // locale: S vira o item dono
   const c = S.approvalComments.find(x => x.id === id);
   if(!c) return;
   const me = authCurrentUser();
@@ -908,14 +1072,18 @@ async function deleteApprovalComment(id) {
   const isTopLevel = !c.parentId;
   if(isTopLevel && S.approvalComments.some(x => x.parentId === id)) return; // ainda tem respostas
   if(!(await uiConfirm('Delete this comment? This cannot be undone.', {title:'Delete comment', okLabel:'Delete', danger:true}))) return;
+  const of2 = avFrameOwningComment(id); if(of2) avActivateFrame(of2); // await pode ter trocado o S ativo
   S.approvalComments = S.approvalComments.filter(x => x.id !== id);
   S.approvalDeletedIds.push(id); // tombstone — sem isso o merge com outra aba ressuscitaria o comentário
-  if(isTopLevel) renderApprovalPins(c.lang);
+  avCommitIfLocale();
+  if(isTopLevel && of2) renderApprovalPins(of2);
+  else if(isTopLevel && _avMode === 'single') renderApprovalPins(_avFramesByKey[cssSafeLang(c.lang)] || { key: cssSafeLang(c.lang), lang: c.lang, itemIndex: -1 });
   renderApprovalSidebar();
   scheduleApprovalAutosave();
 }
 
 function toggleApprovalReplyBox(id) {
+  const of = avFrameOwningComment(id); if(of) avActivateFrame(of); // locale: S vira o item dono
   const c = S.approvalComments.find(x => x.id === id);
   if(c && isLangApproved(S.approvalDoneByLang, c.lang)) return; // comentários ficam travados enquanto ESSE idioma estiver aprovado
   document.querySelectorAll('.av-reply-input-box').forEach(b => { if(b.id !== 'avReplyBox-' + id) b.style.display = 'none'; });
@@ -930,6 +1098,7 @@ function toggleApprovalReplyBox(id) {
 
 function postApprovalReply(parentId, btn) {
   if(approvalBlockedByEdit()) { warnApprovalBlockedByEdit(); return; }
+  const of = avFrameOwningComment(parentId); if(of) avActivateFrame(of); // locale: S vira o item dono
   const box = btn.closest('.av-reply-input-box');
   const ta = box ? box.querySelector('textarea') : null;
   const text = ta ? ta.value.trim() : '';
@@ -937,6 +1106,7 @@ function postApprovalReply(parentId, btn) {
   const parent = S.approvalComments.find(c => c.id === parentId);
   if(!parent || isLangApproved(S.approvalDoneByLang, parent.lang)) return;
   if(!addApprovalComment(parent.lang, null, null, text, parentId)) return;
+  avCommitIfLocale();
   renderApprovalSidebar();
 }
 
@@ -944,12 +1114,14 @@ function toggleApprovalVerify(id) {
   const me = authCurrentUser();
   if(!me) return;
   if(approvalBlockedByEdit()) { warnApprovalBlockedByEdit(); return; }
+  const of = avFrameOwningComment(id); if(of) avActivateFrame(of); // locale: S vira o item dono
   const c = S.approvalComments.find(x => x.id === id);
   if(!c || c.author.toLowerCase() === me.email.toLowerCase()) return;
   const email = me.email.toLowerCase();
   const idx = c.resolvedBy.indexOf(email);
   idx === -1 ? c.resolvedBy.push(email) : c.resolvedBy.splice(idx, 1);
-  if(!c.parentId) renderApprovalPins(c.lang);
+  avCommitIfLocale();
+  if(!c.parentId) renderApprovalPins(of || _avFramesByKey[cssSafeLang(c.lang)] || { key: cssSafeLang(c.lang), lang: c.lang, itemIndex: -1 });
   renderApprovalSidebar();
   scheduleApprovalAutosave();
 }
@@ -957,12 +1129,15 @@ function toggleApprovalVerify(id) {
 // Clicar num pin ou num item do painel lateral: dá zoom/pan até o frame do pin, faz um "pulse"
 // nele, e destaca o item correspondente na lista — a mesma navegação de um arquivo do Figma.
 function highlightApprovalComment(id) {
+  const of = avFrameOwningComment(id); if(of) avActivateFrame(of); // locale: S vira o item dono
   const c = S.approvalComments.find(x => x.id === id);
   if(!c) return;
   const topId = c.parentId || c.id; // uma resposta aponta pro pin do comentário pai
   const top = S.approvalComments.find(x => x.id === topId);
   if(top) {
-    const vp = document.getElementById('avVp-' + cssSafeLang(top.lang));
+    // No modo locale o vp é o do frame dono (of); no single, key === cssSafeLang(lang).
+    const vpKey = of ? of.key : cssSafeLang(top.lang);
+    const vp = document.getElementById('avVp-' + vpKey);
     const canvasFrame = vp ? vp.closest('.av-canvas-frame') : null;
     if(vp && canvasFrame) {
       // Centraliza o pin na viewport, em coordenadas de tela: pega onde o pin cai na tela
@@ -991,11 +1166,22 @@ function highlightApprovalComment(id) {
 function renderApprovalDoneBanner() {
   const el = document.getElementById('avDoneBanner');
   if(!el) return;
-  const { langs } = approvalLangs();
-  const approved = langs.filter(l => isLangApproved(S.approvalDoneByLang, l));
-  if(!approved.length) { el.innerHTML = ''; return; }
-  const allDone = approved.length === langs.length;
-  el.innerHTML = `<div class="av-done-banner">✓ ${approved.length} of ${langs.length} language${langs.length===1?'':'s'} approved${allDone ? ' — all done!' : ''}</div>`;
+  let total, approved, noun;
+  if(_avMode === 'locale') {
+    // Agrega sobre os frames (itens deste locale): cada item aprovado pro _avLocale conta.
+    const frames = _avFrames.length ? _avFrames : avBuildFrames();
+    total = frames.length;
+    approved = frames.filter(f => isLangApproved((f.item && f.item.approvalDoneByLang) || {}, _avLocale)).length;
+    noun = 'asset';
+  } else {
+    const { langs } = approvalLangs();
+    total = langs.length;
+    approved = langs.filter(l => isLangApproved(S.approvalDoneByLang, l)).length;
+    noun = 'language';
+  }
+  if(!approved) { el.innerHTML = ''; return; }
+  const allDone = approved === total;
+  el.innerHTML = `<div class="av-done-banner">✓ ${approved} of ${total} ${noun}${total===1?'':'s'} approved${allDone ? ' — all done!' : ''}</div>`;
 }
 
 // Registra um evento no feed de atividade da sidebar (quem aprovou, quem desfez, quem editou).
@@ -1011,17 +1197,31 @@ function logApprovalActivity(type, lang, rowId) {
 
 // Aprova UM idioma específico — não afeta os outros frames. Uma vez aprovado, novos
 // comentários/respostas naquele idioma ficam bloqueados até alguém desfazer.
-function markLangApproved(lang) {
+// Resolve um frame a partir de uma KEY vinda de um onclick. No single, key === cssSafeLang(lang),
+// então callers antigos (que passavam a própria key/lang) continuam funcionando. Fallback
+// defensivo: trata a key como um cssSafeLang e acha o frame cujo lang casa.
+function avResolveFrameKey(key) {
+  let f = _avFramesByKey[key];
+  if(!f) f = avBuildFrames().find(x => cssSafeLang(x.lang) === key) || _avFramesByKey[key];
+  return f || { key, lang: key, itemIndex: -1, isOrig: false };
+}
+
+function markLangApproved(key) {
   const me = authCurrentUser();
   if(!me) return;
+  const f = avResolveFrameKey(key);
+  avActivateFrame(f);
+  const lang = f.lang;
   if(approvalBlockedByEdit()) { warnApprovalBlockedByEdit(); return; }
   const p = projGetAll().find(x => x.id === currentProjectId);
   const projectName = (p && p.name) || S.csv.name || 'this project';
   S.approvalDoneByLang[lang] = { by: me.email, at: Date.now() };
   logApprovalActivity('approved', lang, null);
-  renderFrameApproveSlot(lang);
+  avCommitIfLocale();
+  renderFrameApproveSlot(f);
   renderApprovalActivityFeed();
   renderApprovalSidebar(); // já chama renderApprovalDoneBanner() internamente no fim
+  if(_avMode === 'locale') renderApprovalPins(f);
   closeNewPinBox();
   scheduleApprovalAutosave();
   if(p && p.owner && p.owner.toLowerCase() !== me.email.toLowerCase()) {
@@ -1031,9 +1231,12 @@ function markLangApproved(lang) {
 
 // "Undo" — reabre a possibilidade de comentar NAQUELE idioma, caso alguém perceba que
 // precisa ajustar algo depois de já ter aprovado.
-function undoLangApproval(lang) {
+function undoLangApproval(key) {
   const me = authCurrentUser();
   if(!me) return;
+  const f = avResolveFrameKey(key);
+  avActivateFrame(f);
+  const lang = f.lang;
   if(approvalBlockedByEdit()) { warnApprovalBlockedByEdit(); return; }
   const p = projGetAll().find(x => x.id === currentProjectId);
   const projectName = (p && p.name) || S.csv.name || 'this project';
@@ -1042,7 +1245,8 @@ function undoLangApproval(lang) {
   // uma chave ausente é indistinguível de "nunca aprovado".
   S.approvalDoneByLang[lang] = { by: me.email, at: Date.now(), undone: true };
   logApprovalActivity('undone', lang, null);
-  renderFrameApproveSlot(lang);
+  avCommitIfLocale();
+  renderFrameApproveSlot(f);
   renderApprovalActivityFeed();
   renderApprovalSidebar(); // já chama renderApprovalDoneBanner() internamente no fim
   scheduleApprovalAutosave();
@@ -1113,6 +1317,9 @@ function saveAvEditModal() {
   logApprovalActivity('edited', lang, rowId);
   renderApprovalActivityFeed();
   buildTable();           // mantém a tabela do editor sincronizada, mesmo estando por trás da Approval View
-  loadApprovalFrame(lang); // recarrega o preview desse idioma já com o texto novo
+  // Recarrega o preview desse frame já com o texto novo. No single, key === cssSafeLang(lang);
+  // no locale, edição de texto é owner-only e opera no item já ativo em S.
+  const editFrame = _avFramesByKey[cssSafeLang(lang)] || avBuildFrames().find(x => x.lang === lang) || { key: cssSafeLang(lang), lang, type: (_campaignInappPreview?'inapp':_campaignPushPreview?'push':'email'), itemIndex: -1 };
+  loadApprovalFrame(editFrame);
   scheduleAutosave();
 }

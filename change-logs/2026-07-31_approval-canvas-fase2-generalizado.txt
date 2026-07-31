@@ -1,0 +1,137 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: FASE 2 — Approval View (canvas Figma-style) GENERALIZADA por "frame descriptor".
+      Agora renderiza DOIS modos com o MESMO código: o clássico "Approve copies"
+      (um item x todos os idiomas) e o novo "Approve by Locale" (um locale fixo x
+      muitos itens da pasta). Reaproveita 100% da máquina existente: comentários,
+      threads, @menção, verify, presença ao vivo, aprovação por frame e export PNG.
+
+===============================================================================
+POR QUÊ
+===============================================================================
+A Approval View só sabia mostrar UM item lido do S global, um frame por idioma. A pasta
+precisa de uma visão "Approve by Locale": um idioma fixo, um frame por CAMPANHA/ITEM da
+pasta, todos naquele mesmo idioma. Em vez de reimplementar (comentários/threads/presença/
+PNG/aprovação de novo), a Fase 2 GENERALIZA o canvas por um modelo de descritor de frame,
+onde cada frame sabe qual item ele representa e "empresta" o S global só na hora de renderizar.
+
+===============================================================================
+DESIGN — "FRAME DESCRIPTOR" + ATIVAÇÃO POR FRAME
+===============================================================================
+Novos estados no topo do módulo (após approvalLangs):
+  _avMode      : 'single' | 'locale'
+  _avLocale    : locale fixo quando mode === 'locale'
+  _avFrames    : lista de descritores, reconstruída a cada render (avBuildFrames)
+  _avFramesByKey: índice key -> descritor
+
+avBuildFrames():
+  - single: um frame por idioma (approvalLangs). key === cssSafeLang(lang) — IDÊNTICO aos ids
+    de DOM de antes, então o comportamento single não muda.
+  - locale: um frame por item da pasta que contenha _avLocale. key === 'it'+índice do item.
+  Cada descritor carrega: key, lang, isOrig, itemIndex, item, type, title (+ country no single).
+
+avActivateFrame(f):
+  - No modo locale, aponta S (+ _campaignItemIndex + flags _campaignPushPreview/_campaignInappPreview)
+    pro item do frame via activateCampaignItemIntoS, pra que TODO o código baseado em S opere no
+    item certo. No single é NO-OP (S já está correto).
+
+avCommitIfLocale(): commitCampaignItemApprovalState()+scheduleCampaignAutosave() (só no locale),
+  chamado SÍNCRONO após cada escrita em S, antes que a re-renderização ative outro frame e
+  sobrescreva o S — assim a escrita nunca se perde.
+
+avFrameOwningComment(id): acha o frame/item dono de um comentário (por id). Usado pela sidebar
+  agregada e pelas ações por id (reply/verify/highlight/delete) pra rotear ao item certo. No
+  single retorna null (o caller usa o path S normal, inalterado).
+
+===============================================================================
+O QUE MUDOU (modules/approval-canvas.js)
+===============================================================================
+Funções que passaram a ser DESCRIPTOR-DRIVEN (recebem o descritor f, ativam o frame no topo,
+usam f.key nos ids de DOM e f.lang no conteúdo):
+  - renderApprovalGrid: monta frames por avBuildFrames; x ACUMULADO (larguras variam por frame
+    no locale); título single = bandeira/país/lang/badge-origin; título locale = ícone 📄 + nome
+    do item + rótulo de tipo (Email/In-app/Push), SEM país e SEM badge de origem; cond-branch
+    escondido no locale; ids avVp-${f.key}/avApproveSlot-${f.key}.
+  - avContentWidth / avFitToFrames: somam larguras POR frame (avFrameWFor/avFrameGapFor a partir
+    de f.type — sem ativar S no loop de medição, que roda a cada tick de scroll), não mais
+    langs.length*(frameW+gap). Mesma lógica de scale/tx/ty.
+  - renderFrameApproveSlot(f): id por f.key; done por isLangApproved(S.approvalDoneByLang, f.lang);
+    onclick passa f.key.
+  - buildPushFrameHtml(f) / buildApprovalFrameHtml(f) / loadApprovalFrame(f): ativam o frame;
+    no script injetado do iframe, os postMessages av-height/av-selection/av-wheel agora mandam
+    key: f.key (substitui o antigo lang:). initH por f.type.
+  - renderApprovalPins(f): ativa o frame; vp por f.key; filtra S.approvalComments por f.lang.
+  - onFrameSelection(data): resolve f = _avFramesByKey[data.key]; ativa; guarda de origem via
+    f.isOrig (mantida no single); grava key/itemIndex no _pendingPin.
+  - openNewPinBox(f, ...): grava _pendingPin.key/_pendingPin.itemIndex.
+  - submitNewPin: resolve o frame por _pendingPin.key e ativa ANTES de addApprovalComment;
+    avCommitIfLocale() síncrono depois; renderApprovalPins(f).
+  - markLangApproved(key) / undoLangApproval(key): o parâmetro agora é a KEY do frame (no single
+    key===cssSafeLang(lang), então callers antigos seguem funcionando). avResolveFrameKey resolve
+    o descritor (com fallback defensivo por cssSafeLang). Toggla S.approvalDoneByLang[f.lang]
+    exatamente como antes; avCommitIfLocale() no locale.
+  - setApprovalCondBranch: loop por avBuildFrames -> avActivateFrame + loadApprovalFrame.
+  - renderApprovalSidebar: single INALTERADO (lê S.approvalComments). Locale AGREGA os comentários
+    de todos os frames (item.approvalComments filtrados a _avLocale), rendeiriza cada card com o
+    frame dono ATIVADO antes (pra isLangApproved etc. lerem o item certo).
+  - deleteApprovalComment/toggleApprovalReplyBox/postApprovalReply/toggleApprovalVerify/
+    highlightApprovalComment: no locale, avFrameOwningComment(id) -> avActivateFrame antes de
+    rodar a lógica S existente; avCommitIfLocale após mutação; highlight usa o vp do frame dono.
+  - renderApprovalDoneBanner: single conta idiomas aprovados; locale conta ITENS (assets)
+    aprovados pro _avLocale, agregando sobre os frames.
+  - saveAvEditModal: recarrega o preview via descritor resolvido (loadApprovalFrame(editFrame)).
+
+Entradas/saídas:
+  - openApprovalView(): seta _avMode='single'; _avLocale=null no topo (antes do guard de S.rawHtml).
+    Resto inalterado.
+  - NOVO openApprovalViewByLocale(locale): seta modo locale, subtítulo = nome da pasta + locale,
+    renderiza grid/sidebar/feed/presença. NÃO exige S.rawHtml (S pode estar velho). Sem frames
+    (nenhum item no locale) -> alerta e volta a single, sem abrir.
+  - closeApprovalView(): reseta _avMode='single'/_avLocale=null; no locale, após commit+save,
+    volta pra visão "By Locale" da pasta (renderCampaignByLocale se existir) em vez de
+    renderCampaignMain. Branch single INTACTO.
+
+===============================================================================
+O QUE MUDOU (index.html)
+===============================================================================
+- Listener global de 'message': as branches av-height/av-selection/av-wheel passam a chavear por
+  e.data.key (não mais e.data.lang). av-height resolve f = _avFramesByKey[e.data.key], usa
+  vp avVp-<key>, e o early-return de in-app agora é por f.type==='inapp'. av-wheel lê vp por key.
+- downloadApprovalFramePng(key): argumento vira a KEY do frame; lê avVp-<key>; resolve o descritor
+  e avActivateFrame antes (pra S.csv.name/toBrazeLang(f.lang) usarem o item certo no nome do PNG).
+  Call site em renderApprovalGrid passa f.key.
+- Dois handlers de autosave/merge (autosaveCampaignApprovalState e o merge do projeto single) que
+  faziam approvalLangs().langs.forEach(l => renderApprovalPins(l)) agora fazem
+  avBuildFrames().forEach(f => renderApprovalPins(f)) — descritor-driven, válido nos dois modos.
+- renderCampaignByLocale: adicionado um botão "🖼 Approve in canvas" na barra de abas de locale,
+  que chama openApprovalViewByLocale(_campaignLocale) — é o ponto de entrada do novo modo.
+
+===============================================================================
+MODO SINGLE PRESERVADO (byte-for-byte)
+===============================================================================
+No single, avBuildFrames gera key === cssSafeLang(lang) (mesmos ids de DOM de antes),
+avActivateFrame é NO-OP, avFrameOwningComment retorna null, a sidebar lê S.approvalComments
+pelo caminho original inalterado, e o cond-branch/título com país/badge-origin continuam iguais.
+Todas as ações por id (reply/verify/delete/highlight) mantêm o path S de sempre. O fluxo
+"Approve copies" (Dashboard e por dentro do editor) segue idêntico.
+
+===============================================================================
+VERIFICAÇÃO (sem browser)
+===============================================================================
+- node --check em modules/approval-canvas.js: OK.
+- new Function() sobre o <script> inline do index.html: sem erro de sintaxe.
+- grep: nenhum avVp-'+cssSafeLang( remanescente; nenhum e.data.lang nas branches av-*;
+  _avFramesByKey definido antes do uso; nenhum caller antigo com assinatura (lang) sobrando.
+
+===============================================================================
+PONTOS DE ATENÇÃO / LIMITAÇÕES CONHECIDAS
+===============================================================================
+- renderApprovalActivityFeed no modo locale mostra o feed do ÚLTIMO item ativado (S), não um
+  feed agregado — seguido conforme a spec (openApprovalViewByLocale chama renderApprovalActivityFeed()).
+  Se um feed agregado por locale for desejado, é um follow-up.
+- openAvEditModal/saveAvEditModal (editar texto direto da Approval View) é owner-only e opera no
+  item ativo em S. No locale, como o onclick dispara depois da renderização (S pode ter avançado
+  pro último frame), a edição de texto a partir do card pode não mirar o item certo se rowIds
+  colidirem entre itens. Não estava no escopo da spec da Fase 2; comportamento single inalterado.
+- avCommitIfLocale (scheduleCampaignAutosave) + o scheduleApprovalAutosave já existente disparam
+  dois timers de save no locale — redundante mas inofensivo (ambos gravam o mesmo _campaign).
