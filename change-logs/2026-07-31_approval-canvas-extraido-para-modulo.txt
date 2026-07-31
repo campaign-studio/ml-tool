@@ -1,0 +1,51 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: FASE 1/3 — Approval View (canvas Figma-style) EXTRAÍDA do index.html para
+      modules/approval-canvas.js, sem NENHUMA mudança de comportamento.
+
+===============================================================================
+POR QUÊ
+===============================================================================
+Rumo à visão "Approve by Locale" reaproveitar 100% a Approval View (zoom/pan + comentários +
+threads + @menção + presença), o canvas precisa primeiro ficar ORGANIZADO num arquivo só dele.
+Esta fase é PURAMENTE mecânica: mover o código, provar que nada quebrou. A generalização pra
+múltiplos itens (por locale) vem na Fase 2; a fiação do By Locale, na Fase 3.
+
+===============================================================================
+O QUE MUDOU
+===============================================================================
+- Novo arquivo modules/approval-canvas.js com as ~1101 linhas do bloco "APPROVAL VIEW" (era o
+  trecho final do <script> inline, linhas 10718–11818): cssSafeLang, approvalLangs,
+  approverOpenProject, open/closeApprovalView, presença (cursores/online), pan/zoom (applyAvTransform,
+  avFitToFrames, avZoomBy, wheel/pan handlers), scrollbar horizontal, renderApprovalGrid,
+  buildApprovalFrameHtml/buildPushFrameHtml/loadApprovalFrame, pins/comentários/threads/replies/
+  verify/@menção, sidebar, banner, activity feed, markLangApproved/undo, avEditModal, e as
+  constantes AV_* + estado _av*.
+- index.html: bloco removido; deixado um comentário-ponteiro. Adicionado
+  <script src="modules/approval-canvas.js"></script> ANTES de folders.js.
+- O listener global de 'message' (av-height/av-selection/av-wheel) FICOU no index.html porque é
+  COMPARTILHADO com braze-height/braze-scrollto/camp-height; ele chama as funções do módulo em
+  runtime (quando a Approval View está aberta).
+
+DECISÃO DE DESIGN: o módulo NÃO usa IIFE. É código de ESCOPO GLOBAL (classic script), igual a
+quando morava no inline. As funções seguem globais (chamadas por onclick= e por bare-name do
+index) e leem os globais do app (S, buildPreviewHtml, COUNTRIES, authCurrentUser, sbClient,
+isLangApproved, _campaign, _campaignPushPreview/InappPreview, currentProjectId, …) também por
+bare-name — o que funciona porque classic scripts dividem o mesmo ambiente léxico/global. Um IIFE
+exigiria reescrever centenas de call sites. Carregado DEPOIS do inline (referências só em runtime).
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado, mocks (nenhuma escrita no banco):
+- Sem erros de console no load.
+- Todas as funções da AV existem e são globais (openApprovalView, renderApprovalGrid,
+  buildApprovalFrameHtml, addApprovalComment, markLangApproved, avZoomIn, saveAvEditModal, …).
+- Constantes/estado da AV acessíveis por bare-name de fora do módulo: AV_FRAME_W === 680,
+  _avView === {scale:1,tx:40,ty:60}, avFrameW é função. Globais do app intactos (S,
+  buildPreviewHtml, Folders).
+- Smoke da Approval View com S mockado (buildPreviewHtml stubado): openApprovalView() abre a tela,
+  renderiza 2 frames (Brazil pt_br origin + Germany de_de) com slot de aprovação, PNG e cond-branch;
+  markLangApproved('de-DE') não lança; closeApprovalView() fecha. Sem erros.
+NOTA: comportamento idêntico ao anterior (código byte-a-byte). Conferência visual do fluxo real de
+"Approve copies" (com e-mail real + comentários) fica pra você — o caminho de código é o mesmo.
