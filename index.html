@@ -532,10 +532,9 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 
 /* ═══════════ CARD DE PASTA (listagem externa) — clicável, glass, ações no hover ═══════════ */
 .folder-card{position:relative;display:flex;align-items:center;gap:16px;padding:16px 18px;border-radius:18px;
-  background:rgba(255,255,255,.55);border:1px solid var(--border);cursor:pointer;
-  backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);
-  box-shadow:0 1px 3px rgba(20,20,40,.05);transition:border-color .18s,box-shadow .18s,transform .18s,background .18s;}
-.folder-card:hover{border-color:var(--border-s);box-shadow:0 14px 32px rgba(20,20,40,.10);transform:translateY(-2px);background:rgba(255,255,255,.72);}
+  background:var(--surface);border:1px solid var(--border);cursor:pointer;
+  box-shadow:0 1px 3px rgba(20,20,40,.05);transition:border-color .18s,box-shadow .18s,transform .18s;}
+.folder-card:hover{border-color:var(--border-s);box-shadow:0 14px 32px rgba(20,20,40,.10);transform:translateY(-2px);}
 .folder-card-icon{flex-shrink:0;width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;
   color:#fff;background:linear-gradient(150deg,var(--wh-navy,#1d2b4a),var(--wh-navy2,#2a3d63));box-shadow:0 4px 12px rgba(20,20,40,.18);}
 .folder-card-body{flex:1;min-width:0;}
@@ -555,29 +554,19 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .del-scope-btn:hover{border-color:var(--accent);}
 .del-scope-btn.active{border-color:var(--accent);background:var(--acc-bg);}
 
-/* ═══════════ CARD DE ITEM DENTRO DA PASTA (e-mail/in-app/push) — moderno, glass ═══════════ */
+/* ═══════════ CARD DE ITEM DENTRO DA PASTA (e-mail/in-app/push) — cores sólidas ═══════════ */
 .camp-item-card{position:relative;display:flex;flex-direction:column;border-radius:18px;overflow:hidden;
-  background:rgba(255,255,255,.55);border:1px solid var(--border);
-  backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);
+  background:var(--surface);border:1px solid var(--border);
   box-shadow:0 1px 3px rgba(20,20,40,.05);transition:border-color .18s,box-shadow .18s,transform .18s;}
 .camp-item-card:hover{border-color:var(--border-s);box-shadow:0 16px 36px rgba(20,20,40,.12);transform:translateY(-3px);}
 .camp-item-preview{height:300px;overflow:hidden;background:#f2f1f6;position:relative;}
 .camp-item-preview iframe{width:100%;height:100%;border:none;}
-.camp-item-foot{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--border);background:rgba(255,255,255,.35);}
+.camp-item-foot{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--border);background:var(--s2);}
 .camp-item-info{flex:1;min-width:0;}
 .camp-item-name{font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .camp-item-progress{margin-top:4px;}
 .camp-item-actions{display:flex;gap:6px;flex-shrink:0;opacity:0;transform:translateY(2px);transition:opacity .15s,transform .15s;}
 .camp-item-card:hover .camp-item-actions{opacity:1;transform:none;}
-@media (prefers-color-scheme: dark){
-  .camp-item-card{background:rgba(30,32,44,.5);}
-  .camp-item-card:hover{background:rgba(30,32,44,.66);}
-  .camp-item-foot{background:rgba(30,32,44,.35);}
-}
-@media (prefers-color-scheme: dark){
-  .folder-card{background:rgba(30,32,44,.5);}
-  .folder-card:hover{background:rgba(30,32,44,.68);}
-}
 
 .proj-row{position:relative;overflow:hidden;display:flex;flex-direction:column;gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:24px 26px 22px 32px;box-shadow:0 1px 3px rgba(20,20,40,.05);transition:border-color .2s,box-shadow .2s,transform .2s;}
 .proj-row::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--wh-navy),var(--wh-navy2));opacity:.85;transition:width .2s;}
@@ -1012,8 +1001,8 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
         <div style="display:flex;align-items:center;gap:10px;">
           <!-- Filtro de pasta: "Tudo" (pastas + soltos) x "Fora de pasta" (só os soltos). -->
           <div class="dash-sort" id="folderFilter">
-            <button class="dash-sort-btn active" id="folderFilterAll" onclick="setFolderFilter('all')">Tudo</button>
-            <button class="dash-sort-btn" id="folderFilterLoose" onclick="setFolderFilter('unfoldered')">Fora de pasta</button>
+            <button class="dash-sort-btn active" id="folderFilterAll" onclick="setFolderFilter('all')">All</button>
+            <button class="dash-sort-btn" id="folderFilterLoose" onclick="setFolderFilter('unfoldered')">Unfoldered</button>
           </div>
           <div class="dash-search-wrap" style="margin-left:auto;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5"/></svg>
@@ -1036,7 +1025,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
            Movida pra cá (antes ficava abaixo). Reaproveita o mesmo array/sync de projetos. -->
       <div class="dash-section" id="campaignsSection" style="padding-top:0;border-top:none;">
         <div class="dash-section-head">
-          <div class="sec-lbl" style="margin-bottom:0;">Pastas</div>
+          <div class="sec-lbl" style="margin-bottom:0;">Folders</div>
           <button class="btn-next" style="width:auto;padding:8px 16px;margin-top:0;font-size:12px;" onclick="openNewCampaignModal()">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;"><path d="M12 5v14M5 12h14"/></svg>
             New folder
@@ -1179,10 +1168,6 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
     </button>
     <span id="campaignScreenTitle" style="font-size:13px;font-weight:700;color:var(--text);flex-shrink:0;margin-right:8px;">Project</span>
     <div id="campaignTabs" style="display:flex;gap:6px;flex:1;"></div>
-    <button class="tbtn" style="border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;flex-shrink:0;" onclick="openCampaignBulkApprovalView()" title="Approve every language of every asset in this tab">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
-      Approve all copies
-    </button>
     <button class="dash-sort-btn" style="background:var(--s2);flex-shrink:0;" onclick="openManageContentModal()" title="Add content">+ Add content</button>
   </div>
   <div id="campaignItemEmpty" style="display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--text3);">
@@ -1493,11 +1478,11 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 <div id="moveToFolderModal" class="modal-ov" style="display:none;">
   <div class="card modal-card" style="width:100%;max-width:440px;">
     <div class="ci" style="padding:28px;">
-      <h1 style="margin:0 0 6px;">Mover para uma pasta</h1>
+      <h1 style="margin:0 0 6px;">Move to a folder</h1>
       <p class="sub" id="moveToFolderSub" style="margin-bottom:16px;"></p>
       <div id="moveToFolderList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;max-height:320px;overflow:auto;"></div>
       <div style="display:flex;gap:10px;margin-top:8px;">
-        <button class="btn-back" style="flex:1;" onclick="closeMoveToFolderModal()">Cancelar</button>
+        <button class="btn-back" style="flex:1;" onclick="closeMoveToFolderModal()">Cancel</button>
       </div>
     </div>
   </div>
@@ -1507,27 +1492,27 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 <div id="deleteFolderModal" class="modal-ov" style="display:none;">
   <div class="card modal-card" style="width:100%;max-width:470px;">
     <div class="ci" style="padding:28px;">
-      <h1 style="margin:0 0 6px;">Deletar pasta</h1>
-      <p class="sub" style="margin-bottom:16px;">Deletar <strong id="deleteFolderName"></strong>. <span style="color:#dc2626;font-weight:700;">Esta ação é irreversível.</span></p>
+      <h1 style="margin:0 0 6px;">Delete folder</h1>
+      <p class="sub" style="margin-bottom:16px;">Delete <strong id="deleteFolderName"></strong>. <span style="color:#dc2626;font-weight:700;">This action cannot be undone.</span></p>
       <div id="deleteFolderScopeRow" style="margin-bottom:16px;">
-        <label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:8px;">Deseja deletar os projetos que estão dentro?</label>
+        <label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:8px;">What should happen to the projects inside?</label>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <button type="button" id="scopeFolderOnly" class="del-scope-btn" onclick="setDeleteFolderScope('folderonly')">
-            <strong>Só a pasta</strong><span id="scopeFolderOnlyHint">— os e-mails voltam pra lista de soltos</span>
+            <strong>Folder only</strong><span id="scopeFolderOnlyHint">— emails go back to the standalone list</span>
           </button>
           <button type="button" id="scopeContents" class="del-scope-btn" onclick="setDeleteFolderScope('contents')">
-            <strong>A pasta E tudo dentro</strong><span>— apaga e-mails, in-apps e pushes junto</span>
+            <strong>The folder AND everything inside</strong><span>— deletes emails, in-apps and pushes too</span>
           </button>
         </div>
       </div>
       <div id="deleteFolderSharedWarn" style="display:none;margin-bottom:14px;font-size:12px;font-weight:600;color:#b45309;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:9px 11px;"></div>
       <div class="field" style="margin-bottom:0;">
-        <label>Digite <code id="deleteFolderCode" style="font-size:15px;font-weight:800;letter-spacing:2px;background:var(--s2);padding:2px 9px;border-radius:6px;color:var(--text);"></code> para confirmar</label>
-        <input id="deleteFolderCodeInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Código de confirmação" oninput="updateDeleteFolderBtn()" onkeydown="if(event.key==='Enter'){event.preventDefault();if(!document.getElementById('deleteFolderBtn').disabled)confirmDeleteFolder();}">
+        <label>Type <code id="deleteFolderCode" style="font-size:15px;font-weight:800;letter-spacing:2px;background:var(--s2);padding:2px 9px;border-radius:6px;color:var(--text);"></code> to confirm</label>
+        <input id="deleteFolderCodeInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Confirmation code" oninput="updateDeleteFolderBtn()" onkeydown="if(event.key==='Enter'){event.preventDefault();if(!document.getElementById('deleteFolderBtn').disabled)confirmDeleteFolder();}">
       </div>
       <div style="display:flex;gap:10px;margin-top:22px;">
-        <button class="btn-back" style="flex:1;" onclick="closeDeleteFolderModal()">Cancelar</button>
-        <button class="btn-danger" id="deleteFolderBtn" style="flex:1;" disabled onclick="confirmDeleteFolder()">Deletar</button>
+        <button class="btn-back" style="flex:1;" onclick="closeDeleteFolderModal()">Cancel</button>
+        <button class="btn-danger" id="deleteFolderBtn" style="flex:1;" disabled onclick="confirmDeleteFolder()">Delete</button>
       </div>
     </div>
   </div>
@@ -3559,30 +3544,30 @@ function campaignRowHtml(p) {
   const items = p.items || [];
   const counts = { email: 0, inapp: 0, push: 0 };
   items.forEach(it => { if(counts[it.type] != null) counts[it.type]++; });
-  const plural = { email: ['e-mail', 'e-mails'], inapp: ['in-app', 'in-apps'], push: ['push', 'pushes'] };
+  const plural = { email: ['email', 'emails'], inapp: ['in-app', 'in-apps'], push: ['push', 'pushes'] };
   const parts = ['email','inapp','push'].filter(t => counts[t] > 0).map(t => `${counts[t]} ${plural[t][counts[t] > 1 ? 1 : 0]}`);
-  const summary = parts.length ? parts.join(' · ') : 'Pasta vazia';
+  const summary = parts.length ? parts.join(' · ') : 'Empty folder';
   const me = authCurrentUser();
   const isOwner = me && p.owner && p.owner.toLowerCase() === me.email.toLowerCase();
   const canShare = isOwner || canShareProject(p);
   const canDelete = isOwner || (me && isSuperadmin(me.role));
-  const sharedTag = (!isOwner && p.owner) ? `<span class="folder-shared-tag" title="Compartilhada por ${escHtml(p.owner)}">🔗 Shared</span>` : '';
+  const sharedTag = (!isOwner && p.owner) ? `<span class="folder-shared-tag" title="Shared by ${escHtml(p.owner)}">🔗 Shared</span>` : '';
   return `
-    <div class="folder-card" onclick="openCampaignEditor('${escJsAttr(p.id)}')" title="Abrir pasta">
+    <div class="folder-card" onclick="openCampaignEditor('${escJsAttr(p.id)}')" title="Open folder">
       <div class="folder-card-icon">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
       </div>
       <div class="folder-card-body">
         <div class="folder-card-name">${escHtml(p.name)} ${sharedTag}
-          ${isOwner ? `<button class="proj-rename-btn" title="Renomear pasta" onclick="event.stopPropagation();renameCampaign('${escJsAttr(p.id)}')">✎</button>` : ''}
+          ${isOwner ? `<button class="proj-rename-btn" title="Rename folder" onclick="event.stopPropagation();renameCampaign('${escJsAttr(p.id)}')">✎</button>` : ''}
         </div>
         <div class="folder-card-summary">${escHtml(summary)}</div>
       </div>
       <div class="folder-card-actions">
-        ${canShare ? `<button class="folder-icon-btn" title="Compartilhar" onclick="event.stopPropagation();openShareModal('${escJsAttr(p.id)}')">
+        ${canShare ? `<button class="folder-icon-btn" title="Share" onclick="event.stopPropagation();openShareModal('${escJsAttr(p.id)}')">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
         </button>` : ''}
-        ${canDelete ? `<button class="folder-icon-btn danger" title="Deletar pasta" onclick="event.stopPropagation();openDeleteFolderModal('${escJsAttr(p.id)}')">
+        ${canDelete ? `<button class="folder-icon-btn danger" title="Delete folder" onclick="event.stopPropagation();openDeleteFolderModal('${escJsAttr(p.id)}')">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
         </button>` : ''}
       </div>
@@ -3867,7 +3852,7 @@ function renderCampaignGallery(pairs) {
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             Edit
           </button>
-          ${it.type === 'email' && _campaign ? `<button class="tbtn" style="height:28px;padding:0 11px;font-size:11px;" title="Tirar da pasta e voltar a ser e-mail avulso" onclick="removeItemFromFolder('${escJsAttr(_campaign.id)}','${escJsAttr(it.id)}')">↩</button>` : ''}
+          ${it.type === 'email' && _campaign ? `<button class="tbtn" style="height:28px;padding:0 11px;font-size:11px;" title="Remove from folder (back to a standalone email)" onclick="removeItemFromFolder('${escJsAttr(_campaign.id)}','${escJsAttr(it.id)}')">↩</button>` : ''}
         </div>
       </div>
     </div>
@@ -5388,7 +5373,7 @@ async function confirmProjDelete() {
 // remove o avulso. Se qualquer passo falhar antes do 4, o avulso continua intacto.
 async function moveProjectToFolder(projectId, folderId) {
   const me = authCurrentUser(); if(!me) return;
-  if(!window.Folders) { showNotif('Módulo de pastas não carregou — recarregue a página.', 'warn'); return; }
+  if(!window.Folders) { showNotif("The folders module didn't load — please reload the page.", 'warn'); return; }
   // Puxa o estado mais novo antes de mexer (mesmo cuidado do delete) pra não sobrescrever
   // mudança concorrente de outra aba/pessoa.
   if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
@@ -5405,7 +5390,7 @@ async function moveProjectToFolder(projectId, folderId) {
   // 3) VERIFICA na leitura local que o item entrou (mesma contagem de linhas) ANTES de deletar.
   const check = projGetAll().find(p => p.id === folderId);
   const landed = check && (check.items||[]).some(it => it.id === plan.item.id && (it.rows||[]).length === plan.item.rows.length);
-  if(!landed) { showNotif('Não consegui gravar o item na pasta — o e-mail avulso foi MANTIDO intacto.', 'warn'); return; }
+  if(!landed) { showNotif('Could not save the item into the folder — the standalone email was KEPT intact.', 'warn'); return; }
 
   // 4) agora sim remove o avulso (tombstone + filtra + salva). O conteúdo já está seguro na pasta,
   // e o item guarda _fromProjectData pra permitir "remover da pasta" recriar o avulso depois.
@@ -5414,7 +5399,7 @@ async function moveProjectToFolder(projectId, folderId) {
   await withTimeout(projSaveAll(after), 8000, 'projSaveAll (remove avulso)');
 
   closeMoveToFolderModal();
-  showNotif('E-mail movido para a pasta.', 'ok', 2600);
+  showNotif('Email moved to the folder.', 'ok', 2600);
   renderDashboard();
 }
 
@@ -5422,10 +5407,10 @@ let _moveToFolderProjId = null;
 function openMoveToFolderModal(projectId) {
   const me = authCurrentUser(); if(!me) return;
   const p = projGetAll().find(x => x.id === projectId && x.kind !== 'campaign');
-  if(!p) { showNotif('Projeto não encontrado.', 'warn'); return; }
+  if(!p) { showNotif('Project not found.', 'warn'); return; }
   _moveToFolderProjId = projectId;
   const sub = document.getElementById('moveToFolderSub');
-  if(sub) sub.textContent = `"${p.name}" vira um item de e-mail dentro da pasta escolhida (sai da lista de soltos).`;
+  if(sub) sub.textContent = `"${p.name}" becomes an email item inside the chosen folder (it leaves the standalone list).`;
   // Só dá pra mover pra pasta que você controla (dono ou pode compartilhar).
   const folders = (window.Folders ? Folders.all() : campaignGetAll())
     .filter(f => (f.owner||'').toLowerCase() === me.email.toLowerCase() || canShareProject(f));
@@ -5433,8 +5418,8 @@ function openMoveToFolderModal(projectId) {
     `<button class="btn-back" style="justify-content:flex-start;text-align:left;" onclick="moveProjectToFolder('${escJsAttr(_moveToFolderProjId)}','${escJsAttr(f.id)}')">📁 ${escHtml(f.name)} <span style="color:var(--text3);font-size:11px;margin-left:6px;">${(f.items||[]).length} item(s)</span></button>`
   ).join('');
   const list = document.getElementById('moveToFolderList');
-  if(list) list.innerHTML = (rows || `<p class="sub" style="margin:0 0 6px;">Você ainda não tem nenhuma pasta.</p>`) +
-    `<button class="btn-next" style="margin-top:6px;" onclick="createFolderAndMove()">➕ Criar nova pasta e mover</button>`;
+  if(list) list.innerHTML = (rows || `<p class="sub" style="margin:0 0 6px;">You don't have any folder yet.</p>`) +
+    `<button class="btn-next" style="margin-top:6px;" onclick="createFolderAndMove()">➕ Create a new folder and move</button>`;
   document.getElementById('moveToFolderModal').style.display = 'flex';
 }
 function closeMoveToFolderModal() {
@@ -5444,7 +5429,7 @@ function closeMoveToFolderModal() {
 async function createFolderAndMove() {
   const projId = _moveToFolderProjId; if(!projId) return;
   const me = authCurrentUser(); if(!me) return;
-  const name = (prompt('Nome da nova pasta:') || '').trim(); if(!name) return;
+  const name = (prompt('New folder name:') || '').trim(); if(!name) return;
   if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
   const folder = { id:'camp_'+Date.now(), kind:'campaign', name, owner:me.email, sharedWith:[], approvers:[], items:[], createdAt:Date.now(), updatedAt:Date.now() };
   const projects = projGetAll(); projects.push(folder);
@@ -5459,8 +5444,8 @@ async function createFolderAndMove() {
 // recuperável, nunca perda.
 async function removeItemFromFolder(folderId, itemId) {
   const me = authCurrentUser(); if(!me) return;
-  if(!window.Folders) { showNotif('Módulo de pastas não carregou — recarregue a página.', 'warn'); return; }
-  if(!confirm('Remover este item da pasta? Ele volta a ser um e-mail avulso na lista.')) return;
+  if(!window.Folders) { showNotif("The folders module didn't load — please reload the page.", 'warn'); return; }
+  if(!confirm('Remove this item from the folder? It goes back to being a standalone email in the list.')) return;
   if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
 
   const now = Date.now();
@@ -5475,7 +5460,7 @@ async function removeItemFromFolder(folderId, itemId) {
   // 2) verifica que o avulso entrou antes de tirar da pasta.
   const check = projGetAll().find(p => p.id === newId);
   if(!check || !(check.data && typeof check.data.html === 'string')) {
-    showNotif('Não consegui recriar o e-mail avulso — o item foi MANTIDO na pasta.', 'warn'); return;
+    showNotif('Could not recreate the standalone email — the item was KEPT in the folder.', 'warn'); return;
   }
   // 3) só ENTÃO tira o item da pasta.
   const after = projGetAll().map(p => p.id === folderId
@@ -5489,7 +5474,7 @@ async function removeItemFromFolder(folderId, itemId) {
     if(typeof renderCampaignTabs === 'function') renderCampaignTabs();
     if(typeof renderCampaignMain === 'function') renderCampaignMain();
   }
-  showNotif('Item removido da pasta — voltou pra lista de e-mails soltos.', 'ok', 2800);
+  showNotif('Item removed from the folder — it went back to the standalone emails list.', 'ok', 2800);
   renderDashboard();
 }
 
@@ -5518,13 +5503,13 @@ function openDeleteFolderModal(folderId) {
   document.getElementById('deleteFolderScopeRow').style.display = isEmpty ? 'none' : '';
   const hint = document.getElementById('scopeFolderOnlyHint');
   if(hint) hint.textContent = others > 0
-    ? `— ${emails} e-mail(s) voltam pra soltos; ${others} in-app/push são apagados`
-    : '— os e-mails voltam pra lista de soltos';
+    ? `— ${emails} email(s) go back to standalone; ${others} in-app/push are deleted`
+    : '— emails go back to the standalone list';
   // Aviso de compartilhamento: deletar remove o acesso de quem tem a pasta.
   const sharedWith = [...new Set([...(p.sharedWith||[]), ...(p.approvers||[])].map(e => (e||'').toLowerCase()))].filter(Boolean);
   const warn = document.getElementById('deleteFolderSharedWarn');
   if(warn){
-    if(sharedWith.length){ warn.style.display = ''; warn.textContent = `⚠ Esta pasta está compartilhada com ${sharedWith.length} pessoa(s) — elas perderão o acesso a todo o conteúdo.`; }
+    if(sharedWith.length){ warn.style.display = ''; warn.textContent = `⚠ This folder is shared with ${sharedWith.length} person(s) — they will lose access to all its content.`; }
     else warn.style.display = 'none';
   }
   document.getElementById('deleteFolderCode').textContent = _deleteFolderCode;
@@ -5553,7 +5538,7 @@ async function confirmDeleteFolder() {
   if(!folderId) return;
   // Guard duplo (o botão já fica desabilitado): o código digitado precisa bater.
   const typed = (document.getElementById('deleteFolderCodeInput').value || '').trim().toUpperCase();
-  if(typed !== _deleteFolderCode) { showNotif('Código de confirmação incorreto.', 'warn'); return; }
+  if(typed !== _deleteFolderCode) { showNotif('Incorrect confirmation code.', 'warn'); return; }
   const me = authCurrentUser(); if(!me) return;
   if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
   const projects = projGetAll();
@@ -5574,7 +5559,7 @@ async function confirmDeleteFolder() {
       await withTimeout(projSaveAll(projects.concat(restored)), 8000, 'projSaveAll (restaura avulsos)');
       const after1 = projGetAll();
       const allLanded = restored.every(r => after1.some(p => p.id === r.id && p.data && typeof p.data.html === 'string'));
-      if(!allLanded){ showNotif('Falha ao recriar os e-mails avulsos — a pasta foi MANTIDA intacta.', 'warn'); return; }
+      if(!allLanded){ showNotif('Failed to recreate the standalone emails — the folder was KEPT intact.', 'warn'); return; }
     }
   }
   // Tombstone da pasta (tanto no 'contents' quanto DEPOIS do restore no 'folderonly').
@@ -5584,7 +5569,7 @@ async function confirmDeleteFolder() {
   await withTimeout(projSaveAll(finalList), 8000, 'projSaveAll (remove pasta)');
   if(currentProjectId === folderId) currentProjectId = null;
   closeDeleteFolderModal();
-  showNotif(scope === 'folderonly' ? 'Pasta deletada — os e-mails voltaram pra lista de soltos.' : 'Pasta e todo o conteúdo deletados.', 'ok', 3000);
+  showNotif(scope === 'folderonly' ? 'Folder deleted — the emails went back to the standalone list.' : 'Folder and all its content deleted.', 'ok', 3000);
   renderDashboard();
 }
 
@@ -7990,7 +7975,7 @@ function rowsHTML() {
     // Imagem adicionada DEPOIS que o projeto já tinha aprovação: a aprovação foi mantida (regra
     // silenciosa), mas o item fica marcado como "novo — revisar" até uma nova aprovação.
     const pendingBadge = (S.pendingImgIds||[]).includes(id)
-      ? `<span class="vml-badge" style="background:#fff3cd;border-color:#ffe08a;color:#8a6d3b;" title="Imagem adicionada depois que o projeto já tinha aprovação. A aprovação existente foi mantida, mas este item entrou depois e precisa de revisão.">⏳ novo — revisar</span>`
+      ? `<span class="vml-badge" style="background:#fff3cd;border-color:#ffe08a;color:#8a6d3b;" title="Image added after the project was already approved. The existing approval was kept, but this item came in later and needs review.">⏳ new — review</span>`
       : '';
     return `<tr>
       <td class="rn" style="width:22px!important;max-width:22px!important">${ri+1}</td>
@@ -8222,8 +8207,8 @@ function gridPasteMatrix(matrix){
   }
   if(wrote) gridReapplyHighlight();
   if(typeof showNotif==='function'){
-    if(overflow) showNotif(`Colado ${wrote} célula(s); o excedente além da grade foi ignorado.`,'warn',3500);
-    else if(wrote) showNotif(`Colado em ${wrote} célula(s).`,'ok',2000);
+    if(overflow) showNotif(`Pasted ${wrote} cell(s); the overflow beyond the grid was ignored.`,'warn',3500);
+    else if(wrote) showNotif(`Pasted into ${wrote} cell(s).`,'ok',2000);
   }
 }
 

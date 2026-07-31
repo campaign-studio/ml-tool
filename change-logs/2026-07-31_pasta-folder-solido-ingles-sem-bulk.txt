@@ -1,0 +1,23 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: ajustes na Pasta/Folder — cores sólidas (tira o glass), textos em inglês, e remoção da
+tela "Approve all copies" (aprovação passa a ser só por asset).
+
+1) CORES SÓLIDAS: .folder-card e .camp-item-card perderam o backdrop-filter (glass) e os fundos
+   rgba semitransparentes → agora usam var(--surface)/var(--s2) sólidos. Removidos os overrides
+   de dark-mode que dependiam do glass.
+
+2) INGLÊS: traduzidas todas as strings de UI que estavam em português na feature de pastas (card,
+   modais de mover/deletar, filtros All/Unfoldered, seção "Folders", notificações, prompts, botão
+   de remover da pasta), o badge de imagem pendente ("new — review") e os toasts de colar do grid
+   ("Pasted N cell(s)"), além das mensagens de erro do modules/folders.js. Comentários de código
+   (em pt) foram mantidos.
+
+3) APPROVE ALL COPIES REMOVIDO: retirado o botão que abre a tela de aprovação em massa da
+   campanha (openCampaignBulkApprovalView) do toolbar. A aprovação por ASSET ("Approve copies"
+   em cada item, openCampaignItemApprove) continua igual. A tela em massa ficou inacessível
+   (código morto inofensivo, não removido pra minimizar risco).
+
+VERIFICADO (sbClient bloqueado): folder-card/camp-item-card sem blur e fundo sólido; filtros
+"All"/"Unfoldered"; modais "Delete folder"/"Move to a folder"; resumo do card "1 email · 1 push";
+sem gatilho pra openCampaignBulkApprovalView. Sem erros de console.

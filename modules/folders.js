@@ -145,17 +145,17 @@
   function planMoveIntoFolder(projects, projectId, folderId) {
     const P = (projects || []).find(x => x.id === projectId && x.kind !== 'campaign');
     const F = (projects || []).find(x => x.id === folderId && x.kind === 'campaign');
-    if (!P) return { ok: false, error: 'Projeto avulso não encontrado.' };
-    if (!F) return { ok: false, error: 'Pasta não encontrada.' };
+    if (!P) return { ok: false, error: 'Standalone project not found.' };
+    if (!F) return { ok: false, error: 'Folder not found.' };
     const item = projectToFolderItem(P, 'email');
     // Integridade: a conversão precisa ter linhas (senão algo deu errado no parse do HTML/CSV).
     const taggedRows = app.parseHtml((P.data && P.data.html) || '');
     if (taggedRows.length && item.rows.length !== taggedRows.length) {
-      return { ok: false, error: 'Conversão inconsistente (contagem de linhas não bate) — move abortado.' };
+      return { ok: false, error: 'Inconsistent conversion (row count mismatch) — move aborted.' };
     }
     // Já existe um item vindo desse mesmo projeto nesta pasta? (evita duplicar num duplo-clique)
     if ((F.items || []).some(it => it._fromProjectId === P.id)) {
-      return { ok: false, error: 'Este projeto já está nesta pasta.' };
+      return { ok: false, error: 'This project is already in this folder.' };
     }
     const folderWithItem = { ...F, items: [...(F.items || []), item] };
     return { ok: true, folderWithItem, item, deleteProjectId: P.id };
@@ -167,9 +167,9 @@
   // chamador (o módulo não usa Date.now). Retorna { ok, newLooseProject, folderWithoutItem }.
   function planRemoveFromFolder(projects, folderId, itemId, newProjectId, createdAt) {
     const F = (projects || []).find(x => x.id === folderId && x.kind === 'campaign');
-    if (!F) return { ok: false, error: 'Pasta não encontrada.' };
+    if (!F) return { ok: false, error: 'Folder not found.' };
     const item = (F.items || []).find(it => it.id === itemId);
-    if (!item) return { ok: false, error: 'Item não encontrado na pasta.' };
+    if (!item) return { ok: false, error: 'Item not found in the folder.' };
     const loose = folderItemToProject(item, F.owner);
     loose.id = newProjectId || loose.id;       // id novo (evita o tombstone do id antigo)
     loose.createdAt = createdAt || loose.createdAt;
