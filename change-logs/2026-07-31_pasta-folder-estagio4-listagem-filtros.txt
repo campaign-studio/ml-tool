@@ -1,0 +1,39 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-07-31
+Tema: Pasta/Folder — ESTÁGIO 4: listagem (Pastas ACIMA dos soltos), filtro Tudo/Fora-de-pasta,
+busca dentro das pastas. Só render/leitura — nenhuma escrita/migração.
+
+===============================================================================
+O QUE ENTROU (aditivo; comportamento padrão inalterado)
+===============================================================================
+index.html:
+- Seção de campanhas MOVIDA pra ACIMA da lista de e-mails soltos (antes ficava abaixo) e
+  renomeada de "Projetos" → "Pastas" (botão "New folder"). id campaignsSection único (o bloco
+  antigo foi removido, sem id duplicado).
+- Filtro de pasta na barra do topo: "Tudo" (pastas + soltos, padrão) x "Fora de pasta" (esconde
+  a seção Pastas, mostra só os soltos). Estado _folderFilter + setFolderFilter(); aplicado em
+  renderDashboard (só liga/desliga o display da seção, não mexe em dado).
+- Busca agora funciona DENTRO das pastas: renderCampaignsList mantém uma pasta visível se o
+  termo casar o NOME dela OU o nome de qualquer ITEM (email/inapp/push) dentro. Placeholder da
+  busca atualizado ("Search projects & folders…").
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado:
+- Ordem no DOM: #campaignsSection (Pastas) vem ANTES de #myProjectsList (soltos) — pastas acima.
+- Sem id duplicado (só 1 #campaignsSection). Label "Pastas". Sem erros de console.
+- Filtro (com login mockado pra exercer renderDashboard): 'unfoldered' esconde a seção Pastas e
+  ativa o botão "Fora de pasta"; 'all' mostra de volta e ativa "Tudo".
+- (Busca-em-itens é um filtro .some() simples sobre p.items[].name.)
+
+NOTA: o visual (espaçamento/borda da seção movida) deve ser conferido no dashboard logado — a
+ordem e a lógica estão corretas; ajustes finos de CSS, se necessários, são triviais.
+
+===============================================================================
+PRÓXIMOS ESTÁGIOS
+===============================================================================
+3. Mover e-mail avulso pra pasta (a escrita/migração — conversão lossless já testada; com backup).
+5. Remover da pasta → volta a solto.
+(O filtro "Todos" que ACHATA os itens-de-pasta na listagem geral foi adiado — hoje os itens já
+ficam dentro da pasta; achatar exige um renderizador de linha por item, fica pra depois.)

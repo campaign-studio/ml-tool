@@ -960,10 +960,15 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
            nenhuma pasta), então a barra de busca sumia junto pra quem não usava pastas. Agora
            é um bloco próprio, independente das pastas. -->
       <div class="dash-section" style="padding-top:0;border-top:none;margin-bottom:0;">
-        <div style="display:flex;align-items:center;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <!-- Filtro de pasta: "Tudo" (pastas + soltos) x "Fora de pasta" (só os soltos). -->
+          <div class="dash-sort" id="folderFilter">
+            <button class="dash-sort-btn active" id="folderFilterAll" onclick="setFolderFilter('all')">Tudo</button>
+            <button class="dash-sort-btn" id="folderFilterLoose" onclick="setFolderFilter('unfoldered')">Fora de pasta</button>
+          </div>
           <div class="dash-search-wrap" style="margin-left:auto;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5"/></svg>
-            <input type="text" id="dashProjectSearch" class="dash-search-input" placeholder="Search projects…" oninput="setDashProjectSearch(this.value)">
+            <input type="text" id="dashProjectSearch" class="dash-search-input" placeholder="Search projects & folders…" oninput="setDashProjectSearch(this.value)">
           </div>
         </div>
       </div>
@@ -976,6 +981,19 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
             <button class="dash-folder-manage-btn" title="Delete folder" onclick="deleteFolderEverywhere(_dashFolderFilter)">🗑</button>
           </span>
         </div>
+      </div>
+
+      <!-- PASTAS (kind:'campaign') — agrupam e-mail/in-app/push. Ficam ACIMA dos e-mails soltos.
+           Movida pra cá (antes ficava abaixo). Reaproveita o mesmo array/sync de projetos. -->
+      <div class="dash-section" id="campaignsSection" style="padding-top:0;border-top:none;">
+        <div class="dash-section-head">
+          <div class="sec-lbl" style="margin-bottom:0;">Pastas</div>
+          <button class="btn-next" style="width:auto;padding:8px 16px;margin-top:0;font-size:12px;" onclick="openNewCampaignModal()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;"><path d="M12 5v14M5 12h14"/></svg>
+            New folder
+          </button>
+        </div>
+        <div id="campaignsList" style="display:flex;flex-direction:column;gap:14px;margin-top:12px;"></div>
       </div>
 
       <div class="dash-section">
@@ -998,21 +1016,6 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
         <div class="sec-lbl">To approve</div>
         <div id="toApproveProjectsList" style="display:flex;flex-direction:column;gap:14px;"></div>
       </div>
-    </div>
-
-    <!-- ═══ PROJETOS — área separada: um "projeto" aqui agrupa vários itens de conteúdo
-         (e-mail, in-app, push) num único lugar, com uma aba por item no editor. Não mexe
-         em nada da parte de e-mail solto acima — é um tipo de registro à parte (p.kind
-         === 'campaign'), reaproveitando o mesmo array/sync de projetos por baixo. ═══ -->
-    <div class="dash-section" id="campaignsSection" style="margin-top:12px;padding-top:28px;border-top:1px solid var(--border);">
-      <div class="dash-section-head">
-        <div class="sec-lbl" style="margin-bottom:0;">Projetos</div>
-        <button class="btn-next" style="width:auto;padding:8px 16px;margin-top:0;font-size:12px;" onclick="openNewCampaignModal()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;"><path d="M12 5v14M5 12h14"/></svg>
-          New project
-        </button>
-      </div>
-      <div id="campaignsList" style="display:flex;flex-direction:column;gap:14px;margin-top:12px;"></div>
     </div>
 
   </div>
@@ -3199,6 +3202,17 @@ function escJsAttr(s) {
   return String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
+// Filtro de pasta do dashboard: 'all' (pastas + soltos, padrão) | 'unfoldered' (só os soltos,
+// esconde a seção de Pastas). Puramente de visualização — não muda dado nenhum.
+let _folderFilter = 'all';
+function setFolderFilter(mode) {
+  _folderFilter = (mode === 'unfoldered') ? 'unfoldered' : 'all';
+  const a = document.getElementById('folderFilterAll'), l = document.getElementById('folderFilterLoose');
+  if(a) a.classList.toggle('active', _folderFilter === 'all');
+  if(l) l.classList.toggle('active', _folderFilter === 'unfoldered');
+  renderDashboard();
+}
+
 function renderDashFolders(mine) {
   const section = document.getElementById('dashFoldersSection');
   const select = document.getElementById('dashFolderSelect');
@@ -3359,6 +3373,9 @@ function renderDashboard() {
   // pra ficar fácil achar o que falta revisar sem precisar procurar em "Shared with me".
   const toApprove = sortDashProjects(projects.filter(p => p.owner.toLowerCase() !== me.email.toLowerCase() && (p.approvers||[]).some(e => e.toLowerCase() === me.email.toLowerCase())));
   renderCampaignsList();
+  // Filtro "Fora de pasta" esconde a seção de Pastas (só os soltos ficam). 'all' mostra as duas.
+  const campSec = document.getElementById('campaignsSection');
+  if(campSec) campSec.style.display = (_folderFilter === 'unfoldered') ? 'none' : '';
 
   renderDashFolders(mine);
   const byFolder = _dashFolderFilter ? mine.filter(p => p.folder === _dashFolderFilter) : mine;
@@ -3428,9 +3445,14 @@ function renderCampaignsList() {
   // Mesma barra de busca do topo da tela (dashProjectSearch) — antes só filtrava "Projects
   // I started", deixando as campanhas sempre com a lista inteira, sem respeitar a busca.
   const searchTerm = _dashProjectSearch.trim().toLowerCase();
-  const filtered = searchTerm ? mine.filter(p => (p.name || '').toLowerCase().includes(searchTerm)) : mine;
+  // Busca funciona DENTRO das pastas: uma pasta aparece se o termo casar o nome dela OU o nome
+  // de qualquer item (e-mail/in-app/push) dentro dela.
+  const filtered = searchTerm ? mine.filter(p =>
+    (p.name || '').toLowerCase().includes(searchTerm) ||
+    (p.items || []).some(it => (it.name || '').toLowerCase().includes(searchTerm))
+  ) : mine;
   if(!filtered.length) {
-    list.innerHTML = `<div class="empty-state"><p>No projects match "${escHtml(_dashProjectSearch.trim())}".</p></div>`;
+    list.innerHTML = `<div class="empty-state"><p>No folders match "${escHtml(_dashProjectSearch.trim())}".</p></div>`;
     return;
   }
   list.innerHTML = sortDashProjects(filtered).map(campaignRowHtml).join('');
