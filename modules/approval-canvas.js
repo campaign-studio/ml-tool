@@ -176,7 +176,7 @@ function switchAvLocale(l) {
   openApprovalViewByLocale(l);
 }
 
-function closeApprovalView() {
+async function closeApprovalView() {
   document.getElementById('approvalView').classList.remove('show');
   closeNewPinBox();
   releaseMyApprovingPresence(); // libera a exclusão mútua com edição assim que eu saio da revisão
@@ -189,7 +189,12 @@ function closeApprovalView() {
   if(_campaign) {
     const wasLocale = _avMode === 'locale';
     commitCampaignItemApprovalState();
-    saveCampaignProject();
+    // AGUARDA a gravação antes de voltar pra pasta (era fire-and-forget). Overlay de espera na
+    // pasta (que já está por trás do canvas) enquanto grava.
+    if(typeof setCampaignBusy === 'function') setCampaignBusy(true, 'Saving…');
+    try { await saveCampaignProject(); }
+    catch(e){ console.warn('Save on approval-view close failed:', e); }
+    finally { if(typeof setCampaignBusy === 'function') setCampaignBusy(false); }
     // Lembra o último locale escolhido pra reabrir onde parou (a var mora no index).
     if(wasLocale && _avLocale && typeof _campaignLocale !== 'undefined') _campaignLocale = _avLocale;
     _avMode = 'single'; _avLocale = null; // reseta o modo ao sair

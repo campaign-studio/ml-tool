@@ -1,0 +1,48 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-03
+Tema: Revisão do fluxo de salvar/sair da pasta — PARTES 2 e 3 (a Parte 1, merge de conteúdo por
+      item/célula, foi no commit anterior). Overlay de espera ao ENTRAR (com pull fresco) e ao
+      SAIR (com save aguardado). Fecha os riscos R3 (corrida na saída) e R4 (entrar com dado velho).
+
+===============================================================================
+PARTE 2 — ENTRAR/VOLTAR PRA PASTA COM LOADING + PULL FRESCO (R4)
+===============================================================================
+- Novo overlay #campaignBusyOverlay dentro de #campaignScreen — MESMO visual do overlay de mover/
+  papel (.move-spinner). Helper setCampaignBusy(on, text).
+- openCampaignEditor virou async: mostra o overlay, PUXA fresco do banco (ghPullProjects) e só
+  DEPOIS lê a pasta (campaignGetAll) e monta a tela. Assim nunca se abre a pasta com dado velho —
+  era a causa de editar em cima de versão desatualizada e o save sobrescrever o que outro fez.
+  Trava a interação até carregar.
+
+===============================================================================
+PARTE 3 — SAIR AGUARDANDO O SAVE (R3)
+===============================================================================
+Antes: goToDashboard e closeApprovalView chamavam saveCampaignProject() SEM await (corrida com o
+pull da saída; a última edição podia não persistir). Agora AGUARDAM, com overlay de espera:
+- goToDashboard: setCampaignBusy('Saving…') + await saveCampaignProject + finally. Só sai/anula
+  _campaign depois da confirmação.
+- closeApprovalView (approval-canvas.js): virou async, await saveCampaignProject com overlay.
+- confirmContentItemDelete: virou async, await saveCampaignProject (o botão já mostra spinner via
+  confirmGenericDelete).
+- removeItemFromFolder: envolvido em setCampaignBusy(true→finally false) + try/catch (já aguardava
+  os projSaveAll; agora com overlay e mensagem de erro, sem travar).
+
+===============================================================================
+COMO FOI VERIFICADO (navegador real, sbClient bloqueado, mocks; sem escrever no banco)
+===============================================================================
+- Funções agora async: openCampaignEditor, closeApprovalView, confirmContentItemDelete. Overlay e
+  setCampaignBusy existem.
+- ENTRAR: openCampaignEditor mostra overlay (flex) DURANTE o pull, puxa fresco, esconde depois
+  (none), _campaign setado com a versão fresca.
+- SAIR: goToDashboard inicia o save com overlay (flex), _campaign continua setado ATÉ o save
+  resolver (prova que aguarda), e só então anula + esconde a tela.
+- Sem erros de console.
+
+===============================================================================
+ESTADO DA REVISÃO (R1..R5)
+===============================================================================
+R1 (conteúdo de outro item/idioma sobrescrito) — CORRIGIDO (Parte 1: merge por item + por célula).
+R2 (metadata sobrescrita) — CORRIGIDO (Parte 1: metadata vem do remoto no saveCampaignProject).
+R3 (corrida na saída) — CORRIGIDO (Parte 3: saves de saída aguardados + overlay).
+R4 (entrar com dado velho) — CORRIGIDO (Parte 2: pull fresco + overlay ao entrar).
+R5 (item derrubado) — já estava corrigido (merge de união).

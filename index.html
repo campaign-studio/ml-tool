@@ -1220,6 +1220,13 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
      tem "Dashboard" pra voltar) — ter uma segunda barra igual aqui só duplicava (e ficava
      escondida atrás da global, já que empatam em z-index e a global vem depois no DOM). -->
 <div id="campaignScreen" style="display:none;position:fixed;inset:48px 0 0 0;background:var(--bg);z-index:600;flex-direction:column;">
+  <!-- Overlay de espera da PASTA — mesmo visual do overlay de mover/papel (.move-spinner). Cobre a
+       pasta inteira ao ENTRAR (enquanto puxa fresco do banco) e ao SAIR (enquanto grava). -->
+  <div id="campaignBusyOverlay" style="display:none;position:absolute;inset:0;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:80;">
+    <div class="move-spinner"></div>
+    <div id="campaignBusyText" style="font-size:13.5px;font-weight:600;color:var(--text);">Loading folder…</div>
+    <div style="font-size:11.5px;color:var(--text3);">Syncing with the database</div>
+  </div>
   <div style="display:flex;align-items:center;gap:8px;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;">
     <button class="tbtn" style="height:28px;padding:0 10px;flex-shrink:0;" onclick="goToDashboard()" title="Back to Dashboard">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -3433,7 +3440,12 @@ async function goToDashboard() {
   // ela da frente, e a pessoa ficava "presa" sem conseguir voltar (nem clicar em
   // mais nada, já que ela cobre a tela inteira com um z-index mais alto).
   if(_campaign) {
-    saveCampaignProject();
+    // AGUARDA o save terminar antes de sair (era fire-and-forget, corrida com o pull da saída).
+    // Overlay de espera na pasta enquanto grava — sair só depois da confirmação.
+    setCampaignBusy(true, 'Saving…');
+    try { await saveCampaignProject(); }
+    catch(e){ console.warn('Save on exit failed:', e); }
+    finally { setCampaignBusy(false); }
     _campaign = null;
     _campaignItemIndex = -1;
     currentProjectId = null;
@@ -3885,26 +3897,42 @@ let _campaignActiveType = 'email'; // aba de tipo ativa ('email'|'inapp'|'push')
 let _campaignPushPreview = false; // true quando o item ativo é do tipo push (sem rawHtml pra Approval View processar)
 let _campaignInappPreview = false; // true quando o item ativo é do tipo in-app (overlay fixed em tela cheia — precisa de um "viewport" de celular fixo, não altura auto de e-mail)
 
-function openCampaignEditor(id) {
-  const p = campaignGetAll().find(x => x.id === id);
-  if(!p) return;
-  _campaign = p;
-  _campaignItemIndex = -1;
-  _campaignViewMode = 'gallery';
-  _campaignActiveType = 'email';
-  _campaignByLocale = false;
-  // APPROVER-ONLY: quem foi compartilhado como approver (está em p.approvers e não é dono) abre a
-  // pasta só pra APROVAR — sem editar tradução/HTML, sem adicionar/remover/excluir conteúdo. Mesma
-  // regra dos projetos avulsos, agora aplicada à pasta. _approverMode gate as ações de edição.
-  const me = authCurrentUser();
-  const isOwner = me && p.owner && p.owner.toLowerCase() === me.email.toLowerCase();
-  _approverMode = !!(me && !isOwner && (p.approvers || []).some(e => e.toLowerCase() === me.email.toLowerCase()));
-  currentProjectId = p.id; // pro código de aprovação (notificações/lock) resolver o projeto certo
+function setCampaignBusy(on, text) {
+  const ov = document.getElementById('campaignBusyOverlay');
+  if(!ov) return;
+  if(on && text){ const t = document.getElementById('campaignBusyText'); if(t) t.textContent = text; }
+  ov.style.display = on ? 'flex' : 'none';
+}
+
+// Ao ENTRAR/VOLTAR pra pasta: mostra o overlay de espera e PUXA fresco do banco ANTES de montar a
+// tela — assim a pessoa nunca abre a pasta com dado velho (era a causa de editar em cima de uma
+// versão desatualizada e o save sobrescrever o que outra pessoa fez). Trava a interação até carregar.
+async function openCampaignEditor(id) {
   document.getElementById('dashboardScreen').style.display = 'none';
   document.getElementById('campaignScreen').style.display = 'flex';
-  document.getElementById('campaignScreenTitle').textContent = p.name;
-  renderCampaignTabs();
-  renderCampaignMain();
+  setCampaignBusy(true, 'Loading folder…');
+  try {
+    if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+    const p = campaignGetAll().find(x => x.id === id); // lido DEPOIS do pull → versão fresca
+    if(!p) { goToDashboard(); return; }
+    _campaign = p;
+    _campaignItemIndex = -1;
+    _campaignViewMode = 'gallery';
+    _campaignActiveType = 'email';
+    _campaignByLocale = false;
+    // APPROVER-ONLY: quem foi compartilhado como approver (está em p.approvers e não é dono) abre a
+    // pasta só pra APROVAR — sem editar tradução/HTML, sem adicionar/remover/excluir conteúdo. Mesma
+    // regra dos projetos avulsos, agora aplicada à pasta. _approverMode gate as ações de edição.
+    const me = authCurrentUser();
+    const isOwner = me && p.owner && p.owner.toLowerCase() === me.email.toLowerCase();
+    _approverMode = !!(me && !isOwner && (p.approvers || []).some(e => e.toLowerCase() === me.email.toLowerCase()));
+    currentProjectId = p.id; // pro código de aprovação (notificações/lock) resolver o projeto certo
+    document.getElementById('campaignScreenTitle').textContent = p.name;
+    renderCampaignTabs();
+    renderCampaignMain();
+  } finally {
+    setCampaignBusy(false);
+  }
 }
 
 async function saveCampaignProject() {
@@ -4515,7 +4543,7 @@ function deleteContentItem(i) {
   document.getElementById('deleteConfirmModal').style.display = 'flex';
 }
 
-function confirmContentItemDelete() {
+async function confirmContentItemDelete() {
   const i = _pendingDeleteContentIdx;
   if(!_campaign || i < 0 || !_campaign.items[i]) { closeDeleteConfirmModal(); return; }
   // Tombstone do item: exclusão é EXPLÍCITA, pra o merge de união (mergeCampaignItems) não
@@ -4525,7 +4553,7 @@ function confirmContentItemDelete() {
   _campaign.items.splice(i, 1);
   if(_campaignItemIndex === i) { _campaignItemIndex = -1; _campaignViewMode = 'gallery'; }
   else if(_campaignItemIndex > i) _campaignItemIndex--;
-  saveCampaignProject();
+  await saveCampaignProject(); // aguarda a gravação (o botão de confirmar já mostra spinner via confirmGenericDelete)
   closeDeleteConfirmModal();
   renderCampaignTabs();
   renderCampaignMain();
@@ -5876,39 +5904,47 @@ async function removeItemFromFolder(folderId, itemId) {
   const me = authCurrentUser(); if(!me) return;
   if(!window.Folders) { showNotif("The folders module didn't load — please reload the page.", 'warn'); return; }
   if(!(await uiConfirm('Remove this item from the folder? It goes back to being a standalone email in the list.', {title:'Remove from folder', okLabel:'Remove'}))) return;
-  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+  setCampaignBusy(true, 'Removing from the folder…'); // trava a pasta até o banco confirmar
+  try {
+    if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
 
-  const now = Date.now();
-  const newId = 'p_' + now;
-  let projects = projGetAll();
-  const plan = Folders.planRemoveFromFolder(projects, folderId, itemId, newId, now);
-  if(!plan.ok) { showNotif(plan.error, 'warn'); return; }
+    const now = Date.now();
+    const newId = 'p_' + now;
+    let projects = projGetAll();
+    const plan = Folders.planRemoveFromFolder(projects, folderId, itemId, newId, now);
+    if(!plan.ok) { showNotif(plan.error, 'warn'); return; }
 
-  // 1) recria o avulso + salva (o item AINDA está na pasta aqui).
-  const withLoose = projects.concat([plan.newLooseProject]);
-  await withTimeout(projSaveAll(withLoose), 8000, 'projSaveAll (restaura avulso)');
-  // 2) verifica que o avulso entrou antes de tirar da pasta.
-  const check = projGetAll().find(p => p.id === newId);
-  if(!check || !(check.data && typeof check.data.html === 'string')) {
-    showNotif('Could not recreate the standalone email — the item was KEPT in the folder.', 'warn'); return;
+    // 1) recria o avulso + salva (o item AINDA está na pasta aqui).
+    const withLoose = projects.concat([plan.newLooseProject]);
+    await withTimeout(projSaveAll(withLoose), 8000, 'projSaveAll (restaura avulso)');
+    // 2) verifica que o avulso entrou antes de tirar da pasta.
+    const check = projGetAll().find(p => p.id === newId);
+    if(!check || !(check.data && typeof check.data.html === 'string')) {
+      showNotif('Could not recreate the standalone email — the item was KEPT in the folder.', 'warn'); return;
+    }
+    // 3) só ENTÃO tira o item da pasta — com TOMBSTONE do item (exclusão explícita), pra o merge
+    // de união não trazer o item de volta a partir de uma cópia velha.
+    const after = projGetAll().map(p => p.id === folderId
+      ? { ...p, items: (p.items||[]).filter(it => it.id !== itemId),
+          deletedItemIds: (p.deletedItemIds||[]).concat([{ id: itemId, at: Date.now() }]), updatedAt: Date.now() }
+      : p);
+    await withTimeout(projSaveAll(after), 8000, 'projSaveAll (tira item da pasta)');
+
+    // Se o editor de campanha está aberto nessa pasta, mantém o objeto vivo em dia.
+    if(typeof _campaign !== 'undefined' && _campaign && _campaign.id === folderId) {
+      _campaign.items = (_campaign.items||[]).filter(it => it.id !== itemId);
+      _campaign.deletedItemIds = (_campaign.deletedItemIds||[]).concat([{ id: itemId, at: Date.now() }]);
+      if(typeof renderCampaignTabs === 'function') renderCampaignTabs();
+      if(typeof renderCampaignMain === 'function') renderCampaignMain();
+    }
+    showNotif('Item removed from the folder — it went back to the standalone emails list.', 'ok', 2800);
+    renderDashboard();
+  } catch(e) {
+    console.warn('Remove from folder failed:', e);
+    showNotif('Could not remove the item from the folder — please try again. Nothing was lost.', 'warn', 4500);
+  } finally {
+    setCampaignBusy(false);
   }
-  // 3) só ENTÃO tira o item da pasta — com TOMBSTONE do item (exclusão explícita), pra o merge
-  // de união não trazer o item de volta a partir de uma cópia velha.
-  const after = projGetAll().map(p => p.id === folderId
-    ? { ...p, items: (p.items||[]).filter(it => it.id !== itemId),
-        deletedItemIds: (p.deletedItemIds||[]).concat([{ id: itemId, at: Date.now() }]), updatedAt: Date.now() }
-    : p);
-  await withTimeout(projSaveAll(after), 8000, 'projSaveAll (tira item da pasta)');
-
-  // Se o editor de campanha está aberto nessa pasta, mantém o objeto vivo em dia.
-  if(typeof _campaign !== 'undefined' && _campaign && _campaign.id === folderId) {
-    _campaign.items = (_campaign.items||[]).filter(it => it.id !== itemId);
-    _campaign.deletedItemIds = (_campaign.deletedItemIds||[]).concat([{ id: itemId, at: Date.now() }]);
-    if(typeof renderCampaignTabs === 'function') renderCampaignTabs();
-    if(typeof renderCampaignMain === 'function') renderCampaignMain();
-  }
-  showNotif('Item removed from the folder — it went back to the standalone emails list.', 'ok', 2800);
-  renderDashboard();
 }
 
 // ── DELETAR PASTA: escopo (só a pasta / tudo) + código aleatório de confirmação ──────────────
