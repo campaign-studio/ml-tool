@@ -3230,18 +3230,78 @@ function unionDeletedItemIds(a, b) {
   });
   return [...m.values()];
 }
-// União dos itens de duas versões da mesma pasta: preserva todo item presente em QUALQUER lado
-// (menos os tombstoned); pra id que existe nos dois, fica a versão do lado de updatedAt mais novo
-// (conteúdo do último editor). É o que impede o clobbering de "adicionei um item, cópia velha derrubou".
+// Mescla os itens de duas versões da MESMA pasta, item a item (nunca sobrescreve a lista toda):
+//  - preserva todo item presente em QUALQUER lado (menos os tombstoned) → nada de item derrubado;
+//  - para um id que existe nos DOIS lados:
+//     * CONTEÚDO (rows/traduções/rawHtml/name/langs): fica a versão de item.updatedAt mais novo —
+//       resolução POR ITEM, não por pasta, pra edição de conteúdo de um item nunca sobrescrever a
+//       de OUTRO item (nem a de outro idioma do mesmo item feita por outra pessoa/aba);
+//     * APROVAÇÃO (comentários/atividade/aprovado-por-idioma/tombstones): SEMPRE fundida via
+//       mergeApprovalState (união), porque várias pessoas mexem nisso ao mesmo tempo de propósito.
+// item.updatedAt é carimbado só em edição de CONTEÚDO (ver touchCampaignItem), nunca em aprovação —
+// senão um clique de aprovar faria o conteúdo local "vencer" e sobrescrever edição remota.
 function mergeCampaignItems(a, b) {
   const deleted = new Set(unionDeletedItemIds(a, b).map(t => t.id));
-  const aNewer = ((a && a.updatedAt) || 0) >= ((b && b.updatedAt) || 0);
-  const older = aNewer ? b : a, newer = aNewer ? a : b;
-  const byId = new Map();
-  ((older && older.items) || []).forEach(it => byId.set(it.id, it));
-  ((newer && newer.items) || []).forEach(it => byId.set(it.id, it)); // id compartilhado: conteúdo do mais novo vence
-  deleted.forEach(id => byId.delete(id));
-  return [...byId.values()];
+  const aById = new Map(((a && a.items) || []).map(it => [it.id, it]));
+  const bById = new Map(((b && b.items) || []).map(it => [it.id, it]));
+  const order = [], seen = new Set();
+  [...((a && a.items) || []), ...((b && b.items) || [])].forEach(it => {
+    if(!seen.has(it.id)) { seen.add(it.id); order.push(it.id); }
+  });
+  const out = [];
+  order.forEach(id => {
+    if(deleted.has(id)) return;
+    const ai = aById.get(id), bi = bById.get(id);
+    if(ai && !bi) { out.push(ai); return; }
+    if(bi && !ai) { out.push(bi); return; }
+    // Estrutura/HTML: fica com o item de updatedAt mais novo (rawHtml não dá pra fundir célula a
+    // célula; o editor de HTML já tem o guard de "alguém mudou, sobrescrever?").
+    const winner = ((ai.updatedAt || 0) >= (bi.updatedAt || 0)) ? ai : bi;
+    const other  = winner === ai ? bi : ai;
+    out.push({
+      ...winner,
+      langs: [...new Set([...(winner.langs || []), ...(other.langs || [])])],
+      rows: mergeItemRows(winner.rows || [], other.rows || []),
+      ...mergeApprovalIntoFields(winner, other)
+    });
+  });
+  return out;
+}
+
+// Merge de TRADUÇÕES célula a célula (linha × idioma): preserva qualquer idioma preenchido em
+// QUALQUER lado — se A preencheu pt-BR e B preencheu de-DE do MESMO item ao mesmo tempo, os dois
+// sobrevivem. Regra por célula: vazio nunca ganha de preenchido; conflito real (os dois
+// preencheram a MESMA célula com valores diferentes) fica com o vencedor de conteúdo (updatedAt).
+// `winnerRows` já é a estrutura de linhas escolhida (ids/ordem); só o valor de cada tradução é
+// reconciliado contra a outra versão. O texto de origem (src) fica o do vencedor.
+function mergeItemRows(winnerRows, otherRows) {
+  const otherById = new Map((otherRows || []).map(r => [r.id, r]));
+  return (winnerRows || []).map(wr => {
+    const or = otherById.get(wr.id);
+    if(!or) return wr;
+    const langs = new Set([...Object.keys(wr.translations || {}), ...Object.keys(or.translations || {})]);
+    const translations = {};
+    langs.forEach(l => {
+      const wv = (wr.translations || {})[l], ov = (or.translations || {})[l];
+      const wFilled = (wv || '').trim(), oFilled = (ov || '').trim();
+      translations[l] = wFilled ? wv : (oFilled ? ov : (wv !== undefined ? wv : ov));
+    });
+    return { ...wr, translations };
+  });
+}
+
+// Aprovação sempre fundida (união via mergeApprovalState) — devolve só os 4 campos de aprovação.
+function mergeApprovalIntoFields(winner, other) {
+  const { mergedComments, mergedActivity, mergedDoneByLang, mergedDeletedIds } = mergeApprovalState(
+    other, winner.approvalComments || [], winner.approvalActivity || [],
+    winner.approvalDoneByLang || {}, winner.approvalDeletedIds || []
+  );
+  return {
+    approvalComments: mergedComments,
+    approvalActivity: mergedActivity,
+    approvalDoneByLang: mergedDoneByLang,
+    approvalDeletedIds: mergedDeletedIds
+  };
 }
 
 function mergeProjectsForSave(projects) {
@@ -3861,34 +3921,21 @@ async function saveCampaignProject() {
   const idx = projects.findIndex(x => x.id === camp.id);
   if(idx === -1) { projects.push(camp); projSaveAll(projects); return; }
 
-  // Funde o estado de aprovação (comentários/atividade/approvalDoneByLang/tombstones) de CADA
-  // item contra a versão remota recém-puxada, em vez de sobrescrever a campanha inteira de
-  // uma vez (era só "projects[idx] = camp"). Sem isso: duas pessoas comentando em itens
-  // diferentes (ou no MESMO item) da mesma campanha ao mesmo tempo faziam quem salvasse por
-  // último apagar silenciosamente o trabalho da outra — a mesma classe de bug que
-  // autosaveApprovalState/mergeApprovalState já resolve pra projetos avulsos, mas campanhas
-  // nunca tinham essa proteção (só um overwrite direto do objeto inteiro). Dados de
-  // rows/traduções continuam por overwrite direto — essa parte é edição exclusiva do dono,
-  // já protegida pelo lock normal (approvalBlockedByEdit); só o lado de aprovação/comentário,
-  // que várias pessoas mexem ao mesmo tempo de propósito, precisa de merge de verdade.
+  // NÃO sobrescreve a pasta inteira (era "projects[idx] = camp", que apagava conteúdo/metadata
+  // que outra pessoa/aba tinha mudado). Em vez disso:
+  //  - METADATA (nome, sharedWith, approvers, folder, …): parte da versão REMOTA recém-puxada
+  //    (preserva mudança de quem renomeou/re-compartilhou enquanto eu estava dentro); este save é
+  //    de CONTEÚDO/aprovação, não mexe em metadata de propósito.
+  //  - ITENS: merge item a item (mergeCampaignItems) — conteúdo do item de updatedAt mais novo
+  //    vence POR ITEM (edição de um item/idioma nunca sobrescreve a de outro), aprovação sempre
+  //    fundida (união), item deletado fica deletado (tombstone). Nada de item derrubado.
   const remoteCamp = projects[idx];
-  const remoteItemsById = new Map((remoteCamp.items || []).map(it => [it.id, it]));
-  camp.items = (camp.items || []).map(localItem => {
-    const remoteItem = remoteItemsById.get(localItem.id);
-    if(!remoteItem) return localItem; // item novo — ninguém mais tem essa versão ainda
-    const { mergedComments, mergedActivity, mergedDoneByLang, mergedDeletedIds } = mergeApprovalState(
-      remoteItem, localItem.approvalComments || [], localItem.approvalActivity || [],
-      localItem.approvalDoneByLang || {}, localItem.approvalDeletedIds || []
-    );
-    return {
-      ...localItem,
-      approvalComments: mergedComments,
-      approvalActivity: mergedActivity,
-      approvalDoneByLang: mergedDoneByLang,
-      approvalDeletedIds: mergedDeletedIds
-    };
-  });
-  projects[idx] = camp;
+  projects[idx] = {
+    ...remoteCamp,
+    items: mergeCampaignItems(camp, remoteCamp),
+    deletedItemIds: unionDeletedItemIds(camp, remoteCamp),
+    updatedAt: Date.now()
+  };
   projSaveAll(projects);
 }
 
@@ -3949,6 +3996,13 @@ function activateCampaignItemIntoS(item) {
   _campaignPushPreview = item.type === 'push'; // avisa buildApprovalFrameHtml pra não tentar tratar como HTML de e-mail
   _campaignInappPreview = item.type === 'inapp'; // avisa a Approval View pra tratar como tela de celular, não altura de e-mail
 }
+
+// Carimba item.updatedAt — chamar SÓ em edição de CONTEÚDO (rows/traduções/rawHtml/name/langs),
+// nunca em aprovação. É o timestamp que o mergeCampaignItems usa pra decidir o vencedor de
+// conteúdo POR ITEM (o item editado mais recentemente vence), em vez de a pasta inteira do último
+// que salvou sobrescrever tudo. Sem carimbar em aprovação: um clique de aprovar não pode fazer o
+// conteúdo local "vencer" e apagar uma tradução que outra pessoa acabou de salvar.
+function touchCampaignItem(item) { if(item) item.updatedAt = Date.now(); }
 
 // Devolve o estado de aprovação de S pro item — chamado pelo autosave de aprovação
 // da campanha (ver scheduleApprovalAutosave) e ao trocar/fechar o item.
@@ -4274,6 +4328,7 @@ function setCampaignOrigin(ri, value) {
   const item = _campaign.items[_campaignItemIndex];
   if(!item || !item.rows[ri]) return;
   item.rows[ri].src = value;
+  touchCampaignItem(item); // edição de conteúdo → carimba pro merge por item
   scheduleCampaignAutosave();
   renderCampaignPreview(item, item._activeLang);
 }
@@ -4282,6 +4337,7 @@ function setCampaignCell(ri, lang, value) {
   const item = _campaign.items[_campaignItemIndex];
   if(!item || !item.rows[ri]) return;
   item.rows[ri].translations[lang] = value;
+  touchCampaignItem(item); // edição de conteúdo → carimba pro merge por item
   scheduleCampaignAutosave();
   updateCampaignPreviewCell(item, item.rows[ri], lang);
 }
@@ -4628,6 +4684,7 @@ async function confirmAddItem() {
     };
   }
 
+  touchCampaignItem(item); // item novo → carimba (o merge por item precisa do timestamp de criação)
   _campaign.items.push(item);
   _campaignItemIndex = _campaign.items.length - 1;
   _campaignViewMode = 'edit'; // acabou de criar — abre direto pra preencher as traduções
@@ -4703,6 +4760,7 @@ function applyCsvToCampaignItem(csvText) {
     return;
   }
 
+  touchCampaignItem(item); // conteúdo mudou (CSV) → carimba pro merge por item
   saveCampaignProject();
   renderCampaignGrid(item);
   renderCampaignLangBar(item);
@@ -5354,6 +5412,7 @@ function syncTaggedHtmlIntoLiveCampaign(projectId, itemId, rawHtml, taggedHtmlBe
   const liveItem = (_campaign.items || []).find(it => it.id === itemId);
   if(!liveItem) return;
   liveItem.rawHtml = rawHtml;
+  touchCampaignItem(liveItem); // conteúdo → carimba pro merge por item
   liveItem.taggedHtmlBeforeManualEdit = taggedHtmlBeforeManualEdit;
   // A entrada de atividade foi gravada no ARRAY do item fresco de findEditableHtmlTarget
   // (target.approvalActivity), não neste objeto vivo — sem replicar aqui também, ela some
@@ -5382,7 +5441,7 @@ async function performSaveTaggedHtmlEdit(force) {
   }
 
   target.taggedHtmlBeforeManualEdit = currentStoredHtml;
-  if(item) item.rawHtml = newHtml; else p.data.html = newHtml;
+  if(item) { item.rawHtml = newHtml; touchCampaignItem(item); } else p.data.html = newHtml; // conteúdo → carimba pro merge por item
   pushManualHtmlEditActivity(target, 'manual_html_edit');
   p.updatedAt = Date.now();
   projSaveAll(projects);
