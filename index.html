@@ -1697,9 +1697,9 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
       Dashboard
     </button>
-    <span id="syncStatus" title="Cloud sync status" style="display:inline-flex;align-items:center;gap:5px;padding:6px 10px;font-size:11px;color:rgba(255,255,255,.65);">
-      <span id="syncDot" style="width:7px;height:7px;border-radius:50%;background:#9a9a90;flex-shrink:0;"></span>
-      Sync
+    <span id="syncStatus" title="Cloud save status" style="display:inline-flex;align-items:center;gap:5px;padding:6px 10px;font-size:11px;color:rgba(255,255,255,.65);">
+      <span id="syncDot" style="width:7px;height:7px;border-radius:50%;background:#9a9a90;flex-shrink:0;transition:background .2s;"></span>
+      <span id="syncLabel">Sync</span>
     </span>
     <button id="bellBtn" class="navlink bell-btn" title="Notifications">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
@@ -2457,11 +2457,22 @@ function ghConfigured() {
 }
 
 // Atualiza o pontinho de status do botão "Sync" na navbar.
+// Indicador de status de salvamento (bolinha + texto, no header do editor). Reflete o estado REAL
+// do push pro banco (não otimista): 'saving' enquanto o upsert está em andamento, 'saved' só
+// DEPOIS que o Supabase confirmou, 'error' se falhou. 'on'/'off' = conectado/ocioso (init/realtime).
 function setSyncDot(state) {
   const dot = document.getElementById('syncDot');
-  if(!dot) return;
-  const colors = { off:'#9a9a90', on:'#2e9e5b', error:'#d8385e' };
-  dot.style.background = colors[state] || colors.off;
+  const label = document.getElementById('syncLabel');
+  const meta = {
+    off:    { c: '#9a9a90', t: 'Sync' },
+    on:     { c: '#2e9e5b', t: 'Synced' },
+    saving: { c: '#e0a000', t: 'Saving…' },
+    saved:  { c: '#2e9e5b', t: 'Saved' },
+    error:  { c: '#d8385e', t: 'Save failed' },
+  };
+  const m = meta[state] || meta.off;
+  if(dot) dot.style.background = m.c;
+  if(label) label.textContent = m.t;
 }
 
 
@@ -2591,6 +2602,7 @@ async function ghMergeAndPushProjects(localProjects) {
   projSaveAllLocal(localProjects);
   const sb = sbClient();
   if(!sb) return;
+  setSyncDot('saving'); // push começou — reflete o estado REAL da gravação (some só quando o banco confirmar)
   const pushPromise = (async () => {
     try {
       // Busca os tombstones mais recentes do banco ANTES de decidir o que upsertar —
@@ -2615,7 +2627,7 @@ async function ghMergeAndPushProjects(localProjects) {
         _issuedProjectDeletes.add(delId);
       }
       _saveIssuedProjectDeletesLocal();
-      setSyncDot('on');
+      setSyncDot('saved'); // banco confirmou → "Saved" (persiste até o próximo save virar "Saving…")
     } catch(e) {
       console.warn('Supabase sync (push projects) error:', e);
       setSyncDot('error');

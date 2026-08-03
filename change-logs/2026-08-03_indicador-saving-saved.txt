@@ -1,0 +1,30 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-03
+Tema: Indicador "Saving…/Saved" no editor — reflete o estado REAL da gravação no banco (não
+      otimista). Parte 1/3 da garantia geral de integridade de salvamento.
+
+===============================================================================
+O QUE ENTROU (index.html)
+===============================================================================
+- #syncStatus (header do editor) ganhou um <span id="syncLabel"> ao lado da bolinha #syncDot.
+- setSyncDot(state) agora atualiza COR + TEXTO, com os estados:
+  * saving → âmbar + "Saving…"   (push em andamento)
+  * saved  → verde + "Saved"     (banco CONFIRMOU o upsert)
+  * error  → vermelho + "Save failed"
+  * on/off → verde/cinza + "Synced"/"Sync" (conectado/ocioso; init/realtime)
+- ghMergeAndPushProjects: setSyncDot('saving') no INÍCIO do push; 'saved' só DEPOIS do upsert do
+  Supabase resolver; 'error' no catch. Ou seja: "Saved" nunca aparece por suposição do front — só
+  quando o backend confirma. "Saved" persiste até o próximo save virar "Saving…".
+- Como TODO save passa por ghMergeAndPushProjects (via projSaveAll), o indicador vale pra
+  plataforma inteira (CSV, e-mail, in-app, push, pasta) de graça.
+
+===============================================================================
+COMO FOI VERIFICADO (navegador real, sem escrever no banco — fake supabase controlável)
+===============================================================================
+- Estados diretos: Saving… (âmbar rgb 224,160,0), Saved (verde 46,158,91), Save failed (vermelho
+  216,56,94).
+- Push real (fake sb): "Saving…" DURANTE o upsert, "Saved" DEPOIS de resolver.
+- Erro (upsert rejeita): "Saving…" durante, "Save failed" depois.
+- Sem erros de console.
+
+PRÓXIMO: Parte 2 — merge por célula/linha nos projetos AVULSOS (a proteção de perda de fato).
