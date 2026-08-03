@@ -128,6 +128,7 @@ body{background:var(--bg);font-family:var(--sans);font-size:14px;color:var(--tex
 .btn-go:disabled:hover{background:var(--wh-navy);box-shadow:none;}
 .btn-spinner{width:11px;height:11px;border-radius:50%;border:1.5px solid rgba(255,255,255,.4);border-top-color:#fff;animation:btnSpin .6s linear infinite;flex-shrink:0;}
 @keyframes btnSpin{to{transform:rotate(360deg);}}
+.move-spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--accent);animation:btnSpin .7s linear infinite;}
 .btn-next.btn-destructive{background:#b91c1c;}
 .btn-next.btn-destructive:hover{background:#991b1b;box-shadow:0 4px 12px rgba(185,28,28,.25);}
 .frow{display:flex;align-items:center;justify-content:space-between;margin-top:28px;padding-top:20px;border-top:1px solid var(--border);}
@@ -1530,7 +1531,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 
 <!-- ═══════════ MOVE TO FOLDER (mover e-mail avulso pra dentro de uma Pasta/campanha) ═══════════ -->
 <div id="moveToFolderModal" class="modal-ov" style="display:none;">
-  <div class="card modal-card" style="width:100%;max-width:440px;">
+  <div class="card modal-card" style="width:100%;max-width:440px;position:relative;">
     <div class="ci" style="padding:28px;">
       <h1 style="margin:0 0 6px;">Move to a folder</h1>
       <p class="sub" id="moveToFolderSub" style="margin-bottom:16px;"></p>
@@ -1538,6 +1539,14 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
       <div style="display:flex;gap:10px;margin-top:8px;">
         <button class="btn-back" style="flex:1;" onclick="closeMoveToFolderModal()">Cancel</button>
       </div>
+    </div>
+    <!-- Overlay de BLOQUEIO enquanto o move roda: cobre a modal inteira (inclui os botões de pasta
+         e o Cancel), impede clique concorrente e mostra o estado de espera. Removido no finally
+         de moveProjectToFolder/createFolderAndMove — nunca fica travado pra sempre. -->
+    <div id="moveBusyOverlay" style="display:none;position:absolute;inset:0;background:var(--surface);border-radius:inherit;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:5;">
+      <div class="move-spinner"></div>
+      <div id="moveBusyText" style="font-size:13.5px;font-weight:600;color:var(--text);">Moving to the folder…</div>
+      <div style="font-size:11.5px;color:var(--text3);">Please wait — saving to the database</div>
     </div>
   </div>
 </div>
@@ -5524,36 +5533,74 @@ async function confirmProjDelete() {
 // Ordem de segurança (nunca perde o avulso): 1) converte (lossless, via Folders) e adiciona o
 // item na pasta; 2) SALVA; 3) VERIFICA na leitura que o item entrou de verdade; 4) só ENTÃO
 // remove o avulso. Se qualquer passo falhar antes do 4, o avulso continua intacto.
-async function moveProjectToFolder(projectId, folderId) {
-  const me = authCurrentUser(); if(!me) return;
-  if(!window.Folders) { showNotif("The folders module didn't load — please reload the page.", 'warn'); return; }
-  // Puxa o estado mais novo antes de mexer (mesmo cuidado do delete) pra não sobrescrever
-  // mudança concorrente de outra aba/pessoa.
-  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+// ── Estado de BLOQUEIO do "Move to folder" ───────────────────────────────────────────────────
+// A operação faz várias escritas AGUARDADAS no banco (pull + upsert do item na pasta + upsert
+// removendo o avulso) — pode levar alguns segundos. Sem travar, dava pra clicar outra pasta e
+// disparar um 2º move concorrente no mesmo e-mail. Este overlay cobre a modal inteira, mostra o
+// estado de espera e é SEMPRE removido no finally (nunca trava pra sempre, nem em erro/timeout).
+let _moveBusy = false;
+function _moveBeforeUnload(e){ e.preventDefault(); e.returnValue = ''; return ''; } // avisa antes de fechar a aba no meio
+function setMoveBusy(on, text){
+  _moveBusy = !!on;
+  const ov = document.getElementById('moveBusyOverlay');
+  if(ov){
+    if(on && text){ const t = document.getElementById('moveBusyText'); if(t) t.textContent = text; }
+    ov.style.display = on ? 'flex' : 'none';
+  }
+  // beforeunload só enquanto a operação está em voo (pela ordem anti-perda, mesmo saindo no meio
+  // o avulso nunca some — isso é cinto-de-segurança contra move incompleto/duplicado).
+  if(on) window.addEventListener('beforeunload', _moveBeforeUnload);
+  else window.removeEventListener('beforeunload', _moveBeforeUnload);
+}
 
-  let projects = projGetAll();
-  const plan = Folders.planMoveIntoFolder(projects, projectId, folderId);
-  if(!plan.ok) { showNotif(plan.error, 'warn'); return; }
+// opts.skipBusy: quando chamado por createFolderAndMove (que já é o dono do overlay), NÃO gerencia
+// o bloqueio aqui — evita que o guard de reentrância barre a própria chamada aninhada.
+async function moveProjectToFolder(projectId, folderId, opts) {
+  opts = opts || {};
+  const ownBusy = !opts.skipBusy;
+  if(ownBusy){
+    if(_moveBusy) return;                          // já tem um move em andamento — ignora clique repetido
+    setMoveBusy(true, 'Moving to the folder…');
+  }
+  try {
+    const me = authCurrentUser(); if(!me) return;
+    if(!window.Folders) { showNotif("The folders module didn't load — please reload the page.", 'warn'); return; }
+    // Puxa o estado mais novo antes de mexer (mesmo cuidado do delete) pra não sobrescrever
+    // mudança concorrente de outra aba/pessoa.
+    if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
 
-  // 1+2) aplica (troca a pasta pela versão com o item) e salva — o avulso CONTINUA na lista aqui.
-  plan.folderWithItem.updatedAt = Date.now();
-  const withItem = projects.map(p => p.id === folderId ? plan.folderWithItem : p);
-  await withTimeout(projSaveAll(withItem), 8000, 'projSaveAll (add item)');
+    let projects = projGetAll();
+    const plan = Folders.planMoveIntoFolder(projects, projectId, folderId);
+    if(!plan.ok) { showNotif(plan.error, 'warn'); return; }
 
-  // 3) VERIFICA na leitura local que o item entrou (mesma contagem de linhas) ANTES de deletar.
-  const check = projGetAll().find(p => p.id === folderId);
-  const landed = check && (check.items||[]).some(it => it.id === plan.item.id && (it.rows||[]).length === plan.item.rows.length);
-  if(!landed) { showNotif('Could not save the item into the folder — the standalone email was KEPT intact.', 'warn'); return; }
+    // 1+2) aplica (troca a pasta pela versão com o item) e salva — o avulso CONTINUA na lista aqui.
+    plan.folderWithItem.updatedAt = Date.now();
+    const withItem = projects.map(p => p.id === folderId ? plan.folderWithItem : p);
+    await withTimeout(projSaveAll(withItem), 8000, 'projSaveAll (add item)');
 
-  // 4) agora sim remove o avulso (tombstone + filtra + salva). O conteúdo já está seguro na pasta,
-  // e o item guarda _fromProjectData pra permitir "remover da pasta" recriar o avulso depois.
-  await withTimeout(markProjectDeleted(projectId), 8000, 'markProjectDeleted');
-  const after = projGetAll().filter(p => p.id !== projectId);
-  await withTimeout(projSaveAll(after), 8000, 'projSaveAll (remove avulso)');
+    // 3) VERIFICA na leitura local que o item entrou (mesma contagem de linhas) ANTES de deletar.
+    const check = projGetAll().find(p => p.id === folderId);
+    const landed = check && (check.items||[]).some(it => it.id === plan.item.id && (it.rows||[]).length === plan.item.rows.length);
+    if(!landed) { showNotif('Could not save the item into the folder — the standalone email was KEPT intact.', 'warn', 4500); return; }
 
-  closeMoveToFolderModal();
-  showNotif('Email moved to the folder.', 'ok', 2600);
-  renderDashboard();
+    // 4) agora sim remove o avulso (tombstone + filtra + salva). O conteúdo já está seguro na pasta,
+    // e o item guarda _fromProjectData pra permitir "remover da pasta" recriar o avulso depois.
+    await withTimeout(markProjectDeleted(projectId), 8000, 'markProjectDeleted');
+    const after = projGetAll().filter(p => p.id !== projectId);
+    await withTimeout(projSaveAll(after), 8000, 'projSaveAll (remove avulso)');
+
+    closeMoveToFolderModal();
+    showNotif('Email moved to the folder.', 'ok', 2600);
+    renderDashboard();
+  } catch(e) {
+    // Erro/timeout em qualquer escrita: destrava e avisa. Pela ordem anti-perda, o avulso nunca
+    // se perde — no pior caso (falha DEPOIS de gravar o item mas antes de remover o avulso) fica
+    // um DUPLICADO recuperável, então a mensagem não promete um sucesso limpo.
+    console.warn('Move to folder failed:', e);
+    showNotif('Could not finish moving to the folder — please try again. Your standalone email was kept intact; if it still shows up, just reload.', 'warn', 5000);
+  } finally {
+    if(ownBusy) setMoveBusy(false);
+  }
 }
 
 let _moveToFolderProjId = null;
@@ -5582,12 +5629,23 @@ function closeMoveToFolderModal() {
 async function createFolderAndMove() {
   const projId = _moveToFolderProjId; if(!projId) return;
   const me = authCurrentUser(); if(!me) return;
+  // O nome é pedido ANTES do bloqueio (o overlay só faz sentido a partir da escrita de verdade).
   const name = ((await uiPrompt('New folder name:', {title:'New folder', placeholder:'e.g. Summer Wave 1'})) || '').trim(); if(!name) return;
-  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
-  const folder = { id:'camp_'+Date.now(), kind:'campaign', name, owner:me.email, sharedWith:[], approvers:[], items:[], createdAt:Date.now(), updatedAt:Date.now() };
-  const projects = projGetAll(); projects.push(folder);
-  await withTimeout(projSaveAll(projects), 8000, 'projSaveAll (nova pasta)');
-  await moveProjectToFolder(projId, folder.id);
+  if(_moveBusy) return;
+  setMoveBusy(true, 'Creating folder and moving…');
+  try {
+    if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+    const folder = { id:'camp_'+Date.now(), kind:'campaign', name, owner:me.email, sharedWith:[], approvers:[], items:[], createdAt:Date.now(), updatedAt:Date.now() };
+    const projects = projGetAll(); projects.push(folder);
+    await withTimeout(projSaveAll(projects), 8000, 'projSaveAll (nova pasta)');
+    // skipBusy: este fluxo já é o dono do overlay (senão o guard de reentrância barraria a chamada).
+    await moveProjectToFolder(projId, folder.id, { skipBusy: true });
+  } catch(e) {
+    console.warn('Create folder and move failed:', e);
+    showNotif('Could not create the folder and move — please try again. Your standalone email was kept intact.', 'warn', 5000);
+  } finally {
+    setMoveBusy(false);
+  }
 }
 
 // ── REMOVER item da pasta → volta a ser e-mail avulso (escrita, mesma trava anti-perda) ──────

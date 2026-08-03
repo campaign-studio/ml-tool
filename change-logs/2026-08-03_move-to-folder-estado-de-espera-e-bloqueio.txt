@@ -1,0 +1,61 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-03
+Tema: "Move to folder" ganha estado de ESPERA + BLOQUEIO até o banco confirmar. Antes: nenhum
+      feedback visual durante a operação (que já aguardava o backend, mas sem travar a tela).
+
+===============================================================================
+DIAGNÓSTICO (o que já estava certo)
+===============================================================================
+O fluxo (moveProjectToFolder) já NÃO era otimista: dava await no upsert real do Supabase
+(projSaveAll → ghMergeAndPushProjects → await sb.from('projects').upsert), verificava que o item
+entrou na pasta ANTES de apagar o avulso (trava anti-perda) e só então mostrava sucesso. O que
+faltava era PURAMENTE o estado visual — e tratamento de erro/reentrância.
+Problema real causado pela falta de bloqueio: dava pra clicar OUTRA pasta no meio e disparar um
+2º move concorrente no mesmo e-mail. E moveProjectToFolder não tinha try/catch: um timeout de rede
+subia sem tratamento, deixando a modal aberta sem sucesso nem erro.
+
+===============================================================================
+O QUE ENTROU (index.html) — escopo: só a MODAL de mover
+===============================================================================
+- Overlay de bloqueio dentro da #moveToFolderModal (#moveBusyOverlay): spinner + "Moving to the
+  folder…" + "Please wait — saving to the database". Cobre a modal inteira (botões de pasta +
+  Cancel), impedindo clique concorrente. A página atrás já fica inerte pelo backdrop .modal-ov.
+- setMoveBusy(on,text): mostra/esconde o overlay, seta o guard _moveBusy e liga/desliga um
+  beforeunload (avisa antes de fechar a aba no meio). Removido SEMPRE no finally.
+- moveProjectToFolder reescrito:
+  * guard de reentrância (if(_moveBusy) return) — ignora clique repetido enquanto roda;
+  * toda a cadeia de awaits dentro de try/catch/FINALLY — o overlay é SEMPRE removido, mesmo em
+    erro/timeout (nunca trava pra sempre);
+  * catch mostra warn e MANTÉM a modal aberta pra retry; mensagem não promete sucesso limpo (pela
+    ordem anti-perda o avulso nunca se perde; pior caso é duplicado recuperável → "se ainda
+    aparecer, recarregue");
+  * opts.skipBusy pra a chamada aninhada de createFolderAndMove não bater no próprio guard.
+- createFolderAndMove: vira o dono do overlay (setMoveBusy antes de criar a pasta), cobre
+  criação+move como uma operação só, com seu próprio try/catch/finally; chama
+  moveProjectToFolder(..., {skipBusy:true}). O uiPrompt do nome acontece ANTES do bloqueio.
+- CSS .move-spinner (34px, reusa a keyframe btnSpin já existente; cor var(--accent)/var(--border),
+  theme-aware).
+
+===============================================================================
+EDGE CASES COBERTOS
+===============================================================================
+- Erro/timeout de rede durante o bloqueio → finally remove o overlay + warn; nunca trava.
+- Fechar aba no meio → beforeunload avisa (cinto-de-segurança; a ordem anti-perda já garante que o
+  avulso não some).
+- Duplo clique / clique em outra pasta no meio → guard + overlay bloqueiam o 2º move.
+- Sucesso parcial (item entrou, remoção do avulso falhou) → cai no catch, avisa que pode ter
+  ficado duplicado e sugere reload, em vez de sucesso enganoso.
+- createFolderAndMove → overlay cobre criação-da-pasta + move juntos.
+
+===============================================================================
+COMO FOI VERIFICADO
+===============================================================================
+No navegador real, sbClient bloqueado, mocks (nenhuma escrita no banco), com um projSaveAll
+controlável (promise lenta):
+- Sucesso: overlay = flex durante o await, _moveBusy=true; 2º clique no meio = no-op (guard);
+  ao resolver, overlay=none, _moveBusy=false, modal fechada, toast de sucesso.
+- Erro: overlay=flex durante; ao rejeitar o save, overlay=none (finally), _moveBusy=false, toast
+  de warn, modal SEGUE aberta pra retry.
+- Sem erros de console.
+Conferência visual do overlay logado fica pra você (a tela de teste está deslogada, o
+loginOverlay cobre a modal).
