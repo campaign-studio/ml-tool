@@ -128,6 +128,7 @@ body{background:var(--bg);font-family:var(--sans);font-size:14px;color:var(--tex
 .btn-go:disabled:hover{background:var(--wh-navy);box-shadow:none;}
 .btn-spinner{width:11px;height:11px;border-radius:50%;border:1.5px solid rgba(255,255,255,.4);border-top-color:#fff;animation:btnSpin .6s linear infinite;flex-shrink:0;}
 @keyframes btnSpin{to{transform:rotate(360deg);}}
+.move-spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--accent);animation:btnSpin .7s linear infinite;}
 .btn-next.btn-destructive{background:#b91c1c;}
 .btn-next.btn-destructive:hover{background:#991b1b;box-shadow:0 4px 12px rgba(185,28,28,.25);}
 .frow{display:flex;align-items:center;justify-content:space-between;margin-top:28px;padding-top:20px;border-top:1px solid var(--border);}
@@ -643,8 +644,17 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .empty-state svg{margin-bottom:10px;opacity:.6;}
 .empty-state p{font-size:12.5px;line-height:1.5;}
 
-.member-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 14px;transition:border-color .15s;}
+.member-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 14px;transition:border-color .15s;will-change:transform;}
 .member-row:hover{border-color:var(--border-s);}
+/* Área de Membros agrupada por papel (Superadmins / Admins / Members). */
+.member-section + .member-section{margin-top:18px;}
+.member-sec-head{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:0 0 8px;display:flex;align-items:center;gap:8px;}
+.member-sec-count{background:var(--s2);border-radius:20px;padding:1px 9px;font-size:10.5px;font-weight:700;color:var(--text2);}
+.member-sec-list{display:flex;flex-direction:column;gap:8px;}
+.member-empty{font-size:12px;color:var(--text3);padding:10px 14px;border:1px dashed var(--border);border-radius:10px;text-align:center;}
+/* Realce breve quando um card acabou de aterrissar na nova seção (após a transição FLIP). */
+.member-row-landed{animation:memberLand 1s ease;}
+@keyframes memberLand{0%,55%{box-shadow:0 0 0 2px var(--accent);}100%{box-shadow:0 0 0 2px transparent;}}
 .member-email{font-size:13px;font-weight:600;color:var(--text);}
 .member-name-input{border:none;background:none;font-size:13px;font-weight:600;color:var(--text);padding:2px 4px;border-radius:5px;width:100%;font-family:var(--sans);}
 .member-name-input:hover{background:var(--s2);}
@@ -935,6 +945,10 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 
 /* Sidebar — threaded comment list (same visual language as the CSV row-comment threads) */
 .av-sidebar{width:340px;min-width:340px;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;overflow:hidden;}
+/* Em telas estreitas a sidebar fixa de 340px espremia o canvas até quase zero — deixa ela encolher
+   (min-width menor) pra o canvas continuar utilizável. (Bug achado pelo canvas-approver-design-qa.) */
+@media (max-width:820px){ .av-sidebar{width:300px;min-width:240px;} }
+@media (max-width:560px){ .av-sidebar{width:220px;min-width:180px;} }
 .av-sidebar-hdr{padding:14px 16px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;flex-shrink:0;}
 .av-sidebar-list{flex:1;overflow-y:auto;padding:10px;}
 .av-thread-card{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:9px 10px;margin-bottom:8px;cursor:pointer;transition:border-color .12s;}
@@ -1210,6 +1224,13 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
      tem "Dashboard" pra voltar) — ter uma segunda barra igual aqui só duplicava (e ficava
      escondida atrás da global, já que empatam em z-index e a global vem depois no DOM). -->
 <div id="campaignScreen" style="display:none;position:fixed;inset:48px 0 0 0;background:var(--bg);z-index:600;flex-direction:column;">
+  <!-- Overlay de espera da PASTA — mesmo visual do overlay de mover/papel (.move-spinner). Cobre a
+       pasta inteira ao ENTRAR (enquanto puxa fresco do banco) e ao SAIR (enquanto grava). -->
+  <div id="campaignBusyOverlay" style="display:none;position:absolute;inset:0;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:80;">
+    <div class="move-spinner"></div>
+    <div id="campaignBusyText" style="font-size:13.5px;font-weight:600;color:var(--text);">Loading folder…</div>
+    <div style="font-size:11.5px;color:var(--text3);">Syncing with the database</div>
+  </div>
   <div style="display:flex;align-items:center;gap:8px;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;">
     <button class="tbtn" style="height:28px;padding:0 10px;flex-shrink:0;" onclick="goToDashboard()" title="Back to Dashboard">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -1338,7 +1359,14 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 
 <!-- ═══════════ MEMBERS MODAL (admin only — opened from the profile menu) ═══════════ -->
 <div id="membersModal" class="modal-ov" style="display:none;">
-  <div class="card modal-card" style="width:100%;max-width:520px;max-height:82vh;display:flex;flex-direction:column;">
+  <div class="card modal-card" style="width:100%;max-width:520px;max-height:82vh;display:flex;flex-direction:column;position:relative;">
+    <!-- Overlay de bloqueio enquanto uma troca de papel é confirmada no banco. Removido SEMPRE
+         no finally de dashSetUserRole — nunca fica travado, mesmo em erro/timeout. -->
+    <div id="roleBusyOverlay" style="display:none;position:absolute;inset:0;background:var(--surface);border-radius:inherit;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:5;">
+      <div class="move-spinner"></div>
+      <div id="roleBusyText" style="font-size:13.5px;font-weight:600;color:var(--text);">Updating role…</div>
+      <div style="font-size:11.5px;color:var(--text3);">Please wait — saving to the database</div>
+    </div>
     <div class="ci" style="padding:28px 28px 8px;flex-shrink:0;">
       <div class="modal-head" style="margin-bottom:2px;">
         <h1>Members</h1>
@@ -1530,7 +1558,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 
 <!-- ═══════════ MOVE TO FOLDER (mover e-mail avulso pra dentro de uma Pasta/campanha) ═══════════ -->
 <div id="moveToFolderModal" class="modal-ov" style="display:none;">
-  <div class="card modal-card" style="width:100%;max-width:440px;">
+  <div class="card modal-card" style="width:100%;max-width:440px;position:relative;">
     <div class="ci" style="padding:28px;">
       <h1 style="margin:0 0 6px;">Move to a folder</h1>
       <p class="sub" id="moveToFolderSub" style="margin-bottom:16px;"></p>
@@ -1539,12 +1567,27 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
         <button class="btn-back" style="flex:1;" onclick="closeMoveToFolderModal()">Cancel</button>
       </div>
     </div>
+    <!-- Overlay de BLOQUEIO enquanto o move roda: cobre a modal inteira (inclui os botões de pasta
+         e o Cancel), impede clique concorrente e mostra o estado de espera. Removido no finally
+         de moveProjectToFolder/createFolderAndMove — nunca fica travado pra sempre. -->
+    <div id="moveBusyOverlay" style="display:none;position:absolute;inset:0;background:var(--surface);border-radius:inherit;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:5;">
+      <div class="move-spinner"></div>
+      <div id="moveBusyText" style="font-size:13.5px;font-weight:600;color:var(--text);">Moving to the folder…</div>
+      <div style="font-size:11.5px;color:var(--text3);">Please wait — saving to the database</div>
+    </div>
   </div>
 </div>
 
 <!-- ═══════════ DELETAR PASTA — escopo (só a pasta / tudo) + código de confirmação aleatório ═══════════ -->
 <div id="deleteFolderModal" class="modal-ov" style="display:none;">
-  <div class="card modal-card" style="width:100%;max-width:470px;">
+  <div class="card modal-card" style="width:100%;max-width:470px;position:relative;">
+    <!-- Overlay de espera enquanto a exclusão roda no banco (mesmo visual dos outros overlays).
+         Removido SEMPRE no finally de confirmDeleteFolder — nunca trava. -->
+    <div id="deleteFolderBusyOverlay" style="display:none;position:absolute;inset:0;background:var(--surface);border-radius:inherit;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:5;">
+      <div class="move-spinner"></div>
+      <div id="deleteFolderBusyText" style="font-size:13.5px;font-weight:600;color:var(--text);">Deleting folder…</div>
+      <div style="font-size:11.5px;color:var(--text3);">Removing from the database</div>
+    </div>
     <div class="ci" style="padding:28px;">
       <h1 style="margin:0 0 6px;">Delete folder</h1>
       <p class="sub" style="margin-bottom:16px;">Delete <strong id="deleteFolderName"></strong>. <span style="color:#dc2626;font-weight:700;">This action cannot be undone.</span></p>
@@ -1665,9 +1708,9 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
       Dashboard
     </button>
-    <span id="syncStatus" title="Cloud sync status" style="display:inline-flex;align-items:center;gap:5px;padding:6px 10px;font-size:11px;color:rgba(255,255,255,.65);">
-      <span id="syncDot" style="width:7px;height:7px;border-radius:50%;background:#9a9a90;flex-shrink:0;"></span>
-      Sync
+    <span id="syncStatus" title="Cloud save status" style="display:inline-flex;align-items:center;gap:5px;padding:6px 10px;font-size:11px;color:rgba(255,255,255,.65);">
+      <span id="syncDot" style="width:7px;height:7px;border-radius:50%;background:#9a9a90;flex-shrink:0;transition:background .2s;"></span>
+      <span id="syncLabel">Sync</span>
     </span>
     <button id="bellBtn" class="navlink bell-btn" title="Notifications">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
@@ -2180,7 +2223,10 @@ function reconcileSeedUsers(users) {
 
 function authSaveUsers(users) {
   localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
-  sbPushUsers(users); // sincroniza com o Supabase em segundo plano
+  // Devolve a promise do push — a maioria dos chamadores ignora (sync em segundo plano), mas
+  // quem PRECISA saber que o banco confirmou (ex: troca de papel, pra travar/destravar a tela)
+  // pode dar await. Mesmo padrão de projSaveAll → ghMergeAndPushProjects.
+  return sbPushUsers(users);
 }
 
 // Sessão guardada SÓ EM MEMÓRIA — ao recarregar/reabrir a página, sempre pede login de novo.
@@ -2422,11 +2468,31 @@ function ghConfigured() {
 }
 
 // Atualiza o pontinho de status do botão "Sync" na navbar.
+// Indicador de status de salvamento (bolinha + texto, no header do editor). Reflete o estado REAL
+// do push pro banco (não otimista): 'saving' enquanto o upsert está em andamento, 'saved' só
+// DEPOIS que o Supabase confirmou, 'error' se falhou. 'on'/'off' = conectado/ocioso (init/realtime).
 function setSyncDot(state) {
   const dot = document.getElementById('syncDot');
-  if(!dot) return;
-  const colors = { off:'#9a9a90', on:'#2e9e5b', error:'#d8385e' };
-  dot.style.background = colors[state] || colors.off;
+  const label = document.getElementById('syncLabel');
+  const meta = {
+    off:    { c: '#9a9a90', t: 'Sync' },
+    on:     { c: '#2e9e5b', t: 'Synced' },
+    saving: { c: '#e0a000', t: 'Saving…' },
+    saved:  { c: '#2e9e5b', t: 'Saved' },
+    error:  { c: '#d8385e', t: 'Save failed' },
+  };
+  const m = meta[state] || meta.off;
+  if(dot) dot.style.background = m.c;
+  if(label) label.textContent = m.t;
+  // Chip do DASHBOARD (#dashSyncStatus): o header do editor fica escondido no dashboard, então o
+  // mesmo status aparece aqui — assim rename/assign-folder/leave e edições de membro (que salvam
+  // rápido e não bloqueiam) também mostram "Saving…/Saved". Só os estados de save (não o ocioso).
+  const dash = document.getElementById('dashSyncStatus');
+  if(dash) {
+    const show = state === 'saving' || state === 'saved' || state === 'error';
+    dash.textContent = show ? m.t : '';
+    dash.style.color = m.c;
+  }
 }
 
 
@@ -2556,6 +2622,7 @@ async function ghMergeAndPushProjects(localProjects) {
   projSaveAllLocal(localProjects);
   const sb = sbClient();
   if(!sb) return;
+  setSyncDot('saving'); // push começou — reflete o estado REAL da gravação (some só quando o banco confirmar)
   const pushPromise = (async () => {
     try {
       // Busca os tombstones mais recentes do banco ANTES de decidir o que upsertar —
@@ -2580,7 +2647,7 @@ async function ghMergeAndPushProjects(localProjects) {
         _issuedProjectDeletes.add(delId);
       }
       _saveIssuedProjectDeletesLocal();
-      setSyncDot('on');
+      setSyncDot('saved'); // banco confirmou → "Saved" (persiste até o próximo save virar "Saving…")
     } catch(e) {
       console.warn('Supabase sync (push projects) error:', e);
       setSyncDot('error');
@@ -2667,7 +2734,9 @@ async function sbOnUsersChanged() {
   const membersModal = document.getElementById('membersModal');
   const list = document.getElementById('dashUserList');
   const isEditingList = list && list.contains(document.activeElement);
-  if(membersModal && membersModal.style.display !== 'none' && !isEditingList) renderDashUserList();
+  // _roleBusy: não re-renderiza no meio de uma troca de papel em voo — brigaria com o overlay
+  // de bloqueio e com a animação FLIP (o dashSetUserRole já reconcilia o estado no fim).
+  if(membersModal && membersModal.style.display !== 'none' && !isEditingList && !_roleBusy) renderDashUserList();
 }
 
 // Um upsert em lote dispara vários eventos; o debounce agrupa num único refresh.
@@ -2872,6 +2941,7 @@ function isUserRecentlyDeleted(email) {
 async function sbPushUsers(users) {
   const sb = sbClient();
   if(!sb) return;
+  setSyncDot('saving'); // edições de membro também refletem o estado real da gravação
   const pushPromise = (async () => {
     try {
       // Mesma proteção do push de projects: busca os tombstones mais recentes ANTES
@@ -2884,8 +2954,10 @@ async function sbPushUsers(users) {
         const { error } = await sb.from('users').upsert(rows);
         if(error) throw error;
       }
+      setSyncDot('saved');
     } catch(e) {
       console.warn('Supabase sync (push users) error:', e);
+      setSyncDot('error');
     }
   })();
   _pendingUsersPush = pushPromise;
@@ -3189,6 +3261,92 @@ function projSaveAllLocal(projects) {
 // mesmo em projetos que essa outra escrita nem tocou de propósito. Comparando timestamp por
 // projeto, cada um mantém sua versão mais recente de verdade, não a "foto" mais recente da
 // lista toda.
+// Une as listas de item-tombstone de duas versões da MESMA pasta, dedup por id (mantém o "at"
+// mais novo). Um item só some da pasta se estiver aqui — ou seja, exclusão de item é EXPLÍCITA
+// (deleteContentItem / removeItemFromFolder registram o tombstone), nunca por "sumiço" de cópia velha.
+function unionDeletedItemIds(a, b) {
+  const m = new Map();
+  [...((a && a.deletedItemIds) || []), ...((b && b.deletedItemIds) || [])].forEach(t => {
+    const id = t.id || t, at = t.at || 0;
+    if(!m.has(id) || (m.get(id).at || 0) < at) m.set(id, { id, at });
+  });
+  return [...m.values()];
+}
+// Mescla os itens de duas versões da MESMA pasta, item a item (nunca sobrescreve a lista toda):
+//  - preserva todo item presente em QUALQUER lado (menos os tombstoned) → nada de item derrubado;
+//  - para um id que existe nos DOIS lados:
+//     * CONTEÚDO (rows/traduções/rawHtml/name/langs): fica a versão de item.updatedAt mais novo —
+//       resolução POR ITEM, não por pasta, pra edição de conteúdo de um item nunca sobrescrever a
+//       de OUTRO item (nem a de outro idioma do mesmo item feita por outra pessoa/aba);
+//     * APROVAÇÃO (comentários/atividade/aprovado-por-idioma/tombstones): SEMPRE fundida via
+//       mergeApprovalState (união), porque várias pessoas mexem nisso ao mesmo tempo de propósito.
+// item.updatedAt é carimbado só em edição de CONTEÚDO (ver touchCampaignItem), nunca em aprovação —
+// senão um clique de aprovar faria o conteúdo local "vencer" e sobrescrever edição remota.
+function mergeCampaignItems(a, b) {
+  const deleted = new Set(unionDeletedItemIds(a, b).map(t => t.id));
+  const aById = new Map(((a && a.items) || []).map(it => [it.id, it]));
+  const bById = new Map(((b && b.items) || []).map(it => [it.id, it]));
+  const order = [], seen = new Set();
+  [...((a && a.items) || []), ...((b && b.items) || [])].forEach(it => {
+    if(!seen.has(it.id)) { seen.add(it.id); order.push(it.id); }
+  });
+  const out = [];
+  order.forEach(id => {
+    if(deleted.has(id)) return;
+    const ai = aById.get(id), bi = bById.get(id);
+    if(ai && !bi) { out.push(ai); return; }
+    if(bi && !ai) { out.push(bi); return; }
+    // Estrutura/HTML: fica com o item de updatedAt mais novo (rawHtml não dá pra fundir célula a
+    // célula; o editor de HTML já tem o guard de "alguém mudou, sobrescrever?").
+    const winner = ((ai.updatedAt || 0) >= (bi.updatedAt || 0)) ? ai : bi;
+    const other  = winner === ai ? bi : ai;
+    out.push({
+      ...winner,
+      langs: [...new Set([...(winner.langs || []), ...(other.langs || [])])],
+      rows: mergeItemRows(winner.rows || [], other.rows || []),
+      ...mergeApprovalIntoFields(winner, other)
+    });
+  });
+  return out;
+}
+
+// Merge de TRADUÇÕES célula a célula (linha × idioma): preserva qualquer idioma preenchido em
+// QUALQUER lado — se A preencheu pt-BR e B preencheu de-DE do MESMO item ao mesmo tempo, os dois
+// sobrevivem. Regra por célula: vazio nunca ganha de preenchido; conflito real (os dois
+// preencheram a MESMA célula com valores diferentes) fica com o vencedor de conteúdo (updatedAt).
+// `winnerRows` já é a estrutura de linhas escolhida (ids/ordem); só o valor de cada tradução é
+// reconciliado contra a outra versão. O texto de origem (src) fica o do vencedor.
+function mergeItemRows(winnerRows, otherRows) {
+  const otherById = new Map((otherRows || []).map(r => [r.id, r]));
+  return (winnerRows || []).map(wr => {
+    const or = otherById.get(wr.id);
+    if(!or) return wr;
+    const langs = new Set([...Object.keys(wr.translations || {}), ...Object.keys(or.translations || {})]);
+    const translations = {};
+    langs.forEach(l => {
+      const wv = (wr.translations || {})[l], ov = (or.translations || {})[l];
+      const wFilled = (wv || '').trim(), oFilled = (ov || '').trim();
+      translations[l] = wFilled ? wv : (oFilled ? ov : (wv !== undefined ? wv : ov));
+    });
+    return { ...wr, translations };
+  });
+}
+
+// Aprovação sempre fundida (união via mergeApprovalState) — devolve só os 4 campos de aprovação.
+function mergeApprovalIntoFields(winner, other) {
+  const { mergedComments, mergedActivity, mergedDoneByLang, mergedDeletedIds } = mergeApprovalState(
+    other, winner.approvalComments || [], winner.approvalActivity || [],
+    winner.approvalDoneByLang || {}, winner.approvalDeletedIds || []
+  );
+  return {
+    approvalComments: mergedComments,
+    approvalActivity: mergedActivity,
+    approvalDoneByLang: mergedDoneByLang,
+    approvalDeletedIds: mergedDeletedIds
+  };
+}
+
+
 function mergeProjectsForSave(projects) {
   // Filtra qualquer id tageado como deletado ANTES de tudo — sem isso, se o array
   // "projects" (o que está sendo salvo AGORA, vindo de qualquer chamador) já contiver
@@ -3205,7 +3363,22 @@ function mergeProjectsForSave(projects) {
     const other = latestById[p.id];
     if(!other) return p; // projeto novo, só existe no lado que está salvando agora
     const mine = p.updatedAt || 0, theirs = other.updatedAt || 0;
-    return theirs > mine ? other : p; // mantém quem editou por último de verdade
+    const base = theirs > mine ? other : p; // corpo do projeto = quem editou por último de verdade
+    // PASTA (kind:'campaign'): a lista de itens NUNCA é sobrescrita inteira — faz UNIÃO por id
+    // (menos os tombstoned), pra uma cópia velha nunca DERRUBAR um item que a outra adicionou
+    // (bug real: mover e-mail pra pasta e ele sumir porque outra aba/pessoa salvou a pasta com a
+    // lista antiga). Conteúdo de item compartilhado fica com a versão do lado de updatedAt mais novo.
+    if(base.kind === 'campaign' || p.kind === 'campaign' || (other && other.kind === 'campaign')){
+      return { ...base, items: mergeCampaignItems(p, other), deletedItemIds: unionDeletedItemIds(p, other) };
+    }
+    // AVULSO: tenta fundir o CONTEÚDO do CSV célula a célula (linha nova preservada, tradução de um
+    // lado nunca apagada pela versão vazia do outro). GUARDA ESTRITA dentro de mergeLooseData —
+    // qualquer dúvida devolve null e cai no comportamento atual (projeto inteiro por updatedAt).
+    if(p.data && other.data && p.data.csv && other.data.csv){
+      const md = mergeLooseData(p, other);
+      if(md) return { ...base, data: md };
+    }
+    return base;
   });
   // Projeto que já existe no armazenamento atual mas não veio no array que estamos salvando
   // (ex: criado por outra aba entre a hora que lemos e a hora que salvamos) — preserva, não
@@ -3300,6 +3473,10 @@ async function goToDashboard() {
   if(!_campaign && currentProjectId) {
     if(_autosaveTimer) { clearTimeout(_autosaveTimer); autosaveProject(); }
     if(_avAutosaveTimer) { clearTimeout(_avAutosaveTimer); autosaveApprovalState(); }
+    // Robustez: aguarda o push do flush confirmar ANTES de seguir pro pull da saída. Já era
+    // seguro (o ghPullProjects abaixo espera _pendingProjectsPush), mas depender só desse guard
+    // era frágil — um await explícito garante que a última edição foi pro banco antes de sair.
+    if(_pendingProjectsPush) { try { await withTimeout(_pendingProjectsPush, 8000, 'flush push on exit'); } catch(e){} }
   }
   // Sair do projeto libera a trava — sem isso ela ficava presa até o timeout de
   // 3min, e reabrir o mesmo projeto (até na mesma aba, se a página recarregou
@@ -3310,7 +3487,12 @@ async function goToDashboard() {
   // ela da frente, e a pessoa ficava "presa" sem conseguir voltar (nem clicar em
   // mais nada, já que ela cobre a tela inteira com um z-index mais alto).
   if(_campaign) {
-    saveCampaignProject();
+    // AGUARDA o save terminar antes de sair (era fire-and-forget, corrida com o pull da saída).
+    // Overlay de espera na pasta enquanto grava — sair só depois da confirmação.
+    setCampaignBusy(true, 'Saving…');
+    try { await saveCampaignProject(); }
+    catch(e){ console.warn('Save on exit failed:', e); }
+    finally { setCampaignBusy(false); }
     _campaign = null;
     _campaignItemIndex = -1;
     currentProjectId = null;
@@ -3762,26 +3944,42 @@ let _campaignActiveType = 'email'; // aba de tipo ativa ('email'|'inapp'|'push')
 let _campaignPushPreview = false; // true quando o item ativo é do tipo push (sem rawHtml pra Approval View processar)
 let _campaignInappPreview = false; // true quando o item ativo é do tipo in-app (overlay fixed em tela cheia — precisa de um "viewport" de celular fixo, não altura auto de e-mail)
 
-function openCampaignEditor(id) {
-  const p = campaignGetAll().find(x => x.id === id);
-  if(!p) return;
-  _campaign = p;
-  _campaignItemIndex = -1;
-  _campaignViewMode = 'gallery';
-  _campaignActiveType = 'email';
-  _campaignByLocale = false;
-  // APPROVER-ONLY: quem foi compartilhado como approver (está em p.approvers e não é dono) abre a
-  // pasta só pra APROVAR — sem editar tradução/HTML, sem adicionar/remover/excluir conteúdo. Mesma
-  // regra dos projetos avulsos, agora aplicada à pasta. _approverMode gate as ações de edição.
-  const me = authCurrentUser();
-  const isOwner = me && p.owner && p.owner.toLowerCase() === me.email.toLowerCase();
-  _approverMode = !!(me && !isOwner && (p.approvers || []).some(e => e.toLowerCase() === me.email.toLowerCase()));
-  currentProjectId = p.id; // pro código de aprovação (notificações/lock) resolver o projeto certo
+function setCampaignBusy(on, text) {
+  const ov = document.getElementById('campaignBusyOverlay');
+  if(!ov) return;
+  if(on && text){ const t = document.getElementById('campaignBusyText'); if(t) t.textContent = text; }
+  ov.style.display = on ? 'flex' : 'none';
+}
+
+// Ao ENTRAR/VOLTAR pra pasta: mostra o overlay de espera e PUXA fresco do banco ANTES de montar a
+// tela — assim a pessoa nunca abre a pasta com dado velho (era a causa de editar em cima de uma
+// versão desatualizada e o save sobrescrever o que outra pessoa fez). Trava a interação até carregar.
+async function openCampaignEditor(id) {
   document.getElementById('dashboardScreen').style.display = 'none';
   document.getElementById('campaignScreen').style.display = 'flex';
-  document.getElementById('campaignScreenTitle').textContent = p.name;
-  renderCampaignTabs();
-  renderCampaignMain();
+  setCampaignBusy(true, 'Loading folder…');
+  try {
+    if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+    const p = campaignGetAll().find(x => x.id === id); // lido DEPOIS do pull → versão fresca
+    if(!p) { goToDashboard(); return; }
+    _campaign = p;
+    _campaignItemIndex = -1;
+    _campaignViewMode = 'gallery';
+    _campaignActiveType = 'email';
+    _campaignByLocale = false;
+    // APPROVER-ONLY: quem foi compartilhado como approver (está em p.approvers e não é dono) abre a
+    // pasta só pra APROVAR — sem editar tradução/HTML, sem adicionar/remover/excluir conteúdo. Mesma
+    // regra dos projetos avulsos, agora aplicada à pasta. _approverMode gate as ações de edição.
+    const me = authCurrentUser();
+    const isOwner = me && p.owner && p.owner.toLowerCase() === me.email.toLowerCase();
+    _approverMode = !!(me && !isOwner && (p.approvers || []).some(e => e.toLowerCase() === me.email.toLowerCase()));
+    currentProjectId = p.id; // pro código de aprovação (notificações/lock) resolver o projeto certo
+    document.getElementById('campaignScreenTitle').textContent = p.name;
+    renderCampaignTabs();
+    renderCampaignMain();
+  } finally {
+    setCampaignBusy(false);
+  }
 }
 
 async function saveCampaignProject() {
@@ -3798,34 +3996,21 @@ async function saveCampaignProject() {
   const idx = projects.findIndex(x => x.id === camp.id);
   if(idx === -1) { projects.push(camp); projSaveAll(projects); return; }
 
-  // Funde o estado de aprovação (comentários/atividade/approvalDoneByLang/tombstones) de CADA
-  // item contra a versão remota recém-puxada, em vez de sobrescrever a campanha inteira de
-  // uma vez (era só "projects[idx] = camp"). Sem isso: duas pessoas comentando em itens
-  // diferentes (ou no MESMO item) da mesma campanha ao mesmo tempo faziam quem salvasse por
-  // último apagar silenciosamente o trabalho da outra — a mesma classe de bug que
-  // autosaveApprovalState/mergeApprovalState já resolve pra projetos avulsos, mas campanhas
-  // nunca tinham essa proteção (só um overwrite direto do objeto inteiro). Dados de
-  // rows/traduções continuam por overwrite direto — essa parte é edição exclusiva do dono,
-  // já protegida pelo lock normal (approvalBlockedByEdit); só o lado de aprovação/comentário,
-  // que várias pessoas mexem ao mesmo tempo de propósito, precisa de merge de verdade.
+  // NÃO sobrescreve a pasta inteira (era "projects[idx] = camp", que apagava conteúdo/metadata
+  // que outra pessoa/aba tinha mudado). Em vez disso:
+  //  - METADATA (nome, sharedWith, approvers, folder, …): parte da versão REMOTA recém-puxada
+  //    (preserva mudança de quem renomeou/re-compartilhou enquanto eu estava dentro); este save é
+  //    de CONTEÚDO/aprovação, não mexe em metadata de propósito.
+  //  - ITENS: merge item a item (mergeCampaignItems) — conteúdo do item de updatedAt mais novo
+  //    vence POR ITEM (edição de um item/idioma nunca sobrescreve a de outro), aprovação sempre
+  //    fundida (união), item deletado fica deletado (tombstone). Nada de item derrubado.
   const remoteCamp = projects[idx];
-  const remoteItemsById = new Map((remoteCamp.items || []).map(it => [it.id, it]));
-  camp.items = (camp.items || []).map(localItem => {
-    const remoteItem = remoteItemsById.get(localItem.id);
-    if(!remoteItem) return localItem; // item novo — ninguém mais tem essa versão ainda
-    const { mergedComments, mergedActivity, mergedDoneByLang, mergedDeletedIds } = mergeApprovalState(
-      remoteItem, localItem.approvalComments || [], localItem.approvalActivity || [],
-      localItem.approvalDoneByLang || {}, localItem.approvalDeletedIds || []
-    );
-    return {
-      ...localItem,
-      approvalComments: mergedComments,
-      approvalActivity: mergedActivity,
-      approvalDoneByLang: mergedDoneByLang,
-      approvalDeletedIds: mergedDeletedIds
-    };
-  });
-  projects[idx] = camp;
+  projects[idx] = {
+    ...remoteCamp,
+    items: mergeCampaignItems(camp, remoteCamp),
+    deletedItemIds: unionDeletedItemIds(camp, remoteCamp),
+    updatedAt: Date.now()
+  };
   projSaveAll(projects);
 }
 
@@ -3886,6 +4071,13 @@ function activateCampaignItemIntoS(item) {
   _campaignPushPreview = item.type === 'push'; // avisa buildApprovalFrameHtml pra não tentar tratar como HTML de e-mail
   _campaignInappPreview = item.type === 'inapp'; // avisa a Approval View pra tratar como tela de celular, não altura de e-mail
 }
+
+// Carimba item.updatedAt — chamar SÓ em edição de CONTEÚDO (rows/traduções/rawHtml/name/langs),
+// nunca em aprovação. É o timestamp que o mergeCampaignItems usa pra decidir o vencedor de
+// conteúdo POR ITEM (o item editado mais recentemente vence), em vez de a pasta inteira do último
+// que salvou sobrescrever tudo. Sem carimbar em aprovação: um clique de aprovar não pode fazer o
+// conteúdo local "vencer" e apagar uma tradução que outra pessoa acabou de salvar.
+function touchCampaignItem(item) { if(item) item.updatedAt = Date.now(); }
 
 // Devolve o estado de aprovação de S pro item — chamado pelo autosave de aprovação
 // da campanha (ver scheduleApprovalAutosave) e ao trocar/fechar o item.
@@ -4196,21 +4388,32 @@ function renderCampaignGrid(item) {
   // coluna precisa ser editável (a pessoa escreve o texto original ali mesmo).
   // Email/in-app continuam com a origem travada (vem do HTML tageado).
   const originEditable = item.type === 'push';
-  const tbody = '<tbody>' + rows.map((row, ri) => `
+  // Células de tradução no MESMO formato do editor avulso (td.tl-cell.cell-nav + data-r/data-c +
+  // textarea readonly), pra o controlador de grid compartilhado (nav/copy/paste estilo planilha)
+  // funcionar aqui também. O readonly é gerenciado pelo controlador (F2/Enter/digitar entram em
+  // edição); a escrita vai por setCampaignCell (ver _gridWrite abaixo).
+  const tbody = '<tbody id="campGstb">' + rows.map((row, ri) => `
     <tr>
       <td class="rn">${ri + 1}</td>
       <td class="cid">${escHtml(row.label || row.id)}</td>
       <td class="src"><textarea rows="1" ${originEditable ? `oninput="setCampaignOrigin(${ri},this.value)"` : 'readonly'}>${escHtml(row.src)}</textarea></td>
-      ${langs.map(l => `<td class="tl tl-cell${!(row.translations[l] || '').trim() ? ' tl-missing' : ''}"><textarea rows="1" oninput="setCampaignCell(${ri},'${escJsAttr(l)}',this.value)">${escHtml(row.translations[l] || '')}</textarea></td>`).join('')}
+      ${langs.map((l, ci) => `<td class="tl tl-cell cell-nav${!(row.translations[l] || '').trim() ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}"><textarea rows="1" readonly oninput="autoH(this);setCampaignCell(${ri},'${escJsAttr(l)}',this.value)">${escHtml(row.translations[l] || '')}</textarea></td>`).join('')}
     </tr>
   `).join('') + '</tbody>';
   table.innerHTML = colgroup + thead + tbody;
+  // Aponta o controlador compartilhado pro grid da campanha e liga os listeners no host (o
+  // <table> persiste entre re-renders; só o innerHTML troca, então a delegação sobrevive).
+  _gridBodyId = 'campGstb';
+  _gridWrite = setCampaignCell;
+  wireGridController('campaignItemTable');
+  gridReapplyHighlight();
 }
 
 function setCampaignOrigin(ri, value) {
   const item = _campaign.items[_campaignItemIndex];
   if(!item || !item.rows[ri]) return;
   item.rows[ri].src = value;
+  touchCampaignItem(item); // edição de conteúdo → carimba pro merge por item
   scheduleCampaignAutosave();
   renderCampaignPreview(item, item._activeLang);
 }
@@ -4219,6 +4422,7 @@ function setCampaignCell(ri, lang, value) {
   const item = _campaign.items[_campaignItemIndex];
   if(!item || !item.rows[ri]) return;
   item.rows[ri].translations[lang] = value;
+  touchCampaignItem(item); // edição de conteúdo → carimba pro merge por item
   scheduleCampaignAutosave();
   updateCampaignPreviewCell(item, item.rows[ri], lang);
 }
@@ -4396,13 +4600,17 @@ function deleteContentItem(i) {
   document.getElementById('deleteConfirmModal').style.display = 'flex';
 }
 
-function confirmContentItemDelete() {
+async function confirmContentItemDelete() {
   const i = _pendingDeleteContentIdx;
   if(!_campaign || i < 0 || !_campaign.items[i]) { closeDeleteConfirmModal(); return; }
+  // Tombstone do item: exclusão é EXPLÍCITA, pra o merge de união (mergeCampaignItems) não
+  // ressuscitar este item a partir de uma cópia velha de outra aba/pessoa.
+  const removed = _campaign.items[i];
+  _campaign.deletedItemIds = (_campaign.deletedItemIds || []).concat([{ id: removed.id, at: Date.now() }]);
   _campaign.items.splice(i, 1);
   if(_campaignItemIndex === i) { _campaignItemIndex = -1; _campaignViewMode = 'gallery'; }
   else if(_campaignItemIndex > i) _campaignItemIndex--;
-  saveCampaignProject();
+  await saveCampaignProject(); // aguarda a gravação (o botão de confirmar já mostra spinner via confirmGenericDelete)
   closeDeleteConfirmModal();
   renderCampaignTabs();
   renderCampaignMain();
@@ -4561,6 +4769,7 @@ async function confirmAddItem() {
     };
   }
 
+  touchCampaignItem(item); // item novo → carimba (o merge por item precisa do timestamp de criação)
   _campaign.items.push(item);
   _campaignItemIndex = _campaign.items.length - 1;
   _campaignViewMode = 'edit'; // acabou de criar — abre direto pra preencher as traduções
@@ -4636,6 +4845,7 @@ function applyCsvToCampaignItem(csvText) {
     return;
   }
 
+  touchCampaignItem(item); // conteúdo mudou (CSV) → carimba pro merge por item
   saveCampaignProject();
   renderCampaignGrid(item);
   renderCampaignLangBar(item);
@@ -4664,14 +4874,11 @@ function dlItemCSV() {
   URL.revokeObjectURL(a.href);
 }
 
-function renderDashUserList() {
-  const users = authGetUsers();
-  const me = authCurrentUser();
-  const list = document.getElementById('dashUserList');
-  const deptOptions = key => `<option value="">No department</option>` +
-    DEPARTMENTS.map(d => `<option value="${d.key}" ${d.key===key?'selected':''}>${d.label}</option>`).join('');
-  list.innerHTML = users.map((u, i) => `
-    <div class="member-row">
+// Markup de UM card de membro (sem o índice — todos os handlers identificam por e-mail).
+// data-email é o que o FLIP usa pra medir a posição do MESMO card antes/depois do re-render.
+function dashUserCardHtml(u, me, deptOptions) {
+  return `
+    <div class="member-row" data-email="${(u.email||'').replace(/"/g,'&quot;')}">
       <span class="person-dot" style="background:${avColorForEmail(u.email)}" title="${u.email}"></span>
       <div style="flex:1;min-width:0;">
         <input class="member-name-input" value="${(u.name||'').replace(/"/g,'&quot;')}" placeholder="Add a name…"
@@ -4690,8 +4897,35 @@ function renderDashUserList() {
         </select>
       </div>
       ${u.email.toLowerCase() !== me.email.toLowerCase() ? `<button class="btn-danger" onclick="dashRemoveUser('${u.email}')">Remove</button>` : '<span style="font-size:11px;color:var(--text3);">you</span>'}
-    </div>
-  `).join('');
+    </div>`;
+}
+
+function renderDashUserList() {
+  const users = authGetUsers();
+  const me = authCurrentUser();
+  const list = document.getElementById('dashUserList');
+  const deptOptions = key => `<option value="">No department</option>` +
+    DEPARTMENTS.map(d => `<option value="${d.key}" ${d.key===key?'selected':''}>${d.label}</option>`).join('');
+
+  // Agrupa por papel (Superadmins → Admins → Members), cada seção ordenada por nome/e-mail.
+  const groups = { superadmin: [], admin: [], member: [] };
+  users.forEach(u => { (groups[u.role] || groups.member).push(u); });
+  Object.values(groups).forEach(arr => arr.sort((a, b) =>
+    (a.name || a.email || '').localeCompare(b.name || b.email || '')));
+  // Superadmins: sempre visível pra um superadmin; pra admin comum, só se houver alguém.
+  const showSuper = isSuperadmin(me.role) || groups.superadmin.length > 0;
+  const sections = [['superadmin', 'Superadmins'], ['admin', 'Admins'], ['member', 'Members']]
+    .filter(([role]) => role === 'superadmin' ? showSuper : true);
+  list.innerHTML = sections.map(([role, label]) => {
+    const arr = groups[role];
+    const body = arr.length
+      ? arr.map(u => dashUserCardHtml(u, me, deptOptions)).join('')
+      : `<div class="member-empty">No one here yet</div>`;
+    return `<div class="member-section">
+      <div class="member-sec-head">${label} <span class="member-sec-count">${arr.length}</span></div>
+      <div class="member-sec-list">${body}</div>
+    </div>`;
+  }).join('');
 
   // Popula o select de departamento do formulário "Add member" também.
   const addSel = document.getElementById('dashNewUserDept');
@@ -4738,25 +4972,103 @@ async function dashSetUserDept(email, dept) {
   renderDashUserList();
 }
 
-// Troca o papel de conta de um membro. Re-checa a permissão contra os dados FRESCOS (não só
-// contra o que a UI mostrou), pra que uma chamada direta pelo console — ou um render antigo —
-// não escape das regras de canChangeUserRole/allowedRoleTargets.
-async function dashSetUserRole(email, newRole) {
-  await dashPullUsersIfPossible();
-  const me = authCurrentUser(); // resolvido DEPOIS do pull — papel do actor sempre fresco
-  const users = authGetUsers();
-  const target = users.find(x => x.email.toLowerCase() === email.toLowerCase());
-  if(!me || !target) return;
-  if(!canChangeUserRole(me, target) || !allowedRoleTargets(me, target).includes(newRole)) {
-    showNotif('You do not have permission to make that role change.', 'warn');
-    renderDashUserList();
-    return;
+// ── Estado de BLOQUEIO da troca de papel (mesmo padrão do "move to folder") ───────────────────
+let _roleBusy = false;
+let _pendingRoleFlip = null; // { email } — card a animar da seção antiga pra nova após confirmar
+function _roleBeforeUnload(e){ e.preventDefault(); e.returnValue = ''; return ''; }
+function setRoleBusy(on, text){
+  _roleBusy = !!on;
+  const ov = document.getElementById('roleBusyOverlay');
+  if(ov){
+    if(on && text){ const t = document.getElementById('roleBusyText'); if(t) t.textContent = text; }
+    ov.style.display = on ? 'flex' : 'none';
   }
-  if(target.role === newRole) return; // nada mudou
-  target.role = newRole;
-  authSaveUsers(users);
+  if(on) window.addEventListener('beforeunload', _roleBeforeUnload);
+  else window.removeEventListener('beforeunload', _roleBeforeUnload);
+}
+function prefersReducedMotion(){ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+
+// Re-renderiza a lista com uma transição FLIP (First-Last-Invert-Play): mede a posição de todos
+// os cards ANTES, re-renderiza agrupado, e anima cada card que mudou de lugar da posição antiga
+// pra nova. O card que trocou de papel ainda ganha um realce breve. Respeita prefers-reduced-motion.
+function renderDashUserListWithFlip(){
+  const flip = _pendingRoleFlip; _pendingRoleFlip = null;
+  const list = document.getElementById('dashUserList');
+  if(!list || !flip || prefersReducedMotion()){ renderDashUserList(); return; }
+  const first = {};
+  list.querySelectorAll('[data-email]').forEach(el => { first[el.getAttribute('data-email')] = el.getBoundingClientRect(); });
   renderDashUserList();
-  notifAdd(email, me.email, `${me.email} changed your account role to ${roleLabel(newRole)}.`);
+  list.querySelectorAll('[data-email]').forEach(el => {
+    const f = first[el.getAttribute('data-email')]; if(!f) return;
+    const l = el.getBoundingClientRect();
+    const dx = f.left - l.left, dy = f.top - l.top;
+    if(!dx && !dy) return;
+    el.style.transition = 'none';
+    el.style.transform = `translate(${dx}px, ${dy}px)`;
+    requestAnimationFrame(() => {
+      el.style.transition = 'transform .3s cubic-bezier(.2,.8,.2,1)';
+      el.style.transform = '';
+    });
+    el.addEventListener('transitionend', () => { el.style.transition = ''; el.style.transform = ''; }, { once: true });
+  });
+  const moved = list.querySelector(`[data-email="${(flip.email||'').replace(/"/g,'\\"')}"]`);
+  if(moved){ moved.classList.add('member-row-landed'); setTimeout(() => moved.classList.remove('member-row-landed'), 1000); }
+}
+
+// Troca o papel de conta de um membro. Trava a tela até o banco CONFIRMAR (não otimista), recheca
+// permissão contra dados frescos, detecta troca concorrente, protege o último superadmin, e só
+// depois anima o card pra nova seção. finally SEMPRE destrava.
+async function dashSetUserRole(email, newRole) {
+  if(_roleBusy){ renderDashUserList(); return; } // já tem uma troca em andamento — reverte o select
+  // Papel em que baseei a troca (leitura local, ANTES do pull) — usado pra detectar troca concorrente.
+  const preTarget = authGetUsers().find(x => x.email.toLowerCase() === email.toLowerCase());
+  const fromRole = preTarget ? preTarget.role : null;
+
+  setRoleBusy(true, 'Updating role…');
+  try {
+    await dashPullUsersIfPossible();                 // puxa o estado mais novo
+    const me = authCurrentUser();                    // actor resolvido DEPOIS do pull
+    const users = authGetUsers();
+    const target = users.find(x => x.email.toLowerCase() === email.toLowerCase());
+    if(!me || !target){ showNotif('User not found.', 'warn'); return; }
+
+    // Troca concorrente: outro admin já mexeu nessa pessoa desde que abri o select.
+    if(fromRole !== null && target.role !== fromRole && target.role !== newRole){
+      showNotif("This person's role was just changed by someone else — showing the latest.", 'warn', 4500);
+      return;
+    }
+    if(!canChangeUserRole(me, target) || !allowedRoleTargets(me, target).includes(newRole)){
+      showNotif('You do not have permission to make that role change.', 'warn');
+      return;
+    }
+    if(target.role === newRole) return; // nada mudou
+
+    // Guard do último superadmin: nunca rebaixar o único que sobrou (travaria a gestão de admins).
+    if(target.role === 'superadmin' && newRole !== 'superadmin'){
+      if(users.filter(u => isSuperadmin(u.role)).length <= 1){
+        showNotif('You cannot demote the last superadmin.', 'warn', 4500);
+        return;
+      }
+    }
+
+    target.role = newRole;
+    await withTimeout(authSaveUsers(users), 8000, 'authSaveUsers (role)'); // ESPERA o banco confirmar
+    notifAdd(email, me.email, `${me.email} changed your account role to ${roleLabel(newRole)}.`);
+    _pendingRoleFlip = { email };                    // confirmado → anima pra nova seção no finally
+  } catch(e){
+    // Erro/timeout: reverte o papel LOCAL pro original (o authSaveUsers grava local antes de
+    // empurrar; sem reverter, a UI mostraria a nova seção mesmo o banco tendo falhado — "limbo").
+    console.warn('Role change failed:', e);
+    if(fromRole !== null){
+      const u2 = authGetUsers();
+      const t2 = u2.find(x => x.email.toLowerCase() === email.toLowerCase());
+      if(t2 && t2.role !== fromRole){ t2.role = fromRole; localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(u2)); }
+    }
+    showNotif('Could not update the role — please try again. Nothing was changed.', 'warn', 4500);
+  } finally {
+    setRoleBusy(false);
+    renderDashUserListWithFlip(); // sucesso: anima; erro/no-op: só re-renderiza (sem _pendingRoleFlip)
+  }
 }
 
 async function dashAddUser() {
@@ -4793,15 +5105,25 @@ async function dashAddUser() {
 }
 
 async function dashRemoveUser(email) {
-  await dashPullUsersIfPossible();
-  const users = authGetUsers();
-  const idx = users.findIndex(x => x.email.toLowerCase() === email.toLowerCase());
-  if(idx === -1) return;
-  const removed = users[idx];
-  users.splice(idx, 1);
-  authSaveUsers(users);
-  sbDeleteUser(removed.email); // upsert do array não remove linha sozinho
-  renderDashUserList();
+  if(_roleBusy) return; // reaproveita o overlay da modal de Membros
+  setRoleBusy(true, 'Removing member…');
+  try {
+    await dashPullUsersIfPossible();
+    const users = authGetUsers();
+    const idx = users.findIndex(x => x.email.toLowerCase() === email.toLowerCase());
+    if(idx === -1) return;
+    const removed = users[idx];
+    users.splice(idx, 1);
+    // AGUARDA a confirmação do banco (era fire-and-forget): grava o array novo E remove a linha.
+    await withTimeout(authSaveUsers(users), 8000, 'authSaveUsers (remove member)');
+    await withTimeout(sbDeleteUser(removed.email), 8000, 'sbDeleteUser'); // upsert do array não remove linha sozinho
+  } catch(e) {
+    console.warn('Remove member failed:', e);
+    showNotif('Could not remove the member — please try again.', 'warn', 4000);
+  } finally {
+    setRoleBusy(false);
+    renderDashUserList();
+  }
 }
 
 function emailToName(email) {
@@ -5185,6 +5507,7 @@ function syncTaggedHtmlIntoLiveCampaign(projectId, itemId, rawHtml, taggedHtmlBe
   const liveItem = (_campaign.items || []).find(it => it.id === itemId);
   if(!liveItem) return;
   liveItem.rawHtml = rawHtml;
+  touchCampaignItem(liveItem); // conteúdo → carimba pro merge por item
   liveItem.taggedHtmlBeforeManualEdit = taggedHtmlBeforeManualEdit;
   // A entrada de atividade foi gravada no ARRAY do item fresco de findEditableHtmlTarget
   // (target.approvalActivity), não neste objeto vivo — sem replicar aqui também, ela some
@@ -5195,10 +5518,12 @@ function syncTaggedHtmlIntoLiveCampaign(projectId, itemId, rawHtml, taggedHtmlBe
   }
 }
 
+
+
 async function performSaveTaggedHtmlEdit(force) {
   if(!_editHtmlCurrentTarget) return;
   const { projectId, itemId, loadedHtml } = _editHtmlCurrentTarget;
-  const newHtml = document.getElementById('editHtmlTextarea').value;
+  let newHtml = document.getElementById('editHtmlTextarea').value;
 
   // Relê fresco na hora de salvar (não usa a cópia carregada quando o editor abriu) — pra
   // detectar se alguém mais mudou esse mesmo HTML enquanto esta tela estava aberta.
@@ -5209,11 +5534,21 @@ async function performSaveTaggedHtmlEdit(force) {
   const currentStoredHtml = item ? item.rawHtml : p.data.html;
 
   if(!force && currentStoredHtml !== loadedHtml) {
-    if(!(await uiConfirm('Someone else changed this HTML since you opened this editor. Save your version anyway and overwrite theirs?', {title:'Overwrite?', okLabel:'Save anyway', danger:true}))) return;
+    // Alguém mudou este HTML enquanto eu editava. Tenta MERGE 3-vias (base = loadedHtml) — se as
+    // edições foram em regiões diferentes, junta as duas automaticamente (e valida a integridade
+    // das tags antes de aceitar). Só cai no prompt de "sobrescrever?" se houver conflito real ou
+    // se o merge ferir a estrutura de tags — nunca sobrescreve o trabalho do outro em silêncio.
+    const merged = diff3MergeLines(loadedHtml, newHtml, currentStoredHtml);
+    if(merged.clean && merged.text != null && !validateTaggedHtmlEdit(currentStoredHtml, merged.text).hasWarnings) {
+      newHtml = merged.text;
+      showNotif('Someone else edited this HTML meanwhile — your changes were merged with theirs.', 'ok', 4000);
+    } else {
+      if(!(await uiConfirm('Someone else changed this HTML since you opened this editor, and the changes overlap (can\'t be merged automatically). Save your version anyway and overwrite theirs?', {title:'Overwrite?', okLabel:'Save anyway', danger:true}))) return;
+    }
   }
 
   target.taggedHtmlBeforeManualEdit = currentStoredHtml;
-  if(item) item.rawHtml = newHtml; else p.data.html = newHtml;
+  if(item) { item.rawHtml = newHtml; touchCampaignItem(item); } else p.data.html = newHtml; // conteúdo → carimba pro merge por item
   pushManualHtmlEditActivity(target, 'manual_html_edit');
   p.updatedAt = Date.now();
   projSaveAll(projects);
@@ -5524,36 +5859,74 @@ async function confirmProjDelete() {
 // Ordem de segurança (nunca perde o avulso): 1) converte (lossless, via Folders) e adiciona o
 // item na pasta; 2) SALVA; 3) VERIFICA na leitura que o item entrou de verdade; 4) só ENTÃO
 // remove o avulso. Se qualquer passo falhar antes do 4, o avulso continua intacto.
-async function moveProjectToFolder(projectId, folderId) {
-  const me = authCurrentUser(); if(!me) return;
-  if(!window.Folders) { showNotif("The folders module didn't load — please reload the page.", 'warn'); return; }
-  // Puxa o estado mais novo antes de mexer (mesmo cuidado do delete) pra não sobrescrever
-  // mudança concorrente de outra aba/pessoa.
-  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+// ── Estado de BLOQUEIO do "Move to folder" ───────────────────────────────────────────────────
+// A operação faz várias escritas AGUARDADAS no banco (pull + upsert do item na pasta + upsert
+// removendo o avulso) — pode levar alguns segundos. Sem travar, dava pra clicar outra pasta e
+// disparar um 2º move concorrente no mesmo e-mail. Este overlay cobre a modal inteira, mostra o
+// estado de espera e é SEMPRE removido no finally (nunca trava pra sempre, nem em erro/timeout).
+let _moveBusy = false;
+function _moveBeforeUnload(e){ e.preventDefault(); e.returnValue = ''; return ''; } // avisa antes de fechar a aba no meio
+function setMoveBusy(on, text){
+  _moveBusy = !!on;
+  const ov = document.getElementById('moveBusyOverlay');
+  if(ov){
+    if(on && text){ const t = document.getElementById('moveBusyText'); if(t) t.textContent = text; }
+    ov.style.display = on ? 'flex' : 'none';
+  }
+  // beforeunload só enquanto a operação está em voo (pela ordem anti-perda, mesmo saindo no meio
+  // o avulso nunca some — isso é cinto-de-segurança contra move incompleto/duplicado).
+  if(on) window.addEventListener('beforeunload', _moveBeforeUnload);
+  else window.removeEventListener('beforeunload', _moveBeforeUnload);
+}
 
-  let projects = projGetAll();
-  const plan = Folders.planMoveIntoFolder(projects, projectId, folderId);
-  if(!plan.ok) { showNotif(plan.error, 'warn'); return; }
+// opts.skipBusy: quando chamado por createFolderAndMove (que já é o dono do overlay), NÃO gerencia
+// o bloqueio aqui — evita que o guard de reentrância barre a própria chamada aninhada.
+async function moveProjectToFolder(projectId, folderId, opts) {
+  opts = opts || {};
+  const ownBusy = !opts.skipBusy;
+  if(ownBusy){
+    if(_moveBusy) return;                          // já tem um move em andamento — ignora clique repetido
+    setMoveBusy(true, 'Moving to the folder…');
+  }
+  try {
+    const me = authCurrentUser(); if(!me) return;
+    if(!window.Folders) { showNotif("The folders module didn't load — please reload the page.", 'warn'); return; }
+    // Puxa o estado mais novo antes de mexer (mesmo cuidado do delete) pra não sobrescrever
+    // mudança concorrente de outra aba/pessoa.
+    if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
 
-  // 1+2) aplica (troca a pasta pela versão com o item) e salva — o avulso CONTINUA na lista aqui.
-  plan.folderWithItem.updatedAt = Date.now();
-  const withItem = projects.map(p => p.id === folderId ? plan.folderWithItem : p);
-  await withTimeout(projSaveAll(withItem), 8000, 'projSaveAll (add item)');
+    let projects = projGetAll();
+    const plan = Folders.planMoveIntoFolder(projects, projectId, folderId);
+    if(!plan.ok) { showNotif(plan.error, 'warn'); return; }
 
-  // 3) VERIFICA na leitura local que o item entrou (mesma contagem de linhas) ANTES de deletar.
-  const check = projGetAll().find(p => p.id === folderId);
-  const landed = check && (check.items||[]).some(it => it.id === plan.item.id && (it.rows||[]).length === plan.item.rows.length);
-  if(!landed) { showNotif('Could not save the item into the folder — the standalone email was KEPT intact.', 'warn'); return; }
+    // 1+2) aplica (troca a pasta pela versão com o item) e salva — o avulso CONTINUA na lista aqui.
+    plan.folderWithItem.updatedAt = Date.now();
+    const withItem = projects.map(p => p.id === folderId ? plan.folderWithItem : p);
+    await withTimeout(projSaveAll(withItem), 8000, 'projSaveAll (add item)');
 
-  // 4) agora sim remove o avulso (tombstone + filtra + salva). O conteúdo já está seguro na pasta,
-  // e o item guarda _fromProjectData pra permitir "remover da pasta" recriar o avulso depois.
-  await withTimeout(markProjectDeleted(projectId), 8000, 'markProjectDeleted');
-  const after = projGetAll().filter(p => p.id !== projectId);
-  await withTimeout(projSaveAll(after), 8000, 'projSaveAll (remove avulso)');
+    // 3) VERIFICA na leitura local que o item entrou (mesma contagem de linhas) ANTES de deletar.
+    const check = projGetAll().find(p => p.id === folderId);
+    const landed = check && (check.items||[]).some(it => it.id === plan.item.id && (it.rows||[]).length === plan.item.rows.length);
+    if(!landed) { showNotif('Could not save the item into the folder — the standalone email was KEPT intact.', 'warn', 4500); return; }
 
-  closeMoveToFolderModal();
-  showNotif('Email moved to the folder.', 'ok', 2600);
-  renderDashboard();
+    // 4) agora sim remove o avulso (tombstone + filtra + salva). O conteúdo já está seguro na pasta,
+    // e o item guarda _fromProjectData pra permitir "remover da pasta" recriar o avulso depois.
+    await withTimeout(markProjectDeleted(projectId), 8000, 'markProjectDeleted');
+    const after = projGetAll().filter(p => p.id !== projectId);
+    await withTimeout(projSaveAll(after), 8000, 'projSaveAll (remove avulso)');
+
+    closeMoveToFolderModal();
+    showNotif('Email moved to the folder.', 'ok', 2600);
+    renderDashboard();
+  } catch(e) {
+    // Erro/timeout em qualquer escrita: destrava e avisa. Pela ordem anti-perda, o avulso nunca
+    // se perde — no pior caso (falha DEPOIS de gravar o item mas antes de remover o avulso) fica
+    // um DUPLICADO recuperável, então a mensagem não promete um sucesso limpo.
+    console.warn('Move to folder failed:', e);
+    showNotif('Could not finish moving to the folder — please try again. Your standalone email was kept intact; if it still shows up, just reload.', 'warn', 5000);
+  } finally {
+    if(ownBusy) setMoveBusy(false);
+  }
 }
 
 let _moveToFolderProjId = null;
@@ -5582,12 +5955,23 @@ function closeMoveToFolderModal() {
 async function createFolderAndMove() {
   const projId = _moveToFolderProjId; if(!projId) return;
   const me = authCurrentUser(); if(!me) return;
+  // O nome é pedido ANTES do bloqueio (o overlay só faz sentido a partir da escrita de verdade).
   const name = ((await uiPrompt('New folder name:', {title:'New folder', placeholder:'e.g. Summer Wave 1'})) || '').trim(); if(!name) return;
-  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
-  const folder = { id:'camp_'+Date.now(), kind:'campaign', name, owner:me.email, sharedWith:[], approvers:[], items:[], createdAt:Date.now(), updatedAt:Date.now() };
-  const projects = projGetAll(); projects.push(folder);
-  await withTimeout(projSaveAll(projects), 8000, 'projSaveAll (nova pasta)');
-  await moveProjectToFolder(projId, folder.id);
+  if(_moveBusy) return;
+  setMoveBusy(true, 'Creating folder and moving…');
+  try {
+    if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+    const folder = { id:'camp_'+Date.now(), kind:'campaign', name, owner:me.email, sharedWith:[], approvers:[], items:[], createdAt:Date.now(), updatedAt:Date.now() };
+    const projects = projGetAll(); projects.push(folder);
+    await withTimeout(projSaveAll(projects), 8000, 'projSaveAll (nova pasta)');
+    // skipBusy: este fluxo já é o dono do overlay (senão o guard de reentrância barraria a chamada).
+    await moveProjectToFolder(projId, folder.id, { skipBusy: true });
+  } catch(e) {
+    console.warn('Create folder and move failed:', e);
+    showNotif('Could not create the folder and move — please try again. Your standalone email was kept intact.', 'warn', 5000);
+  } finally {
+    setMoveBusy(false);
+  }
 }
 
 // ── REMOVER item da pasta → volta a ser e-mail avulso (escrita, mesma trava anti-perda) ──────
@@ -5599,36 +5983,47 @@ async function removeItemFromFolder(folderId, itemId) {
   const me = authCurrentUser(); if(!me) return;
   if(!window.Folders) { showNotif("The folders module didn't load — please reload the page.", 'warn'); return; }
   if(!(await uiConfirm('Remove this item from the folder? It goes back to being a standalone email in the list.', {title:'Remove from folder', okLabel:'Remove'}))) return;
-  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+  setCampaignBusy(true, 'Removing from the folder…'); // trava a pasta até o banco confirmar
+  try {
+    if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
 
-  const now = Date.now();
-  const newId = 'p_' + now;
-  let projects = projGetAll();
-  const plan = Folders.planRemoveFromFolder(projects, folderId, itemId, newId, now);
-  if(!plan.ok) { showNotif(plan.error, 'warn'); return; }
+    const now = Date.now();
+    const newId = 'p_' + now;
+    let projects = projGetAll();
+    const plan = Folders.planRemoveFromFolder(projects, folderId, itemId, newId, now);
+    if(!plan.ok) { showNotif(plan.error, 'warn'); return; }
 
-  // 1) recria o avulso + salva (o item AINDA está na pasta aqui).
-  const withLoose = projects.concat([plan.newLooseProject]);
-  await withTimeout(projSaveAll(withLoose), 8000, 'projSaveAll (restaura avulso)');
-  // 2) verifica que o avulso entrou antes de tirar da pasta.
-  const check = projGetAll().find(p => p.id === newId);
-  if(!check || !(check.data && typeof check.data.html === 'string')) {
-    showNotif('Could not recreate the standalone email — the item was KEPT in the folder.', 'warn'); return;
+    // 1) recria o avulso + salva (o item AINDA está na pasta aqui).
+    const withLoose = projects.concat([plan.newLooseProject]);
+    await withTimeout(projSaveAll(withLoose), 8000, 'projSaveAll (restaura avulso)');
+    // 2) verifica que o avulso entrou antes de tirar da pasta.
+    const check = projGetAll().find(p => p.id === newId);
+    if(!check || !(check.data && typeof check.data.html === 'string')) {
+      showNotif('Could not recreate the standalone email — the item was KEPT in the folder.', 'warn'); return;
+    }
+    // 3) só ENTÃO tira o item da pasta — com TOMBSTONE do item (exclusão explícita), pra o merge
+    // de união não trazer o item de volta a partir de uma cópia velha.
+    const after = projGetAll().map(p => p.id === folderId
+      ? { ...p, items: (p.items||[]).filter(it => it.id !== itemId),
+          deletedItemIds: (p.deletedItemIds||[]).concat([{ id: itemId, at: Date.now() }]), updatedAt: Date.now() }
+      : p);
+    await withTimeout(projSaveAll(after), 8000, 'projSaveAll (tira item da pasta)');
+
+    // Se o editor de campanha está aberto nessa pasta, mantém o objeto vivo em dia.
+    if(typeof _campaign !== 'undefined' && _campaign && _campaign.id === folderId) {
+      _campaign.items = (_campaign.items||[]).filter(it => it.id !== itemId);
+      _campaign.deletedItemIds = (_campaign.deletedItemIds||[]).concat([{ id: itemId, at: Date.now() }]);
+      if(typeof renderCampaignTabs === 'function') renderCampaignTabs();
+      if(typeof renderCampaignMain === 'function') renderCampaignMain();
+    }
+    showNotif('Item removed from the folder — it went back to the standalone emails list.', 'ok', 2800);
+    renderDashboard();
+  } catch(e) {
+    console.warn('Remove from folder failed:', e);
+    showNotif('Could not remove the item from the folder — please try again. Nothing was lost.', 'warn', 4500);
+  } finally {
+    setCampaignBusy(false);
   }
-  // 3) só ENTÃO tira o item da pasta.
-  const after = projGetAll().map(p => p.id === folderId
-    ? { ...p, items: (p.items||[]).filter(it => it.id !== itemId), updatedAt: Date.now() }
-    : p);
-  await withTimeout(projSaveAll(after), 8000, 'projSaveAll (tira item da pasta)');
-
-  // Se o editor de campanha está aberto nessa pasta, mantém o objeto vivo em dia.
-  if(typeof _campaign !== 'undefined' && _campaign && _campaign.id === folderId) {
-    _campaign.items = (_campaign.items||[]).filter(it => it.id !== itemId);
-    if(typeof renderCampaignTabs === 'function') renderCampaignTabs();
-    if(typeof renderCampaignMain === 'function') renderCampaignMain();
-  }
-  showNotif('Item removed from the folder — it went back to the standalone emails list.', 'ok', 2800);
-  renderDashboard();
 }
 
 // ── DELETAR PASTA: escopo (só a pasta / tudo) + código aleatório de confirmação ──────────────
@@ -5686,44 +6081,66 @@ function closeDeleteFolderModal() {
   const m = document.getElementById('deleteFolderModal'); if(m) m.style.display = 'none';
   _deleteFolderId = null; _deleteFolderCode = '';
 }
+// Aviso genérico ao tentar fechar a aba com uma ação de banco em andamento.
+function _genericDbBeforeUnload(e){ e.preventDefault(); e.returnValue = ''; return ''; }
+function setDeleteFolderBusy(on, text){
+  const ov = document.getElementById('deleteFolderBusyOverlay');
+  if(!ov) return;
+  if(on && text){ const t = document.getElementById('deleteFolderBusyText'); if(t) t.textContent = text; }
+  ov.style.display = on ? 'flex' : 'none';
+  if(on) window.addEventListener('beforeunload', _genericDbBeforeUnload);
+  else window.removeEventListener('beforeunload', _genericDbBeforeUnload);
+}
+let _deleteFolderBusy = false;
 async function confirmDeleteFolder() {
+  if(_deleteFolderBusy) return; // já em andamento — ignora clique repetido
   const folderId = _deleteFolderId, scope = _deleteFolderScope;
   if(!folderId) return;
   // Guard duplo (o botão já fica desabilitado): o código digitado precisa bater.
   const typed = (document.getElementById('deleteFolderCodeInput').value || '').trim().toUpperCase();
   if(typed !== _deleteFolderCode) { showNotif('Incorrect confirmation code.', 'warn'); return; }
   const me = authCurrentUser(); if(!me) return;
-  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
-  const projects = projGetAll();
-  const folder = projects.find(p => p.id === folderId && p.kind === 'campaign');
-  if(!folder) { closeDeleteFolderModal(); renderDashboard(); return; }
+  _deleteFolderBusy = true;
+  setDeleteFolderBusy(true, scope === 'folderonly' ? 'Deleting folder…' : 'Deleting folder and content…');
+  try {
+    if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+    const projects = projGetAll();
+    const folder = projects.find(p => p.id === folderId && p.kind === 'campaign');
+    if(!folder) { closeDeleteFolderModal(); renderDashboard(); return; }
 
-  if(scope === 'folderonly') {
-    // Preserva os e-mails como avulsos (in-app/push somem com a pasta). Trava anti-perda:
-    // recria TODOS os e-mails + verifica que entraram ANTES de apagar a pasta.
-    const now = Date.now();
-    const restored = (folder.items || []).filter(it => it.type === 'email').map((it, i) => {
-      const lp = window.Folders.folderItemToProject(it, folder.owner);
-      lp.id = 'p_' + now + '_' + i;   // id novo (dodgeia tombstone de move anterior)
-      lp.createdAt = now; lp.updatedAt = now;
-      return lp;
-    });
-    if(restored.length){
-      await withTimeout(projSaveAll(projects.concat(restored)), 8000, 'projSaveAll (restaura avulsos)');
-      const after1 = projGetAll();
-      const allLanded = restored.every(r => after1.some(p => p.id === r.id && p.data && typeof p.data.html === 'string'));
-      if(!allLanded){ showNotif('Failed to recreate the standalone emails — the folder was KEPT intact.', 'warn'); return; }
+    if(scope === 'folderonly') {
+      // Preserva os e-mails como avulsos (in-app/push somem com a pasta). Trava anti-perda:
+      // recria TODOS os e-mails + verifica que entraram ANTES de apagar a pasta.
+      const now = Date.now();
+      const restored = (folder.items || []).filter(it => it.type === 'email').map((it, i) => {
+        const lp = window.Folders.folderItemToProject(it, folder.owner);
+        lp.id = 'p_' + now + '_' + i;   // id novo (dodgeia tombstone de move anterior)
+        lp.createdAt = now; lp.updatedAt = now;
+        return lp;
+      });
+      if(restored.length){
+        await withTimeout(projSaveAll(projects.concat(restored)), 8000, 'projSaveAll (restaura avulsos)');
+        const after1 = projGetAll();
+        const allLanded = restored.every(r => after1.some(p => p.id === r.id && p.data && typeof p.data.html === 'string'));
+        if(!allLanded){ showNotif('Failed to recreate the standalone emails — the folder was KEPT intact.', 'warn'); return; }
+      }
     }
+    // Tombstone da pasta (tanto no 'contents' quanto DEPOIS do restore no 'folderonly').
+    await withTimeout(markProjectDeleted(folderId), 8000, 'markProjectDeleted');
+    await withTimeout(deleteNotifsForProject(folderId), 8000, 'deleteNotifsForProject');
+    const finalList = projGetAll().filter(p => p.id !== folderId);
+    await withTimeout(projSaveAll(finalList), 8000, 'projSaveAll (remove pasta)');
+    if(currentProjectId === folderId) currentProjectId = null;
+    closeDeleteFolderModal();
+    showNotif(scope === 'folderonly' ? 'Folder deleted — the emails went back to the standalone list.' : 'Folder and all its content deleted.', 'ok', 3000);
+    renderDashboard();
+  } catch(e) {
+    console.warn('Delete folder failed:', e);
+    showNotif('Could not delete the folder — please try again. Nothing was lost.', 'warn', 4500);
+  } finally {
+    _deleteFolderBusy = false;
+    setDeleteFolderBusy(false);
   }
-  // Tombstone da pasta (tanto no 'contents' quanto DEPOIS do restore no 'folderonly').
-  await withTimeout(markProjectDeleted(folderId), 8000, 'markProjectDeleted');
-  await withTimeout(deleteNotifsForProject(folderId), 8000, 'deleteNotifsForProject');
-  const finalList = projGetAll().filter(p => p.id !== folderId);
-  await withTimeout(projSaveAll(finalList), 8000, 'projSaveAll (remove pasta)');
-  if(currentProjectId === folderId) currentProjectId = null;
-  closeDeleteFolderModal();
-  showNotif(scope === 'folderonly' ? 'Folder deleted — the emails went back to the standalone list.' : 'Folder and all its content deleted.', 'ok', 3000);
-  renderDashboard();
 }
 
 // ── APPROVE BY LOCALE (dentro da pasta) ──────────────────────────────────────────────────────
@@ -6159,25 +6576,6 @@ const COUNTRIES = [
 ];
 S.allC = [...COUNTRIES];
 
-// Find or create a country entry for a given lang code.
-// Tries: exact match → prefix match (es-ES → es) → create new entry.
-// Known lang code aliases — maps non-standard or variant codes to canonical ones.
-const LANG_ALIASES = {
-  'en-UK': 'en-GB',  // en-UK is not an ISO code — GB is correct
-  'en-uk': 'en-GB',
-  'EN-UK': 'en-GB',
-  // Retrocompatibilidade: CSVs antigos usavam lang sem sufixo de país.
-  // Mapeia pro equivalente mais common de cada idioma.
-  'de':    'de-DE',
-  'fr':    'fr-FR',
-  'es':    'es-ES',
-  'it':    'it-IT',
-  'nl':    'nl-NL',
-  'pl':    'pl-PL',
-  'tr':    'tr-TR',
-  'en':    'en-US',
-  'ro':    'ro-RO',
-};
 
 // Lang codes that expand to multiple langs.
 // es-419 (Latin American Spanish) covers MX and CL when no separate entries exist.
@@ -6194,12 +6592,6 @@ function fromBrazeLang(lang) {
   return lang;
 }
 
-// Expand a lang code: returns array of canonical lang codes.
-function expandLang(lang) {
-  const iso = fromBrazeLang(lang);        // de_de → de-DE
-  const norm = LANG_ALIASES[iso] || LANG_ALIASES[lang] || iso;
-  return LANG_EXPAND[norm] || LANG_EXPAND[lang] || [norm];
-}
 
 function resolveLang(lang) {
   if(!lang) return null;
@@ -6397,92 +6789,7 @@ function isValidSpreadsheet(f) {
 }
 
 
-// Quebra o texto do CSV em "linhas" respeitando aspas \u2014 um campo entre aspas pode ter uma
-// quebra de linha literal dentro (comum quando o CSV passa por Excel/Sheets, ex: uma merge
-// tag Liquid sozinha na pr\u00F3pria linha do par\u00E1grafo). Um split ing\u00EAnuo por '\n' cortava esse
-// campo no meio, perdendo o conte\u00FAdo real e deixando a linha "vazia" no CSV.
-function splitCsvRecords(text) {
-  const records = [];
-  let cur = '', q = false;
-  for(let i = 0; i < text.length; i++){
-    const c = text[i];
-    if(c === '"'){
-      if(q && text[i+1] === '"'){ cur += '""'; i++; }
-      else { q = !q; cur += c; }
-    } else if(c === '\n' && !q){
-      records.push(cur);
-      cur = '';
-    } else {
-      cur += c;
-    }
-  }
-  if(cur) records.push(cur);
-  return records;
-}
 
-function parseBrazeCsv(text) {
-  // Detect separator: semicolon (multi-lang export) or comma (single-lang export)
-  const clean = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\u2028/g, ' ').replace(/\u2029/g, ' ');
-  const lines = splitCsvRecords(clean).map(l => l.trimEnd()).filter(Boolean);
-  if(lines.length < 2) return null;
-
-  // Detect separator from first data row (line 2), not header.
-  // Header line 1 starts with ',' for CSV or ';' for semicolon — unreliable.
-  const sepLine = lines[2] || lines[1];
-  const sep = (sepLine.split(';').length > sepLine.split(',').length) ? ';' : ',';
-
-  const parseLine = line => {
-    if(sep === ';') return line.split(';').map((x,i) => i===0 ? x.trim() : x);
-    // Comma: respect quoted fields
-    const r = []; let cell = '', q = false;
-    for(let i = 0; i < line.length; i++){
-      if(line[i]==='"'){ if(q && line[i+1]==='"'){cell+='"';i++;} else q=!q; }
-      else if(line[i]===',' && !q){ r.push(cell); cell=''; }
-      else cell += line[i];
-    }
-    r.push(cell);
-    return r.map((x,i) => i===0 ? x.replace(/^"|"$/g,'').trim() : x.replace(/^"|"$/g,''));
-  };
-
-  const templateName = parseLine(lines[0])[0] || '';
-  const headerRow    = parseLine(lines[1]);
-
-  // Languages start at col 2: raw codes from header
-  const rawLangs = headerRow.slice(2).map(l => LANG_ALIASES[l.trim()] || l.trim()).filter(Boolean);
-  // Expand: es-419 → [es-MX, es-CL]. Final langs array has no es-419.
-  const langs = rawLangs.flatMap(l => expandLang(l));
-
-  // Data rows — only valid idN rows
-  const dataRows = lines.slice(2)
-    .map(l => parseLine(l))
-    .filter(r => r[0] && /^id\d+$/i.test(r[0]));
-
-  if(langs.length === 0){
-    // Old single-lang comma format: col1 = translation
-    const langFromHeader = expandLang((headerRow[2] || '').trim())[0] || '';
-    const rows = dataRows.map(r => ({ id: r[0], tl: r[1] || '' }));
-    return { templateName, langs: langFromHeader ? [langFromHeader] : [],
-             byLang: langFromHeader ? { [langFromHeader]: rows } : {},
-             langFromHeader, rows };
-  }
-
-  // Multi-lang: each rawLang maps to a column index.
-  // Expanded langs (es-MX, es-CL from es-419) share the same column data.
-  const byLang = {};
-  rawLangs.forEach(rawLang => {
-    const colIdx = headerRow.findIndex((h, i) => i >= 2 && (LANG_ALIASES[h.trim()] || h.trim()) === rawLang);
-    const expanded = expandLang(rawLang);
-    expanded.forEach(lang => {
-      byLang[lang] = dataRows.map(r => ({
-        id:  r[0],
-        src: (r[1] || '').trim(), // src is used as lookup key — trim is OK
-        tl:  colIdx >= 0 ? (r[colIdx] || '') : '' // tl must be verbatim
-      }));
-    });
-  });
-
-  return { templateName, langs, byLang };
-}
 
 // Botão "Update from CSV" no editor — deixa a pessoa subir de novo uma planilha
 // preenchida (ex: veio da agência de tradução) e atualiza as células da grade já
@@ -6605,103 +6912,9 @@ function findLiquidMergeEnd(str, i){
 // mais à frente), engolindo o texto real inteiro no meio como se fosse protegido.
 const APOSTROPHE_PROTECT_RE = /\{%.*?%\}|\{(\{|%).*?('cb\d+'|'Digital'|'[^']*'|(\}|%)\}+)|\[.*?\]|%{1,2}.*?%{1,2}|<[^>]+>|&[a-zA-Z#0-9]+;/gm;
 
-// Troca apóstrofo reto (') por curly apostrophe (’, alt+0146 / U+2019) só no texto de
-// verdade — qualquer trecho que bata no APOSTROPHE_PROTECT_RE fica intocado, pra não
-// corromper sintaxe Liquid/HTML.
-function curlifyApostrophes(str){
-  if(!str) return str;
-  const re = new RegExp(APOSTROPHE_PROTECT_RE.source, APOSTROPHE_PROTECT_RE.flags);
-  let out = '', lastIndex = 0, m;
-  while((m = re.exec(str)) !== null){
-    out += str.slice(lastIndex, m.index).replace(/'/g, '’');
-    out += m[0];
-    lastIndex = m.index + m[0].length;
-    if(m[0].length === 0) re.lastIndex++; // evita loop infinito em match vazio
-  }
-  out += str.slice(lastIndex).replace(/'/g, '’');
-  return out;
-}
 
-// Remove todos os tokens {{ }} e {% %} do texto, devolvendo só o conteúdo textual.
-function stripLiquid(str){
-  let out='', i=0;
-  while(i<str.length){
-    if(str[i]==='{' && str[i+1]==='{'){
-      const j = findLiquidMergeEnd(str, i);
-      i=j+2;
-    } else if(str[i]==='{' && str[i+1]==='%'){
-      let j=i+2;
-      while(j<str.length-1 && !(str[j]==='%' && str[j+1]==='}')) j++;
-      i=j+2;
-    } else {
-      out+=str[i++];
-    }
-  }
-  // Além de &nbsp;/&#160;, cobre outras entidades de espaço INVISÍVEL usadas como espaçador
-  // decorativo em e-mail (hair space, thin space, zero-width space...) — sem isso, um <p>
-  // que só tem um desses espaçadores (ex: "&#8202;") passava no filtro de tamanho mínimo e
-  // virava uma linha "em branco" no CSV, parecendo um bug quando na verdade não tem texto
-  // nenhum ali pra traduzir.
-  return out
-    .replace(/&nbsp;/gi,'')
-    .replace(/&#160;/g,'')
-    // U+2000–U+200A: espaços de largura variável do Unicode (en/em/thin/hair space etc) —
-    // faixa termina em 200A (8202); 2010 em diante já são travessão/hífen, que são texto
-    // VISÍVEL de verdade e não podem ser removidos aqui.
-    .replace(/&#(819[2-9]|820[0-2]);/g,'')
-    .replace(/&#(820[3-7]);/g,'')          // U+200B–U+200F: largura zero / marcas direcionais invisíveis
-    .replace(/&#65279;/g,'')               // BOM / zero-width no-break space
-    .replace(/&zwnj;/gi,'')
-    .replace(/&zwj;/gi,'')
-    .trim();
-}
 
-// Divide um texto em tokens do tipo 'text' e 'liquid' ({{ }} ou {% %}).
-function splitLiquid(str){
-  const r=[]; let i=0;
-  while(i<str.length){
-    if(str[i]==='{' && str[i+1]==='{'){
-      const j = findLiquidMergeEnd(str, i);
-      r.push({type:'liquid', val:str.slice(i,j+2)}); i=j+2;
-    } else if(str[i]==='{' && str[i+1]==='%'){
-      let j=i+2;
-      while(j<str.length-1 && !(str[j]==='%' && str[j+1]==='}')) j++;
-      r.push({type:'liquid', val:str.slice(i,j+2)}); i=j+2;
-    } else {
-      let j=i;
-      while(j<str.length && !(str[j]==='{' && (str[j+1]==='{' || str[j+1]==='%'))) j++;
-      if(j>i) r.push({type:'text', val:str.slice(i,j)});
-      i=j;
-    }
-  }
-  return r;
-}
 
-// Desembrulha <code>...</code> quando o miolo é EXCLUSIVAMENTE Liquid (merge tags, content_blocks
-// ou controle {% %}), devolvendo só o conteúdo interno sem o <code>. Motivo: nesses templates
-// Braze o <code> é usado só pra estilizar (monospace) um snippet de Liquid — ex:
-// "Enjoy your first <code>{{context.${offer_trial_duration}}}</code> days on us." Como <code>
-// está no SKIP_PAIR do tokenizador, o conteúdo dele era PULADO: a frase quebrava em duas linhas
-// (id6 "Enjoy your first" / id7 "days on us.") e a merge tag SUMIA do CSV. Tirando o <code>
-// (só quando ele embrulha nada além de Liquid), a frase vira UM texto contínuo — a extração
-// junta tudo numa linha só, mergeLiquidInline mantém a merge tag (context.*/custom_attribute.*),
-// e a tag de tradução passa a abraçar a frase inteira COM a merge tag dentro. Um <code> que
-// contenha QUALQUER texto/código real (fora do escopo destes templates) é deixado intacto
-// (continua sendo pulado como antes) — decisão conservadora confirmada com o usuário.
-// Aplicado de forma idêntica na extração (extractStr), no tagueamento (buildTaggedHtml) e no
-// preview (buildPreviewHtml) pra os três concordarem na mesma posição de texto.
-function unwrapLiquidOnlyCode(html){
-  if(!html || html.indexOf('<code') === -1) return html;
-  return html.replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, (m, inner) => {
-    // Ignora tags de tradução já presentes só pra o teste de "é puro Liquid?".
-    const test = inner.replace(/\{%translation\s+\S+?%\}/g,'').replace(/\{%endtranslation%\}/g,'');
-    // splitLiquid entende ${...} e o }}} triplo (via findLiquidMergeEnd); puro = todo token
-    // não-espaço é Liquid.
-    const toks = splitLiquid(test);
-    const pure = toks.every(t => t.type === 'liquid' || !/\S/.test(t.val));
-    return pure ? inner : m;
-  });
-}
 
 // ── Contador seguro de ids ("próximo id disponível", nunca reusa) ─────────────────────────
 // Extrai o número de um id ("id42" -> 42; qualquer coisa que não seja idN -> 0).
@@ -6892,23 +7105,6 @@ function buildAndGo() {
   }
 }
 
-// Chamado ao clicar "Yes, build CSV" — cria (ou atualiza) o registro do
-// projeto no Dashboard, com você como dono e a trava ativa.
-// Gera a string CSV (mesmo formato do export) sem disparar download — usada pra salvar o projeto.
-function buildCsvStringForSave() {
-  const langs = sortLangsForDisplay(S.csv.langs); // ordem fixa global (não mexe em S.csv.langs)
-  if(!langs.length) return '';
-  const esc = v => `"${String(v||'').replace(/"/g,'""')}"`;
-  const emptyCols = langs.map(()=>'').join(',');
-  const lines = [
-    esc(S.csv.name) + ',' + emptyCols,
-    ',' + esc('Translation tags') + ',' + langs.map(l=>toBrazeLang(l)).join(','),
-    ...S.csv.rows.map(r =>
-      r.id + ',' + esc(curlifyApostrophes(csvSourceText(r))) + ',' + langs.map(l=>esc(curlifyApostrophes(r.translations[l]||''))).join(',')
-    )
-  ];
-  return '\uFEFF' + lines.join('\n');
-}
 
 // Junta os comentários de todas as linhas num objeto {rowId: comentário} pra salvar no projeto
 // (fica separado do CSV em si, que precisa manter o formato nativo do Braze).
@@ -7001,67 +7197,7 @@ function projSaveOnBuild(wasImport) {
   _pendingProjectFolder = null;
 }
 
-// Carrega o conteúdo salvo de um projeto direto no app, sem precisar reupload manual.
-// Para na tela de seleção de imagens (3.5), já com as imagens que estavam marcadas.
-// Detecta se o trecho na posição `pos` do HTML está DENTRO de uma forma VML (fallback de
-// imagem/formas pro Outlook, ex: um botão <v:roundrect> ou <v:rect>). A VML vem em
-// comentários condicionais MSO SEPARADOS: um abre a forma ANTES do texto (<!--[if mso]>
-// <v:roundrect ...> ...<![endif]-->), outro fecha DEPOIS (<!--[if mso]></v:roundrect>
-// <![endif]-->) — o texto fica no meio, fora dos comentários. Conta aberturas <v:...> vs
-// fechamentos </v:...> antes de `pos`: se sobra abertura (estamos dentro) e existe o
-// fechamento correspondente depois, devolve o nome da tag (ex: 'v:roundrect'); senão null.
-function detectVmlWrap(html, pos){
-  // Sinal ESTRUTURAL (robusto ao tamanho dos estilos inline): o trecho é label de um botão
-  // VML se está dentro de um <a>...</a> cujo markup contém uma forma VML aberta (<v:roundrect>,
-  // <v:rect>, etc.) — a VML e o <a> são o mesmo botão (VML pro Outlook, <a> pro resto). Isso
-  // pega o caso do Eligible (id41/id42 num <a> com <v:roundrect> no fallback mso) sem os falsos
-  // positivos de contar profundidade de <v:...> pelo documento todo.
-  const before = html.slice(0, pos);
-  const aOpen = before.lastIndexOf('<a ');
-  if(aOpen === -1) return null;
-  if(before.indexOf('</a>', aOpen) !== -1) return null; // há um </a> entre o <a> e o trecho — não estamos dentro dele
-  const aCloseRel = html.slice(pos).indexOf('</a>');
-  if(aCloseRel === -1) return null;
-  const anchorHtml = html.slice(aOpen, pos + aCloseRel + 4);
-  const m = anchorHtml.match(/<v:([a-z][a-z0-9]*)\b(?![^>]*\/>)/i); // forma VML aberta (não <v:.../>)
-  return m ? 'v:' + m[1].toLowerCase() : null;
-}
 
-// Lê as tags {%translation idN%}...{%endtranslation%} de um HTML já tageado por este
-// app — usado só ao REABRIR um projeto salvo (restoreProjectContent, logo abaixo). Não
-// faz nenhuma validação de CSV/HTML incompatível: dados salvos pelo próprio app sempre
-// batem entre si, diferente de um upload manual de arquivos que pode vir de qualquer lugar.
-function parseSavedProjectHtml(html) {
-  const tagRe = /\{%translation\s+(id\d+)%\}([\s\S]*?)\{%endtranslation%\}/g;
-  const rows = [];
-  let m;
-  while((m = tagRe.exec(html)) !== null) {
-    const id = m[1];
-    const src = m[2];
-    const trimmedSrc = src.trim();
-    // Além de http(s)://, cobre protocolo-relativo (//cdn...), data URI, e caminho relativo
-    // terminando em extensão de imagem — só http(s) deixava passar batido qualquer imagem
-    // hospedada de outro jeito, perdendo a seleção/imgTag pra sempre ao reabrir o projeto.
-    const isImg = !trimmedSrc.includes(' ') && (
-      /^(?:https?:)?\/\//.test(trimmedSrc) ||
-      /^data:image\//i.test(trimmedSrc) ||
-      /\.(?:png|jpe?g|gif|webp|svg)(?:\?.*)?$/i.test(trimmedSrc)
-    );
-    let imgTag = null;
-    if(isImg) {
-      const srcIdx = html.indexOf(src.trim());
-      if(srcIdx !== -1) {
-        let s = srcIdx; while(s > 0 && html[s] !== '<') s--;
-        let e = srcIdx; while(e < html.length && html[e] !== '>') e++;
-        if(/^<img[\s>]/i.test(html.slice(s, s+5))) {
-          imgTag = html.slice(s, e+1).replace(/\{%translation\s+id\d+%\}/g, '').replace(/\{%endtranslation%\}/g, '');
-        }
-      }
-    }
-    rows.push({ id, src, isImg, imgTag, vmlTag: detectVmlWrap(html, m.index) });
-  }
-  return rows;
-}
 
 function restoreProjectContent(data, readOnly) {
   resetAll(); // zera TODO o estado global (idiomas customizados, seleção de linha, targets, origin, etc.)
@@ -7270,55 +7406,7 @@ function isRecognizedMergeTag(val) {
   return false;
 }
 
-// Junta texto misturado com merge tags (context/custom_attribute/etc) numa única string
-// traduzível: tags de controle puro (if/elsif/else/endif/unless/endunless) somem (não são
-// texto, só decidem o que aparece), content_blocks também some (catálogo/dado de negócio,
-// não é pra traduzir), mas merge tags de verdade (context/custom_attribute) ficam CRUAS no
-// texto — exatamente como aparecem no HTML, sem virar placeholder nem valor de "default".
-// Isso é o que a pessoa vê e edita no CSV/grade; o preview visual final é que troca essas
-// tags por algo legível (via replaceLiquidPlaceholders), então não precisa fazer isso aqui.
-// SEM .trim() no final de propósito — o resultado vira row.text, que csvSourceText()
-// usa como a coluna de origem do CSV exportado. row.src (o texto CRU, com o mesmo
-// espaço nas pontas que existe de verdade no HTML) é o que buildTaggedHtml() embute
-// entre {%translation id%}...{%endtranslation%}. Se aqui desse um trim() e lá não,
-// a Braze via o texto da tag no HTML diferente do texto na coluna de origem do CSV
-// (só por espaço a mais/a menos) e recusava o upload com "CSV is different from the
-// HTML" — bug real reportado por quem usa a ferramenta. Espaço nas pontas precisa
-// sobreviver aqui igual sobrevive em row.src.
-function mergeLiquidInline(str) {
-  return splitLiquid(str).map(tk => {
-    if(tk.type !== 'liquid') return tk.val;
-    if(/^\{%/.test(tk.val.trim())) return '';
-    if(!isRecognizedMergeTag(tk.val)) return '';
-    return tk.val;
-  }).join('').replace(/\s{2,}/g, ' ');
-}
 
-// Texto de origem que vai pro CSV exportado (coluna que a pessoa vê e traduz). row.src
-// precisa continuar guardando o Liquid CRU (é usado pra achar a posição exata no HTML na
-// hora de tag guear/exportar), mas isso não pode vazar pro CSV que a pessoa vê — senão
-// content_blocks/custom_attribute/context aparecem como tag crua no meio da frase. Linhas
-// recém-extraídas (extractStr) já têm o texto limpo em row.text; linhas de um projeto
-// REABERTO (restoreProjectContent) não têm esse campo, então recalcula a partir do src cru.
-// Versão CRUA (pode ter espaço nas pontas) — usada só pra calcular quanto espaço mover pra
-// FORA da tag de tradução (ver buildTaggedHtml). O que a pessoa vê/traduz e o que vai dentro
-// da tag é a versão sem as pontas (csvSourceText, logo abaixo).
-function csvSourceTextRaw(row) {
-  if(row.isImg) return row.src;
-  if(row.text) return row.text;
-  if(row.isLiquidFull || row.isLiquidDefault) return row.src || '';
-  return mergeLiquidInline(row.src||'') || row.src || '';
-}
-// Texto de origem "canônico": SEM espaço nas pontas. É o mesmo texto usado como conteúdo da
-// tag de tradução (buildTaggedHtml) E como coluna de origem do CSV (buildCsvStringForSave) —
-// os dois têm que bater exatamente (a Braze recusa se diferirem). Trimar aqui, num lugar só,
-// mantém os dois em sincronia e faz a tag abraçar o texto sem espaço sobrando
-// ({%translation%}Start free trial{%endtranslation%}, não {%translation%} Start free trial ).
-// Imagem NÃO trima (o "texto" é a URL do src, sem pontas relevantes).
-function csvSourceText(row) {
-  const raw = csvSourceTextRaw(row);
-  return row.isImg ? raw : raw.replace(/^\s+|\s+$/g, '');
-}
 
 // {% if %}/{% elsif %}/{% else %} marcam ramos MUTUAMENTE EXCLUSIVOS — só um deles é
 // exibido de cada vez. Juntar o texto de ramos diferentes numa única linha traduzível (ex.:
@@ -7376,355 +7464,8 @@ function emitBranchRows(branchTokens, res) {
   flushSeg();
 }
 
-// Convert Liquid variables to readable placeholders for display in editor/viewer
-// {{custom_attribute.${client_name} | default: 'x'}} → {client_name}
-// {{context.first_paid_plan_price}} → {first_paid_plan_price}
-// {{context.offer_trial_duration}} → {trial_duration}
-// Keeps the original Liquid intact in the src field for tagging/export
-function toLiquidPlaceholder(text) {
-  return text
-    .replace(/\{\{custom_attribute\.\$\{([^}]+)\}[^}]*\}\}/g, '{$1}')
-    .replace(/\{\{context\.([^|}]+?)(?:\s*\|[^}]*)?\}\}/g, '{$1}')
-    .replace(/\{%[-\s]*if[^%]*?%\}/g, '')
-    .replace(/\{%[-\s]*elsif[^%]*?%\}/g, '')
-    .replace(/\{%[-\s]*else[-\s]*?%\}/g, '')
-    .replace(/\{%[-\s]*endif[-\s]*?%\}/g, '')
-    .replace(/\{%[-\s]*unless[^%]*?%\}/g, '')
-    .replace(/\{%[-\s]*endunless[-\s]*?%\}/g, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-}
 
 
-function extractStr() {
-  const SKIP_PAIR  = /^(script|style|pre|code|noscript|svg)$/i;   // have open+close
-  const SKIP_VOID  = /^(meta|link|path|input|br|hr|img|area|base|col|embed|param|source|track|wbr)$/i; // self-closing
-  const STYLE      = /^(strong|b|em|i|u|s|mark|small|sup|sub)$/i;
-  const res=[]; let styleStack=[], skipDepth=0, msoDepth=0, anchorStack=[], colWidthStack=[];
-  // Verdadeiro enquanto estamos NO MEIO de um {% ... %} que começou num token de texto anterior
-  // e ainda não fechou — acontece quando uma tag HTML ou comentário no meio de uma condição
-  // Liquid (ex: {% if {{a}} == 0 <!--x--> and {{b}} %}) corta a condição em dois tokens de
-  // texto separados. Sem isso, o pedaço que sobra depois da interrupção (ex: "and {{b}} %}")
-  // parecia texto normal e virava linha traduzível por engano, mesmo sendo só sintaxe do
-  // Liquid — nunca pode ter tag de tradução dentro de um {% %}.
-  let inOpenControlTag = false;
-  const imgOccCount={}; // conta ocorrências por src — necessário pra dar uma chave ÚNICA
-  // mesmo quando o MESMO texto de src se repete (ex: <img src="{{ partner_1_logo }}"> —
-  // uma variável Liquid reatribuída via {% capture %} antes de cada seção, representando
-  // logos DIFERENTES de parceiro que só por coincidência têm o mesmo texto de src).
-
-  // {% comment %}...{% endcomment %} é o comentário do PRÓPRIO Liquid (diferente de
-  // <!-- --> do HTML) — usado em templates Braze pra notas internas/documentação
-  // (ex: explicando uma cascata de fallback de parceiro). Sem remover esse bloco
-  // antes de tokenizar, o texto interno parecia conteúdo normal e virava linha
-  // traduzível por engano, mesmo sendo só anotação pra quem mantém o template.
-  const rawForExtraction = unwrapLiquidOnlyCode(
-    S.rawHtml.replace(/\{%[-\s]*comment[-\s]*%\}[\s\S]*?\{%[-\s]*endcomment[-\s]*%\}/gi, ''));
-  // O 2º grupo da alternativa exige uma LETRA (ou "/"/"!") logo após o "<" — sem isso, um "<"
-  // qualquer virava início de tag pro tokenizador, mesmo sem ser HTML de verdade. Achado real:
-  // uma condição Liquid comparando quantidade com "<3" (ex: "{{...user_family_member_count}}
-  // <3 or ...") tinha o "<3" interpretado como abertura de tag — o tokenizador só fecha essa
-  // "tag" no PRÓXIMO ">" que encontrar, que era o de um <style> de verdade logo depois,
-  // engolindo a tag <style> inteira junto. Sem reconhecer o <style> como tag, skipDepth nunca
-  // incrementava, e o CSS de dentro dele virava linha traduzível por engano (viu-se um bloco
-  // de @media inteiro aparecer como "linha 10" no CSV de um projeto real).
-  const tokens = rawForExtraction.split(/(<!--[\s\S]*?-->|<\/?[a-zA-Z!][^>]*>)/g);
-
-  for(let ti=0; ti<tokens.length; ti++){
-    const tok=tokens[ti];
-    if(!tok) continue;
-    const isTag=(ti%2===1);
-
-    if(isTag){
-      // O "%}" que fecha um {% ... %} aberto num token de TEXTO anterior às vezes cai
-      // dentro do PRÓXIMO token de TAG/comentário (ex: um <!-- --> logo depois da
-      // condição), não no próximo texto — sem checar aqui também, inOpenControlTag
-      // nunca era limpo e ficava travado em true pro resto do documento inteiro,
-      // fazendo TODA extração dali pra frente ser silenciosamente pulada (bug real:
-      // reordenar a regex de comentário deslocou onde um "%}" caía e zerou a
-      // extração de um projeto inteiro).
-      if(inOpenControlTag){
-        if(tok.includes('%}')) inOpenControlTag = false;
-        continue;
-      }
-      // "Downlevel-revealed": <!--[if !mso]><!--> ... <!--<![endif]--> — o "<!-->" logo
-      // depois do "[if !mso]" fecha o comentário NA HORA pra qualquer cliente que respeita
-      // HTML de verdade, revelando o conteúdo entre esse marcador e o fechamento como
-      // VISÍVEL (só o Outlook, que lê o comentário condicional de verdade, esconde). Não é
-      // um bloco oculto — sem essa distinção, o conteúdo real dentro dele (ex: o botão de
-      // CTA "de verdade", fora do fallback VML só-MSO) nunca virava linha traduzível.
-      if(/<!--\[if\s+!mso\]>/i.test(tok)) { continue; }
-      // Um <!--[if mso]>...<![endif]--> inteiro numa linha só agora vira UM token só
-      // (a regex de comentário casa do "<!--" até o "-->" mais próximo, de uma vez).
-      // Sem este caso, ele batia só na checagem de abertura (msoDepth++) logo abaixo e
-      // nunca na de fechamento — o msoDepth ficava preso pra sempre em vez de voltar a
-      // 0, escondendo o resto do documento inteiro da extração (bug real encontrado:
-      // projeto inteiro lido como 0 strings/0 imagens depois de um único <!--[if mso]>
-      // auto-contido). Abre-e-fecha no mesmo token = efeito líquido zero no depth.
-      if(/<!--\[if/i.test(tok) && /<!\[endif\]/i.test(tok)) { continue; }
-      if(/<!--\[if/i.test(tok))   { msoDepth++; continue; }
-      if(/<!\[endif\]/i.test(tok)){ msoDepth=Math.max(0,msoDepth-1); continue; }
-      if(/^<!--/.test(tok)) continue;
-      if(msoDepth>0) continue;
-
-      const nameM=tok.match(/^<\/?([a-zA-Z][a-zA-Z0-9-]*)/);
-      if(!nameM) continue;
-      const tagName=nameM[1], isClose=tok[1]==='/', isSelfClose=tok.endsWith('/>');
-
-      // Rastreia em qual <a href="..."> estamos — usado abaixo pra reconhecer um
-      // ícone/botão de CTA (imagem pequena dentro de um link Liquid puro) e não
-      // tratá-lo como linha traduzível.
-      if(/^a$/i.test(tagName)){
-        if(!isClose && !isSelfClose){
-          const hrefM = tok.match(/\bhref=(?:"([^"]*)"|'([^']*)')/i);
-          anchorStack.push({ href: (hrefM ? (hrefM[1]||hrefM[2]||'') : '').trim() });
-        } else if(isClose){
-          anchorStack.pop();
-        }
-        // sem "continue" — o texto/tags dentro do <a> continuam extraídos normalmente
-      }
-
-      // Rastreia a largura (%) da coluna Braze atual (<td class="column..." width="NN%">)
-      // — usado abaixo pra diferenciar um ÍCONE genuíno de assinatura (sozinho numa
-      // coluna de 100%) de uma IMAGEM DE CONTEÚDO real (lado a lado com uma coluna de
-      // texto num layout de 2/3 colunas, ex: "baixe o app" com foto+parágrafo) — as duas
-      // podem ter a mesma largura em pixels, então só o pixel width não dava pra confiar.
-      if(/^td$/i.test(tagName)){
-        if(!isClose && !isSelfClose){
-          const wPctM = tok.match(/\bwidth=["']?([\d.]+)%/i);
-          const inherited = colWidthStack.length ? colWidthStack[colWidthStack.length-1] : 100;
-          colWidthStack.push(wPctM ? parseFloat(wPctM[1]) : inherited);
-        } else if(isClose){
-          colWidthStack.pop();
-        }
-      }
-
-      // Void elements never increment skipDepth
-      if(SKIP_VOID.test(tagName)){
-        // Capture <img> src for image localisation
-        if(tagName.toLowerCase()==='img'){
-          const srcM = tok.match(/\bsrc=(?:"([^"]*)"|'([^']*)')/i);
-          if(srcM){
-            const srcVal=(srcM[1]||srcM[2]||'').trim();
-            // Skip tiny spacers, tracking pixels, data-URIs, e sources Liquid — só entra
-            // imagem com src=URL de verdade. Um <img src="{{ partner_1_logo }}"> é
-            // conteúdo dinâmico controlado pelo Braze (content block), não uma imagem
-            // fixa que dá pra trocar por país; fica de fora do seletor.
-            const isLiquid = srcVal.startsWith('{{') || srcVal.startsWith('{%');
-            // Ícone/botão de CTA: imagem pequena (≤150px) dentro de um link cujo href
-            // é um único merge tag Liquid (ex: <a href="{{signUpURL}}"><img width="120">
-            // </a>) — normalmente a MESMA imagem em qualquer idioma (marca/botão), não
-            // conteúdo pra traduzir. CSVs de tradução costumam nem ter linha pra ela;
-            // extraí-la mesmo assim deslocava a numeração de tudo que vem depois dela.
-            const wM = tok.match(/\bwidth=["']?(\d+)/i);
-            const widthPx = wM ? parseInt(wM[1], 10) : null;
-            const topAnchor = anchorStack[anchorStack.length - 1];
-            // Só conta como ícone se também estiver numa coluna de largura TOTAL (100%) —
-            // uma imagem de conteúdo real (ex: foto de um passo, "baixe o app") divide a
-            // linha com uma coluna de texto ao lado (50%/33%) mesmo sendo pequena em px,
-            // então largura de coluna < 100% sempre desqualifica o "é só um ícone".
-            const colPct = colWidthStack.length ? colWidthStack[colWidthStack.length - 1] : 100;
-            const inMultiColumnLayout = colPct < 99.5;
-            const inLiquidLinkIcon = !!topAnchor && /^\{\{[^{}]+\}\}$/.test(topAnchor.href) &&
-              widthPx !== null && widthPx <= 150 && !inMultiColumnLayout;
-            if(srcVal && srcVal.length>5 && !srcVal.startsWith('data:') && !isLiquid && !/^\s*$/.test(srcVal) && !inLiquidLinkIcon){
-              // Chave única por OCORRÊNCIA, não só por texto de src — sem isso, imagens
-              // reais repetidas (mesmo ícone/logo usado mais de uma vez no e-mail) ficavam
-              // com uma seleção só compartilhada entre todas as ocorrências.
-              const occIndex = (imgOccCount[srcVal] = (imgOccCount[srcVal]||0) + 1) - 1;
-              res.push({text:srcVal, src:srcVal, isImg:true, imgTag:tok, imgKey: srcVal + '::' + occIndex});
-            }
-          }
-        }
-        // Preserve void tags (ex: <br>) that sit inside an open style frame (<strong>, <b>...).
-        // Without this, a stray <br> right before the closing style tag (ex:
-        // "<strong>Header:<br></strong>") gets silently dropped from the reconstructed
-        // outerKey ("<strong>Header:</strong>", missing the <br>) — which then never matches
-        // the real HTML, and buildTaggedHtml() quietly drops the whole line from the export.
-        if(styleStack.length>0) styleStack[styleStack.length-1].parts.push(tok);
-        continue;
-      }
-
-      if(SKIP_PAIR.test(tagName)){
-        if(!isClose && !isSelfClose) skipDepth++;
-        else if(isClose) skipDepth=Math.max(0,skipDepth-1);
-        continue;
-      }
-      if(skipDepth>0) continue;
-
-      if(STYLE.test(tagName)){
-        if(!isClose && !isSelfClose){
-          styleStack.push({tag:tagName.toLowerCase(),openTag:tok,
-            closeTag:'</'+tagName.toLowerCase()+'>',parts:[]});
-        } else if(isClose){
-          let fi=-1;
-          for(let si2=styleStack.length-1;si2>=0;si2--){
-            if(styleStack[si2].tag===tagName.toLowerCase()){ fi=si2; break; }
-          }
-          if(fi>=0){
-            const frame=styleStack.splice(fi)[0];
-            const inner=frame.parts.join('').trim();
-            const innerTextOnly = stripLiquid(inner);
-            const isPureControlInner = /^\s*\{%[-\s]*(?:assign|capture|endcapture|endif|endfor|endunless|endcase|case|when|render|include)\b/i.test(inner);
-            const soleInnerTokens = splitLiquid(inner);
-            const isSoleInnerMergeTag = soleInnerTokens.length === 1 && soleInnerTokens[0].type === 'liquid' && soleInnerTokens[0].val.startsWith('{{') && isRecognizedMergeTag(soleInnerTokens[0].val);
-            if(inner && inner.length>=2 && !isPureControlInner && (innerTextOnly.length>=4 || isSoleInnerMergeTag)){
-              const outerKey=frame.openTag+frame.parts.join('')+frame.closeTag;
-              const innerTokens = splitLiquid(inner);
-              const innerHasLiquid = innerTokens.some(tk=>tk.type==='liquid');
-              if(innerHasLiquid && innerTokens.length === 1){
-                // Liquid sozinho dentro da tag de estilo (sem texto de verdade ao redor) —
-                // mesmo tratamento do caso "standalone" fora de tags de estilo: o fallback
-                // vira conteúdo traduzível próprio.
-                const tk = innerTokens[0];
-                const dm = tk.val.match(/\|\s*default\s*:\s*['"]([^'"]{2,})['"]/);
-                // display: placeholder legível, só pro preview visual final. text (o que vai
-                // pro CSV/grade): a tag CRUA, exatamente como está no HTML.
-                const dispTag = dm ? dm[1] : toLiquidPlaceholder(tk.val);
-                res.push({
-                  text: tk.val, src: tk.val, display: dispTag, isStyle: false,
-                  isLiquidFull: true, liquidToken: tk.val
-                });
-              } else if(innerHasLiquid && innerTokens.some(isConditionalBoundary)){
-                // {% if/elsif/else %} dentro da tag de estilo — ramos mutuamente exclusivos,
-                // cada um vira sua própria linha (o wrapper de estilo único não corresponde a
-                // nenhum ramo específico, então essas linhas saem como texto simples).
-                for(const branchTokens of splitTokensByConditional(innerTokens)) emitBranchRows(branchTokens, res);
-              } else if(innerHasLiquid && innerTokens.some(isIgnoredMergeToken)){
-                // Tag ignorada (content_blocks...) no MEIO do texto
-                // estilizado — mesma fronteira de sempre: separa em linhas antes/depois dela.
-                // O wrapper de estilo único não corresponde a nenhum dos dois pedaços, então
-                // saem como texto simples (igual o caso do if/elsif/else acima).
-                emitBranchRows(innerTokens, res);
-              } else {
-                // Liquid misturado com texto de verdade dentro da tag de estilo SEM
-                // content_blocks (ex: um <strong>Oi {{custom_attribute.${first_name}
-                // |default:'você'}}</strong>, ou {{context.offer_trial_duration}}), OU sem
-                // Liquid nenhum — nos dois casos vira UMA linha só, com o que tiver de Liquid
-                // preservado ao pé da letra dentro de "inner" (que já existe literalmente no
-                // documento como openTag+inner+closeTag). Antes o caso misto fragmentava em
-                // várias linhas soltas; agora quem traduz vê a frase inteira de uma vez.
-                res.push({text:mergeLiquidInline(inner), src:inner, display:toLiquidPlaceholder(inner), isStyle:true,
-                  outerKey, openTag:frame.openTag, closeTag:frame.closeTag});
-              }
-            }
-            if(styleStack.length>0)
-              styleStack[styleStack.length-1].parts.push(
-                frame.openTag+frame.parts.join('')+frame.closeTag);
-          }
-        }
-      } else {
-        if(styleStack.length>0) styleStack[styleStack.length-1].parts.push(tok);
-      }
-      continue;
-    }
-
-    // Text token
-    if(msoDepth>0||skipDepth>0) continue;
-
-    let workTok = tok;
-    // Ainda estamos dentro de um {% ... %} que abriu num token anterior (uma tag HTML/
-    // comentário no meio da condição cortou o fluxo) — procura o "%}" que fecha; até achar,
-    // o token inteiro é controle puro (nunca vira linha traduzível).
-    if(inOpenControlTag){
-      const closeIdx = workTok.indexOf('%}');
-      if(styleStack.length>0) styleStack[styleStack.length-1].parts.push(workTok);
-      if(closeIdx === -1) continue;
-      inOpenControlTag = false;
-      workTok = workTok.slice(closeIdx+2);
-      if(!workTok || !workTok.trim()) continue;
-    }
-
-    const t=workTok.trim();
-    if(!t||t.length<2){
-      if(styleStack.length>0) styleStack[styleStack.length-1].parts.push(workTok);
-      continue;
-    }
-
-    // Um {% ... que ABRE mas não FECHA dentro deste mesmo token (uma tag HTML/comentário logo
-    // depois interrompe a condição, ex: "{% if {{a}} == 0 <!--x--> and {{b}} %}" vira dois
-    // tokens de texto) — trata o token inteiro como controle (conservador: melhor perder um
-    // pedacinho raro de texto real bem nesse ponto do que arriscar tagueiar sintaxe do Liquid)
-    // e lembra que continua aberto pro(s) próximo(s) token(s) de texto.
-    {
-      const openIdx = t.search(/\{%[-\s]/);
-      if(openIdx !== -1 && !t.slice(openIdx).includes('%}')){
-        inOpenControlTag = true;
-        if(styleStack.length>0) styleStack[styleStack.length-1].parts.push(workTok);
-        continue;
-      }
-    }
-
-    // Skip pure Liquid control tags (no real text possible)
-    const isPureControl = /^\s*\{%[-\s]*(?:assign|capture|endcapture|endif|endfor|endunless|endcase|case|when|render|include)/i.test(t);
-    // Measure real text after stripping all Liquid
-    const textOnly = stripLiquid(t);
-    // Uma merge tag {{...}} SOZINHA (sem texto nenhum ao redor, ex: "{{ partner_1_name }}")
-    // sempre fica com textOnly vazio (stripLiquid apaga a tag inteira) — sem essa exceção,
-    // "isEffectivelyEmpty" descartava a linha ANTES até de chegar no tratamento de Liquid
-    // sozinho logo abaixo, fazendo a tag sumir do CSV sem deixar rastro nenhum.
-    const soleTokens = splitLiquid(t);
-    const isSoleMergeTag = soleTokens.length === 1 && soleTokens[0].type === 'liquid' && soleTokens[0].val.startsWith('{{') && isRecognizedMergeTag(soleTokens[0].val);
-    // "Efetivamente vazio" = pequeno demais pra ser texto traduzível de verdade. O critério
-    // ANTIGO era só textOnly.length < 4 — mas isso descartava palavras curtas LEGÍTIMAS, como
-    // as abreviações de dia da semana "Mon/Tue/Wed/Thu/Fri/Sat/Sun" (3 letras), que ficavam de
-    // fora do CSV mesmo aparecendo no e-mail (bug reportado no "Phase 2 - Non WH+ - Email 4").
-    // Critério novo, ADITIVO (nunca descarta o que já era capturado): só é vazio se for curto
-    // (<4 chars) E tiver menos de 2 LETRAS. Assim "Mon" entra (3 letras), preços/números longos
-    // tipo "$29.99"/"100%" continuam entrando (>=4 chars), e símbolos/espaçadores soltos
-    // ("→", "•", "|", "-", um caractere só) seguem barrados.
-    const letterCount = (textOnly.match(/[A-Za-zÀ-ÖØ-öø-ÿ]/g) || []).length;
-    const isEffectivelyEmpty = textOnly.length < 4 && letterCount < 2 && !isSoleMergeTag;
-
-    if(isPureControl || isEffectivelyEmpty){
-      if(styleStack.length>0) styleStack[styleStack.length-1].parts.push(workTok);
-      continue;
-    }
-
-    if(styleStack.length>0){
-      styleStack[styleStack.length-1].parts.push(workTok);
-    } else {
-      const tokens = splitLiquid(t);
-      const hasLiquid = tokens.some(tk => tk.type==='liquid');
-
-      if(hasLiquid && tokens.length === 1){
-        // Liquid SOZINHO (nenhum texto de verdade ao redor) — ex: uma célula de conteúdo
-        // que é só {{custom_attribute.${client_name} | default: 'your company'}}. Aqui faz
-        // sentido tratar o fallback como conteúdo traduzível de verdade (é texto de negócio,
-        // tipo nome de plano/oferta), então vira sua própria linha, igual já funcionava.
-        const tk = tokens[0];
-        const dm = tk.val.match(/\|\s*default\s*:\s*['"]([^'"]{2,})['"]/);
-        // Sem "| default: '...'" (ex: {{ partner_1_name }}, uma variável de Liquid pura sem
-        // fallback) — antes disso simplesmente NADA era criado, e a tag sumia sem deixar
-        // rastro nenhum no CSV. Ainda vira sua própria linha, usando um placeholder legível
-        // como texto (não tem um "valor padrão" de verdade pra mostrar, mas pelo menos a
-        // posição fica visível e rastreável pra quem tá revisando o CSV).
-        const display = dm ? dm[1] : toLiquidPlaceholder(tk.val);
-        res.push({
-          text: tk.val, src: tk.val, display, isStyle: false,
-          isLiquidFull: true, liquidToken: tk.val
-        });
-      } else if(hasLiquid && tokens.some(isConditionalBoundary)){
-        // {% if/elsif/else %} misturado com texto — ramos mutuamente exclusivos (só um é
-        // exibido de cada vez), então cada ramo vira sua própria linha, com o merge de
-        // custom_attribute/context acontecendo só dentro do ramo em si.
-        for(const branchTokens of splitTokensByConditional(tokens)) emitBranchRows(branchTokens, res);
-      } else {
-        // Liquid MISTURADO com texto de verdade (ex: "Hi {{custom_attribute
-        // .${first_name}|default:'there'}}, welcome!" ou "Enjoy your
-        // {{context.offer_trial_duration}} days"), OU sem Liquid nenhum — vira UMA linha só,
-        // com o merge tag preservado ao pé da letra dentro do texto (src = a frase crua, com a
-        // tag Liquid junto) — a pessoa traduz a frase toda e só reposiciona a tag onde fizer
-        // sentido na gramática do idioma dela. Se tiver uma tag IGNORADA no meio (content_blocks...),
-        // emitBranchRows quebra em linhas separadas antes/depois dela
-        // em vez de deixar um buraco no meio de uma linha só.
-        emitBranchRows(tokens, res);
-      }
-    }
-  }
-
-  S.strings = res.map((s,i) => ({ ...s, id:'id'+(i+1) }));
-}
 
 function showNotif(msg, type='info', autohide=0) {
   const el = document.getElementById('vnotif');
@@ -8157,6 +7898,7 @@ function renderConfirm() {
 }
 
 function buildTable() {
+  _gridBodyId = 'gstb'; _gridWrite = null; // contexto do controlador = editor avulso (default)
   // Update mail chrome subject with template name
   const subj = document.getElementById('mailSubject');
   if(subj) subj.textContent = S.csv.name || 'Wellhub';
@@ -8225,82 +7967,12 @@ function openPendingCommentTarget() {
 function rowsHTML() {
   // MESMA ordem fixa que buildTable() usa no cabeçalho — calculada uma vez aqui e usada nas
   // duas iterações abaixo (imagem e texto), pra as colunas do corpo baterem com as do header.
-  const langsOrdered = sortLangsForDisplay(S.csv.langs);
-  return S.csv.rows.map((row,ri)=>{
-    // ── IMAGE ROW ──
-    if(row.isImg){
-      const id  = (row.id||'').replace(/"/g,'&quot;');
-      const src = (row.src||'').replace(/"/g,'&quot;');
-      const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
-      const tls = langsOrdered.map((l,ci)=>{
-        const v=(row.translations[l]||'').replace(/"/g,'&quot;');
-        const isEmpty = !(row.translations[l]||'').trim();
-        return `<td class="tl tl-cell cell-nav${isEmpty ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}">
-          <div class="tl-inner">
-            <input class="img-url" type="text" readonly placeholder="URL for ${l}…" value="${v}"
-              onfocus="switchAndHL(${ri},'${l}')"
-              oninput="setCellV(${ri},'${l}',this.value);sendHL(${ri},'${l}')"
-            />
-            ${cellCommentBtn(ri, l, row)}
-          </div>
-        </td>`;
-      }).join('');
-      const thumbSrc = src.startsWith('{{') ? '' : src;
-      return `<tr class="img-row">
-        <td class="rn">${ri+1}</td>
-        <td class="cid">${id}</td>
-        <td class="src" onclick="highlightFromTable(${ri},'${origLang||''}')">
-          <div class="img-thumb-wrap">
-            ${thumbSrc ? `<img class="img-thumb" src="${thumbSrc.replace(/"/g,'&quot;')}" onerror="this.style.display='none'">` : '<div class="img-thumb" style="display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--text3)">Liquid</div>'}
-            <span class="img-src-txt">${src.length>60?src.slice(0,57)+'…':src}</span>
-          </div>
-        </td>
-        ${tls}
-        <td class="del"><button onclick="event.stopPropagation();delRow(${ri})">×</button></td>
-      </tr>`;
-    }
-    const id  = (row.id||'').replace(/"/g,'&quot;');
-    // Mesmo texto que vai pro CSV exportado (csvSourceText) — sem isso, a grade principal
-    // (o que a pessoa realmente olha pra traduzir) mostrava o Liquid cru (content_blocks,
-    // custom_attribute, context) no meio da frase, mesmo já tendo sido "limpo" só no CSV.
-    const displaySrc = csvSourceText(row).replace(/</g,'&lt;').replace(/"/g,'&quot;');
-    const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
-    const tls = langsOrdered.map((l,ci)=>{
-      const v=(row.translations[l]||'').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-      const isEmpty = !(row.translations[l]||'').trim();
-      return `<td class="tl tl-cell cell-nav${isEmpty ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}">
-        <div class="tl-inner">
-          <textarea rows="1" readonly
-            onfocus="switchAndHL(${ri},'${l}')"
-            oninput="autoH(this);setCellV(${ri},'${l}',this.value);sendHL(${ri},'${l}')"
-          >${v}</textarea>
-          ${cellCommentBtn(ri, l, row)}
-        </div>
-      </td>`;
-    }).join('');
-    const mismatch = row._textMismatch;
-    const mismatchTitle = mismatch ? `HTML: "${String(mismatch.htmlSrc).replace(/"/g,'&quot;').slice(0,150)}" — CSV said: "${String(mismatch.csvSrc).replace(/"/g,'&quot;').slice(0,150)}"` : '';
-    const warnBadge = mismatch
-      ? `<span class="text-warn-badge" id="warnBadge-${ri}" title="${mismatchTitle}" onclick="event.stopPropagation();ackTextMismatch(${ri})">⚠</span>`
-      : '';
-    // Marcador VML na coluna Origin: quando o trecho é o label de uma forma VML (fallback
-    // Outlook, ex: botão <v:roundrect>), mostra a tag ali pra quem edita saber que é VML.
-    const vmlBadge = row.vmlTag
-      ? `<span class="vml-badge" title="Este trecho está dentro de uma forma VML (fallback Outlook): &lt;${escHtml(row.vmlTag)}&gt;">VML: ${escHtml(row.vmlTag)}</span>`
-      : '';
-    // Imagem adicionada DEPOIS que o projeto já tinha aprovação: a aprovação foi mantida (regra
-    // silenciosa), mas o item fica marcado como "novo — revisar" até uma nova aprovação.
-    const pendingBadge = (S.pendingImgIds||[]).includes(id)
-      ? `<span class="vml-badge" style="background:#fff3cd;border-color:#ffe08a;color:#8a6d3b;" title="Image added after the project was already approved. The existing approval was kept, but this item came in later and needs review.">⏳ new — review</span>`
-      : '';
-    return `<tr>
-      <td class="rn" style="width:22px!important;max-width:22px!important">${ri+1}</td>
-      <td class="cid" style="width:38px!important;max-width:38px!important">${id}</td>
-      <td class="src" onclick="highlightFromTable(${ri},'${origLang||''}')">${warnBadge}${vmlBadge}${pendingBadge}<textarea rows="1" readonly style="${row.isLiquidFull ? 'color:var(--text3);font-size:10.5px;' : ''}cursor:default;">${displaySrc}</textarea></td>
-      ${tls}
-      <td class="del"><button onclick="event.stopPropagation();delRow(${ri})">×</button></td>
-    </tr>`;
-  }).join('');
+  return renderTranslationGridBody({
+    rows: S.csv.rows,
+    langs: sortLangsForDisplay(S.csv.langs),
+    originLang: S.allC.find(c=>c.code===S.origin)?.lang || null,
+    pendingImgIds: S.pendingImgIds || [],
+  });
 }
 
 // Marca como "já conferi" o aviso de texto diferente numa linha — fica verde por
@@ -8386,10 +8058,18 @@ function setCellV(ri,l,v){
    (td.tl-cell, com data-r=linha e data-c=índice da coluna de idioma na ordem fixa
    sortLangsForDisplay). Dois modos: NAVEGAÇÃO (campo readonly; setas/Tab/Enter movem a
    seleção) e EDIÇÃO (Enter/F2/duplo-clique/digitar; setas movem o cursor no texto). */
-let _grid = { r:0, c:0, aR:0, aC:0, editing:false, editOrig:null, wired:false };
+let _grid = { r:0, c:0, aR:0, aC:0, editing:false, editOrig:null };
+// Contexto do grid ATIVO — parametriza o controlador (nav/paste/copy estilo planilha) pra servir
+// tanto o editor avulso quanto o grid de itens de campanha. Defaults = editor avulso (comportamento
+// idêntico ao de antes). O grid da campanha troca esses valores ao renderizar (ver sub-passo 3).
+// Como o controlador lê S.csv (que, durante a edição de um item de campanha, JÁ é o item — ver
+// activateCampaignItemIntoS), só o alvo do DOM (tbody/host) e a escrita (autosave/preview) diferem.
+let _gridBodyId = 'gstb';   // tbody onde estão as células
+let _gridWrite = null;      // escrita programática de uma célula (paste/delete/digitar); null = setCellV (avulso)
+let _gridWiredHosts = new Set(); // hosts já com os listeners delegados (um por grid)
 
 function gridLangs(){ return sortLangsForDisplay(S.csv.langs); }
-function gridBody(){ return document.getElementById('gstb'); }
+function gridBody(){ return document.getElementById(_gridBodyId); }
 function gridCellEl(r,c){ const b=gridBody(); return b ? b.querySelector(`td.tl-cell[data-r="${r}"][data-c="${c}"]`) : null; }
 function gridField(td){ return td ? td.querySelector('textarea,input') : null; }
 function gridDims(){ return { rows: S.csv.rows.length, cols: gridLangs().length }; }
@@ -8443,7 +8123,7 @@ function gridEnterEdit(initialChar){
   f.removeAttribute('readonly');
   if(initialChar!=null){ // digitou algo em cima da célula: substitui (igual Excel)
     f.value=initialChar;
-    setCellV(_grid.r,lang,f.value);
+    (_gridWrite||setCellV)(_grid.r,lang,f.value);
     td.classList.toggle('tl-missing', !f.value.trim());
   }
   gridReapplyHighlight();
@@ -8466,7 +8146,7 @@ function gridWriteCell(r,c,value,skipEmpty){
   if(!lang||!row) return false;
   if(skipEmpty && !String(value||'').length) return false;   // colar vazio NÃO apaga (igual Excel)
   if(isCellPasteBlocked(row,lang)) return false;              // não cola sobre célula travada
-  setCellV(r,lang,value);
+  (_gridWrite||setCellV)(r,lang,value);
   const td=gridCellEl(r,c); if(td){ const f=gridField(td); if(f) f.value=value; td.classList.toggle('tl-missing', !String(value||'').trim()); }
   return true;
 }
@@ -8597,16 +8277,18 @@ function gridOnDblclick(e){
   gridEnterEdit(null);
 }
 
-// Liga os listeners UMA vez, delegados no #gst (persiste entre re-renders do corpo).
-function wireGridController(){
-  if(_grid.wired) return;
-  const host=document.getElementById('gst'); if(!host) return;
+// Liga os listeners UMA vez por HOST, delegados (persistem entre re-renders do corpo). hostId
+// default = #gst (editor avulso); o grid da campanha passa o seu próprio host (ver sub-passo 3).
+function wireGridController(hostId){
+  hostId = hostId || 'gst';
+  if(_gridWiredHosts.has(hostId)) return;
+  const host=document.getElementById(hostId); if(!host) return;
   host.addEventListener('keydown', gridOnKeydown, true);
   host.addEventListener('paste', gridOnPaste, true);
   host.addEventListener('copy', gridOnCopy, true);
   host.addEventListener('mousedown', gridOnMousedown, true);
   host.addEventListener('dblclick', gridOnDblclick, true);
-  _grid.wired=true;
+  _gridWiredHosts.add(hostId);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -9481,330 +9163,11 @@ const FOOTER_PLACEHOLDER_HTML = `
 </table>
 </div>`;
 
-// Detecta {{content_blocks.${...Footer...}}} (qualquer variação de nome/filtro que
-// contenha "footer") e troca por um retrato fiel de como o footer real do Wellhub
-// aparece — sem isso, o preview mostrava só a tag Liquid crua ou um espaço em branco,
-// já que esse conteúdo só existe de verdade dentro do Braze, nunca no HTML exportado.
-// Duas (ou mais) chamadas consecutivas de content block de footer viram UM footer só.
-function renderFooterPlaceholder(html) {
-  const footerCbRe = /(\{\{\s*content_blocks\.\$\{[^}]*footer[^}]*\}[^}]*\}\}\s*)+/gi;
-  return html.replace(footerCbRe, FOOTER_PLACEHOLDER_HTML);
-}
 
-// Toggle SÓ de teste/visualização (não muda o HTML tageado, nem o CSV — só o preview em
-// tela): o preview normalmente nunca avalia a condição de um {% if/elsif/else %} de verdade,
-// então isso resolve manualmente cada bloco if/elsif/else/endif (e unless/endunless),
-// escolhendo UM branch — 'if' pega sempre o primeiro (o if/unless), 'else' pega sempre o
-// último (o else, se existir; senão cai pro último elsif; senão cai pro próprio if).
-// Suporta blocos aninhados via recursão. 'if' é sempre o padrão do projeto.
-// Cada branch escolhido vem com uma tag discreta (IF/ELSE) logo ACIMA do texto — não mostra
-// o outro branch (só existia no modo "Both", removido), mas deixa claro que aquele trecho é
-// conteúdo condicional, e qual lado está sendo mostrado.
-// revealRow (opcional): id de uma linha a REVELAR. Quando passado, CADA condicional escolhe,
-// independentemente, o ramo que contém {%translation revealRow%} (se algum contiver) — senão
-// usa o índice `mode`. Isso cobre condicionais ANINHADAS: um índice global único mudaria o
-// outer e o inner juntos e nunca mostraria "outer=elsif E inner=if" ao mesmo tempo; com o
-// revealRow, o inner e o outer se alinham sozinhos pro ramo que contém a linha (o revealRow é
-// visível pra toda a recursão, então cada nível se resolve pro lado certo). É assim que clicar
-// numa linha SEMPRE a revela, esteja ela aninhada onde estiver.
-function resolveConditionalBranch(html, mode, revealRow){
-  const revealMark = revealRow ? `{%translation ${revealRow}%}` : null;
-  const TAG_RE = /\{%[-\s]*(if|elsif|else|endif|unless|endunless)\b([^%]*)%\}/gi;
-  const tokens = [];
-  let last = 0, m;
-  while((m = TAG_RE.exec(html))){
-    if(m.index > last) tokens.push({t:'text', v: html.slice(last, m.index)});
-    tokens.push({t:'tag', k: m[1].toLowerCase()});
-    last = m.index + m[0].length;
-  }
-  if(last < html.length) tokens.push({t:'text', v: html.slice(last)});
 
-  let i = 0;
-  // Consome texto (e blocos if/unless aninhados, resolvidos recursivamente) até achar um
-  // token de "parada" (else/elsif/endif/endunless) ou acabarem os tokens — não consome o
-  // token de parada, quem chamou decide o que fazer com ele.
-  function parseSequence(){
-    let out = '';
-    while(i < tokens.length){
-      const tok = tokens[i];
-      if(tok.t === 'text'){ out += tok.v; i++; continue; }
-      if(tok.k === 'if' || tok.k === 'unless'){
-        i++;
-        // Está dentro de uma tag HTML aberta (ex: {% if %} DENTRO do src de um <img>)?
-        // Aí NÃO pode injetar o rótulo <br>/<span> — ele quebraria a tag e os atributos
-        // (width/height/alt/style...) vazariam como texto no preview. Nesse caso resolve
-        // só pro texto do ramo. Balanço simples: um "<" sem ">" depois = dentro de tag.
-        const insideTag = out.lastIndexOf('<') > out.lastIndexOf('>');
-        out += parseIfBlock(insideTag);
-        continue;
-      }
-      return { out, stop: tok.k };
-    }
-    return { out, stop: null };
-  }
-  // Já consumiu o {% if %}/{% unless %} de abertura — resolve até o {% endif/endunless %}
-  // correspondente e devolve o texto do branch escolhido pelo "mode", com a tag IF/ELSE
-  // prefixada (própria etiqueta do "mode", não do nome real do branch — bate com o que a
-  // pessoa clicou no toggle, mesmo num "else" que na verdade caiu de volta pro if por falta
-  // de um {% else %} de verdade). Se `insideTag`, devolve só o texto do branch, sem o rótulo
-  // (não dá pra pôr markup dentro de um atributo).
-  function parseIfBlock(insideTag){
-    const branches = [];
-    let stop = null;
-    for(;;){
-      const seq = parseSequence();
-      branches.push(seq.out);
-      stop = seq.stop;
-      if(stop === 'elsif' || stop === 'else'){ i++; continue; }
-      break; // endif/endunless, ou acabou sem fechar (HTML malformado) — desiste aqui
-    }
-    if(stop === 'endif' || stop === 'endunless') i++;
-    // mode agora é um ÍNDICE de ramo (0=if, 1=primeiro elsif, ..., último=else). Cada
-    // condicional tem seu próprio nº de ramos; o índice global é limitado ao último ramo desta
-    // condicional (Math.min) — assim um toggle em "elsif 2" mostra o else de uma condicional que
-    // só tem if/else, sem quebrar. ANTES só existia if(=primeiro) e else(=último): todo texto
-    // num {% elsif %} do meio ficava inalcançável no preview (essa era a raiz de "texto não é
-    // lido no preview" com os e-mails de N vias do Eligible).
-    // Se estamos revelando uma linha e algum ramo DESTE condicional a contém, escolhe esse ramo
-    // (independente do índice global) — é o que faz linhas em ramos aninhados sempre aparecerem.
-    let chosenIdx = Math.min(mode|0, branches.length - 1);
-    if(revealMark){
-      const hit = branches.findIndex(b => b.indexOf(revealMark) !== -1);
-      if(hit !== -1) chosenIdx = hit;
-    }
-    const chosen = branches[chosenIdx];
-    if(insideTag) return chosen;
-    const label = chosenIdx === 0 ? 'IF'
-      : (chosenIdx === branches.length - 1 ? 'ELSE' : 'ELSIF');
-    // Rótulo INLINE, logo na frente do texto do ramo (sem <br> em volta — eles criavam um vão
-    // vertical enorme, ex: dentro de um botão o "IF" ficava numa linha e o texto embaixo).
-    return `<span class="mlt-cond-tag">${label}</span> ${chosen}`;
-  }
 
-  return parseSequence().out;
-}
 
-// Nº MÁXIMO de ramos numa mesma condicional do HTML (1 = sem elsif/else; 2 = if/else;
-// 3 = if/elsif/else; etc). Usado pra saber quantas posições o toggle de ramo precisa oferecer,
-// e até onde revealCondBranchForRow/verifyAllRowsPositionable devem procurar. Conta por bloco
-// {% if/unless %} (1 + qtd de elsif/else até o endif correspondente), respeitando aninhamento.
-function maxCondBranchCount(html){
-  if(!html) return 1;
-  const TAG_RE = /\{%[-\s]*(if|elsif|else|endif|unless|endunless)\b[^%]*%\}/gi;
-  let m, stack = [], max = 1;
-  while((m = TAG_RE.exec(html))){
-    const k = m[1].toLowerCase();
-    if(k === 'if' || k === 'unless'){ stack.push(1); }
-    else if(k === 'elsif' || k === 'else'){
-      if(stack.length){ stack[stack.length-1]++; if(stack[stack.length-1] > max) max = stack[stack.length-1]; }
-    } else if(k === 'endif' || k === 'endunless'){ stack.pop(); }
-  }
-  return max;
-}
 
-// CSS da tag if/else (.mlt-cond-tag/.mlt-cond-br, ver resolveConditionalBranch) e do aviso
-// "Footer preview — not selectable" — precisa ser injetada DENTRO de cada documento de
-// iframe que usa esses blocos, já que o CSS da página pai não atravessa pra dentro de um
-// iframe com seu próprio HTML (srcdoc/blob). Usada no preview principal, no preview da tela
-// de selecionar imagens e na miniatura do Dashboard — mesmo visual nos três.
-function injectCondStyle(html){
-  const style = `<style>
-.mlt-cond-tag{display:inline-block;font-size:9px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;padding:1px 5px;margin:0 2px;border-radius:3px;font-family:-apple-system,sans-serif;color:#8a8a82;background:#e8e8e5;border:1px solid #d8d8d2;white-space:nowrap;vertical-align:middle;}
-.mlt-footer-block, .mlt-footer-block *{pointer-events:none!important;cursor:not-allowed!important;user-select:none!important;}
-.mlt-footer-block{position:relative;}
-.mlt-footer-block::before{content:"Footer preview — not selectable";position:absolute;top:6px;left:50%;transform:translateX(-50%);background:rgba(20,20,40,.72);color:#fff;font:700 9px/1 -apple-system,sans-serif;letter-spacing:.03em;text-transform:uppercase;padding:4px 9px;border-radius:20px;pointer-events:none;z-index:20;white-space:nowrap;}
-</style>`;
-  return html.includes('</head>') ? html.replace('</head>', style + '</head>') : style + html;
-}
-
-// Builds the final rendered HTML string for a given lang (or the origin, when lang is falsy/matches origin).
-// Extracted from refreshViewer so the same rendering logic can be reused by the Approval grid,
-// which needs one rendered frame per country instead of a single viewer frame.
-// Substitui Liquid merge tags conhecidas por placeholders curtos e legíveis, em QUALQUER
-// lugar que renderize o e-mail (previewer principal, Approval View, miniatura do card no
-// Dashboard) — centralizado aqui pra não ter que lembrar de replicar cada regra nova em
-// mais de um lugar. Sem isso, tags Liquid cruas apareciam como texto enorme sem quebra de
-// linha, estourando o layout onde quer que o e-mail fosse exibido.
-function replaceLiquidPlaceholders(html){
-  // aceita tanto "content_block" (singular) quanto "content_blocks" (plural), já que
-  // e-mails diferentes usam as duas grafias pra referenciar o mesmo tipo de bloco.
-  html=html.replace(/\{\{content_blocks?\.\$\{gym_quantity\}[^}]*\}\}/g, 'XXX');
-  html=html.replace(/\{\{content_blocks?\.\$\{app_quantity\}[^}]*\}\}/g, 'XXX');
-  html=html.replace(/\{\{context\.first_paid_plan_price\}\}/g, '{first_paid_plan_price}');
-  html=html.replace(/\{\{context\.offer_trial_duration\}\}/g, '{trial_duration}');
-  html=html.replace(/\{\{content_blocks?\.\$\{currency\}[^}]*\}\}/g, '{currency}');
-  html=html.replace(/\{\{custom_attribute\.\$\{([^}]+)\}[^}]*\}\}/g, '{$1}');
-  // Rede de segurança: qualquer OUTRA Liquid merge tag com filtro "| default: '...'" que
-  // não caiu em nenhuma regra específica acima (ex: {{rating | default: '4.5'}}, ou uma
-  // variação de sintaxe de content_block que a gente ainda não tinha visto).
-  html=html.replace(/\{\{\s*([^{}]+?)\s*\|\s*default:\s*['"][^'"]*['"]\s*\}\}/g, (_, expr) => {
-    const dollarMatch = expr.match(/\$\{([^}]+)\}/);
-    const name = (dollarMatch ? dollarMatch[1] : expr.split('.').pop()).trim();
-    return '{' + name + '}';
-  });
-  html=html.replace(/\{\{content_blocks?\.\$\{catalog_global_all_partners_data\}[^}]*\}\}/g, '');
-  html=html.replace(/\{\{\s*partner_(\d+)\.name\s*\}\}/g, 'Partner $1');
-  html=html.replace(/\{\{\s*partner_(\d+)\.logo_url\s*\}\}/g, '');
-  // Rede de segurança final: QUALQUER content_blocks que sobrou (nome novo que a gente ainda
-  // não tinha visto, sem "| default:") — sem isso, a tag Liquid inteira aparecia crua no
-  // preview (texto longo tipo "{{content_blocks.${SignupLinkV2}}}"), quebrando o layout em
-  // vez de virar um placeholder curto e discreto como os outros.
-  html=html.replace(/\{\{\s*content_blocks?\.\$\{([^}]+)\}[^}]*\}\}/g, '{$1}');
-  // Mesma rede de segurança, agora pra QUALQUER context.* (ou custom_attribute sem "${}")
-  // que sobrou sem regra específica — ex: {{context.last_free_plan_name}}.
-  html=html.replace(/\{\{\s*context\.([a-zA-Z0-9_]+)\s*\}\}/g, '{$1}');
-  html=html.replace(/\{\{\s*custom_attribute\.([a-zA-Z0-9_]+)\s*\}\}/g, '{$1}');
-
-  // SÓ VISUAL, pra quem está aprovando — nunca muda o HTML/CSV reais (essa função só
-  // roda no preview, depois das duas passadas de Pass A/B). Às vezes o template original
-  // já vem sem espaço entre um texto e a tag Liquid (ex: "apps:{{content_blocks...}}"),
-  // porque na Braze de verdade aquilo vira um número colado ali mesmo (ex: "apps:47").
-  // Isso é fiel ao HTML real, mas GRUDADO com o placeholder amigável (ex: "apps:XXX")
-  // fica confuso pra revisar visualmente — insere um espaço só aqui, só pra leitura.
-  // O texto visível ("apps:") e o placeholder (ex: "XXX") quase sempre têm uma fronteira
-  // de tag HTML entre eles no string final (ex: "apps:</span></strong>XXX", por causa do
-  // <span data-tid> do Pass A/B) — sem pular essas tags na checagem, "apps:" e "XXX"
-  // pareciam não-adjacentes pro regex mesmo estando visualmente coladas na tela. O grupo
-  // do meio (qualquer sequência de tags) é preservado como está; só o espaço entra
-  // logo antes/depois do placeholder em si. Inclui "}" no gatilho também — dois
-  // placeholders colados um no outro (ex: "{first_paid_plan_price}{currency}", comum
-  // quando o preço aparece direto colado no content_block de moeda) precisam do mesmo
-  // espaço visual entre eles.
-  html = html.replace(/([a-zA-Z0-9:,;}])((?:<[^>]*>)*)(XXX|\{[a-zA-Z0-9_]+\}|Partner \d+)/g, '$1$2 $3');
-  // Do lado de DEPOIS só letra/dígito — pontuação (,;:.) colada logo após o placeholder é
-  // tipograficamente normal (ex: "XXX," ou "XXX:"), não precisa de espaço ANTES dela.
-  html = html.replace(/(XXX|\{[a-zA-Z0-9_]+\}|Partner \d+)((?:<[^>]*>)*)([a-zA-Z0-9])/g, '$1 $2$3');
-
-  return html;
-}
-
-function buildPreviewHtml(lang, revealRow){
-  const origLang=S.allC.find(c=>c.code===S.origin)?.lang;
-  const isOrig=!lang||lang===origLang;
-  // revealRow: linha a forçar visível (cada condicional escolhe o ramo que a contém). Default =
-  // S.condRevealRow (setado ao clicar/focar uma linha). Garante que clicar em QUALQUER linha a
-  // revele, mesmo aninhada, independente do índice do toggle.
-  if(revealRow === undefined) revealRow = S.condRevealRow || null;
-  // ─── Preview ANCORADO A PARTIR DO HTML TAGUEADO (fonte autoritativa) ───────────────────────
-  // "Texto não é lido no preview" voltava toda hora porque o preview RE-ENCONTRAVA cada texto
-  // por conta própria (um "Pass A") e divergia do extractStr/buildTaggedHtml a cada transformação
-  // nova — rótulo IF/ELSE injetado, ramo resolvido, entidade/espaço, chaves que se sobrepõem
-  // como substring. Eram dois pipelines independentes obrigados a achar a MESMA posição sozinhos.
-  // Agora o preview reusa buildTaggedHtml(silent): ele já envolve TODA linha (texto, imagem,
-  // Liquid, estilo) com {%translation idN%}...{%endtranslation%} na posição EXATA — é o mesmo
-  // artefato que sobe pro Braze, o único lugar que precisa (e sabe) ancorar. O preview só:
-  //   1) resolve a condicional (o ramo escolhido mantém suas tags; o inativo some junto),
-  //   2) trata os {% assign %},
-  //   3) troca cada tag de tradução por <span data-tid="idN"> com o texto de EXIBIÇÃO.
-  // Zero re-ancoragem própria = zero divergência. O que não aparece é só ramo inativo/VML, que
-  // o revealCondBranchForRow revela ao clicar. (silent: não dispara o toast de "linhas fora".)
-  const byId = {}; S.csv.rows.forEach(r => byId[r.id] = r);
-  let html = buildTaggedHtml(true);
-
-  // {% comment %} do Liquid não é escondido pelo navegador (≠ <!-- -->) — remove pra não vazar.
-  html = html.replace(/\{%[-\s]*comment[-\s]*%\}[\s\S]*?\{%[-\s]*endcomment[-\s]*%\}/gi, '');
-  html = renderFooterPlaceholder(html);
-  html = resolveConditionalBranch(html, S.condBranch|0, revealRow);
-  // {% assign partner_X_id %} some (declarativo, nunca visível); os demais viram label curto.
-  html = html.replace(/\{%[-\s]*assign\s+partner_\d+_id\s*=[^%]*?%\}/g, '');
-  html = html.replace(/\{%[-\s]*assign\s+([A-Za-z0-9_.]+)\s*=[^%]*?%\}/g,
-    (m, name) => `<span class="mlt-cond-tag">{assign.${name}}</span>`);
-
-  // Imagens: buildTaggedHtml põe a tag DENTRO do src (src="{%translation idN%}URL{%endtranslation%}").
-  // Converte a <img> inteira num <span data-tid class=braze-img-wrap>, trocando o src pelo de
-  // exibição (tradução da imagem por idioma, se houver). Feito ANTES da troca genérica de texto,
-  // senão a tag dentro do atributo viraria um <span> dentro do src (quebrado).
-  html = html.replace(/<img\b[^>]*>/gi, (tag) => {
-    const m = tag.match(/\bsrc=(["'])\{%translation\s+(id\d+)%\}([\s\S]*?)\{%endtranslation%\}\1/i);
-    if(!m) return tag;
-    const id = m[2], row = byId[id]; if(!row) return tag;
-    const displaySrc = ((!isOrig && row.translations[lang]) ? row.translations[lang] : (row.src || m[3])).trim();
-    const newTag = tag.replace(/\bsrc=(["'])\{%translation\s+id\d+%\}[\s\S]*?\{%endtranslation%\}\1/i, `src="${displaySrc}"`);
-    return `<span data-tid="${id}" class="braze-img-wrap">${newTag}</span>`;
-  });
-
-  // Texto/estilo/Liquid: cada {%translation idN%}INNER{%endtranslation%} vira <span data-tid>.
-  // display = tradução do idioma se houver; senão o próprio INNER — que é EXATAMENTE o texto
-  // canônico que o buildTaggedHtml colocou (csvSourceText já curlificado, ou a expressão Liquid
-  // pra linhas isLiquidFull). Usar o INNER (em vez de row.text/row.src) evita duplicar o espaço
-  // das pontas, que o buildTaggedHtml já deixou FORA da tag. Merge tags que sobrarem no display
-  // viram texto legível no replaceLiquidPlaceholders(), logo abaixo, como antes.
-  html = html.replace(/\{%translation\s+(id\d+)%\}([\s\S]*?)\{%endtranslation%\}/g, (m, id, inner) => {
-    const row = byId[id];
-    if(!row) return inner;
-    const displayText = (!isOrig && row.translations[lang])
-      ? curlifyApostrophes(row.translations[lang])
-      : inner;
-    return `<span data-tid="${id}">${displayText}</span>`;
-  });
-
-  // Só DEPOIS das duas passadas (Pass A/B) é que troca os merge tags Liquid por placeholders
-  // legíveis — se rodasse antes, o texto de uma linha que tem um merge tag EMBUTIDO no meio
-  // (ex: "Hi {{custom_attribute.${first_name}|default:'there'}}, welcome!") deixava de bater
-  // literalmente com row.src na hora do Pass A encontrar onde marcar o __TID_n__, e a
-  // linha inteira ficava sem a tradução aplicada (mostrava sempre o texto de origem cru).
-  // Rodando por último, cobre tanto o texto que sobrou fora de qualquer linha traduzível
-  // quanto qualquer merge tag que a própria tradução carregue dentro dela.
-  html = replaceLiquidPlaceholders(html);
-
-  // CSS das badges de if/else/unless injetada no <head> (ou no início, se não houver <head>) —
-  // precisa viver dentro do próprio documento do iframe, já que os <span> ficam no conteúdo.
-  html = injectCondStyle(html);
-
-  // Toda <img> que falhar ao carregar (URL quebrada, ou um merge tag Liquid que nunca foi
-  // resolvido, ex: {{content_blocks.${x}}} usado direto como src) vira uma caixinha "IMG" do
-  // MESMO tamanho da imagem original — em vez do ícone de imagem quebrada do navegador.
-  const imgFallbackScript = (() => {
-    const sc = '<scr' + 'ipt>', scEnd = '</scr' + 'ipt>';
-    return sc + `(function(){
-      function fallback(img){
-        var w = img.getAttribute('width') || img.offsetWidth || 80;
-        var h = img.getAttribute('height') || img.offsetHeight || 80;
-        var box = document.createElement('div');
-        box.textContent = 'IMG';
-        box.style.cssText = 'width:'+w+'px;height:'+h+'px;display:flex;align-items:center;justify-content:center;'+
-          'background:#e8e8e5;color:#8a8a82;font:700 11px -apple-system,sans-serif;letter-spacing:.04em;'+
-          'border:1px dashed #b8b8b0;box-sizing:border-box;';
-        if(img.parentNode) img.parentNode.replaceChild(box, img);
-      }
-      function wire(img){
-        if(img.complete && img.naturalWidth === 0) { fallback(img); return; }
-        img.addEventListener('error', function(){ fallback(img); }, {once:true});
-      }
-      document.querySelectorAll('img').forEach(wire);
-    })()` + scEnd;
-  })();
-  html = html.includes('</body>') ? html.replace('</body>', imgFallbackScript + '</body>') : html + imgFallbackScript;
-
-  // Desativa qualquer link no preview — é só uma pré-visualização, ninguém deveria
-  // conseguir navegar clicando num "Sign up" / "Explore for free" / etc. sem querer.
-  // Só bloquear o click() não bastava: um <a href> ainda mostra cursor de mão e, mais
-  // grave, iniciar um arraste (mousedown+drag) EM CIMA de um link faz o navegador
-  // disparar o gesto nativo de "arrastar o link" (ghost do link/URL) em vez de
-  // selecionar o texto — por isso não dava pra selecionar o texto dos links. Remove
-  // o href de verdade (não é mais um link de fato) e força seleção de texto em tudo.
-  const disableLinksScript = (() => {
-    const sc = '<scr' + 'ipt>', scEnd = '</scr' + 'ipt>';
-    return sc + `(function(){
-      var st = document.createElement('style');
-      st.textContent = '*{-webkit-user-select:text!important;user-select:text!important;} a,button,[onclick]{cursor:text!important;-webkit-user-drag:none!important;}';
-      (document.head||document.documentElement).appendChild(st);
-      document.querySelectorAll('a[href]').forEach(function(a){
-        a.removeAttribute('href');
-        a.removeAttribute('target');
-        a.setAttribute('draggable','false');
-      });
-      document.addEventListener('dragstart', function(ev){ ev.preventDefault(); });
-      document.addEventListener('click', function(ev){
-        var a = ev.target.closest && ev.target.closest('a,button');
-        if(a){ ev.preventDefault(); ev.stopPropagation(); }
-      }, true);
-    })()` + scEnd;
-  })();
-  html = html.includes('</body>') ? html.replace('</body>', disableLinksScript + '</body>') : html + disableLinksScript;
-
-  return html;
-}
 
 let _vfLoadSeq = 0;
 let _pendingHL = null; // {ri, lang} — highlight a aplicar assim que o próximo load do iframe terminar
@@ -9966,13 +9329,6 @@ function setCondBranch(idx){
   refreshViewer();
 }
 
-// Rótulo de cada posição do toggle de ramo: 0=If, último=Else, meio=Elsif (numerado se houver
-// mais de um). n = total de posições (maxCondBranchCount).
-function condBranchLabel(i, n){
-  if(i === 0) return 'If';
-  if(i === n - 1) return 'Else';
-  return n > 3 ? 'Elsif ' + i : 'Elsif';
-}
 
 // Renderiza os botões do toggle de ramo dinamicamente conforme o nº máximo de ramos do HTML
 // atual (if/elsif.../else). Sem condicional de N vias (max<=1), esconde o toggle. Um estado
@@ -10055,278 +9411,10 @@ function verifyAllRowsPositionable() {
 }
 
 
-// Diz se a posição "before" (texto até o ponto candidato) está dentro de um <style>/<script>
-// ainda aberto. buildTaggedHtml/buildPreviewHtml fazem busca de texto simples no documento
-// inteiro — sem isso, uma palavra comum (ex: "and") que também aparece dentro de um <style>
-// (tipo num @media query) podia casar com essa ocorrência ERRADA em vez da linha de conteúdo
-// real, já que <style>/<script> não tem tratamento especial nessa busca linear.
-// Varre o HTML numa ÚNICA passada sequencial — mesmo tokenizador e mesma lógica de
-// profundidade que extractStr() já usa pra decidir o que pular — e devolve os trechos
-// [start,end) que NUNCA podem receber uma tag {%translation%}: o CONTEÚDO de
-// <script>/<style>/<pre>/<code>/<noscript>/<svg> (código/CSS/markup, nunca texto
-// traduzível) e blocos condicionais do Outlook (<!--[if mso]>...<![endif]-->, exceto a
-// variante "downlevel-revealed" <!--[if !mso]>, que é visível pra todo mundo).
-//
-// Substitui a antiga isInsideSkippedTag()/stripClosedSkippedBlocks(), que recontava
-// "quantos <style>/<script> abriram" do ZERO do documento a cada posição candidata — uma
-// contagem cumulativa É FRÁGIL por natureza: qualquer menção solta a "<style>" ou
-// "<script>" em QUALQUER lugar antes (mais comumente dentro de um comentário HTML comum,
-// tipo uma nota de dev dizendo "remove this <style> block") desbalanceava a contagem pro
-// resto do documento INTEIRO, fazendo toda linha depois daquele ponto parecer "ainda
-// dentro de um bloco não fechado" e ser silenciosamente descartada do export (bug real,
-// achado num projeto de verdade — 10 de 11 linhas sumiam do tageamento por causa de UMA
-// frase assim no meio do e-mail).
-//
-// Aqui, como o tokenizador separa comentários (<!-- ... -->) como um token PRÓPRIO, isolado
-// — igual extractStr() já faz — o texto de dentro de um comentário comum nunca chega a ser
-// examinado feito nome de tag. A classe inteira desse bug fica impossível, não só o caso
-// específico já visto.
-function computeProtectedRanges(html) {
-  const SKIP_PAIR = /^(script|style|pre|code|noscript|svg)$/i;
-  const ranges = [];
-  // Exige letra/"/"/"!" logo após "<" (mesmo motivo do tokenizador em extractStr — evita que
-  // um "<3"/"<=" solto numa condição Liquid engula a próxima tag real).
-  const tokens = html.split(/(<!--[\s\S]*?-->|<\/?[a-zA-Z!][^>]*>)/g);
-  let pos = 0, msoDepth = 0, msoStart = -1, skipDepth = 0, skipStart = -1;
-  for(const tok of tokens){
-    const tokStart = pos;
-    pos += tok.length;
-    if(!tok || tok[0] !== '<') continue;
 
-    // Mesma ordem e mesma distinção de extractStr(): downlevel-revealed é visível (não
-    // conta como oculto). Um <!--[if mso]>...<![endif]--> auto-contido no MESMO token tem
-    // efeito líquido zero na PROFUNDIDADE (extractStr só precisa disso, pra não travar
-    // msoDepth) — mas o CONTEÚDO desse token continua escondido de verdade, e ainda
-    // precisa entrar como range protegido; extractStr não precisa fazer isso porque ele
-    // nunca olha pra dentro de um token de comentário de qualquer jeito.
-    if(/<!--\[if\s+!mso\]>/i.test(tok)) continue;
-    if(/<!--\[if/i.test(tok) && /<!\[endif\]/i.test(tok)){ ranges.push([tokStart, tokStart + tok.length]); continue; }
-    if(/<!--\[if/i.test(tok)){
-      if(msoDepth === 0) msoStart = tokStart;
-      msoDepth++;
-      continue;
-    }
-    if(/<!\[endif\]/i.test(tok)){
-      msoDepth = Math.max(0, msoDepth - 1);
-      if(msoDepth === 0 && msoStart !== -1){ ranges.push([msoStart, tokStart + tok.length]); msoStart = -1; }
-      continue;
-    }
-    // Comentário HTML comum (<!-- -->): o CONTEÚDO nunca renderiza nem pode receber uma tag de
-    // tradução. Protege o range inteiro — sem isso, o posicionador de buildTaggedHtml (que busca
-    // o texto da linha por indexOf) cravava o {%translation idN%} numa ocorrência do texto que
-    // vivia DENTRO de um comentário divisor de seção (ex: "<!-- SECTION: Not a gym person? -->"),
-    // em vez da ocorrência de conteúdo real. Resultado: a linha "não mudava no previewer" (um
-    // <span data-tid> dentro de <!-- --> não é elemento de verdade, querySelector não acha) e o
-    // id saía duplicado no export. Protegendo o comentário, o texto de conteúdo real é o próximo
-    // alvo válido. (Condicionais mso/VML já foram tratadas acima — aqui só cai comentário comum.)
-    if(/^<!--/.test(tok)){ ranges.push([tokStart, tokStart + tok.length]); continue; }
-    if(msoDepth > 0) continue;
 
-    const nameM = tok.match(/^<\/?([a-zA-Z][a-zA-Z0-9-]*)/);
-    if(!nameM) continue;
-    const tagName = nameM[1];
-    const isClose = tok[1] === '/';
-    const isSelfClose = tok.endsWith('/>');
-    if(!SKIP_PAIR.test(tagName)) continue;
 
-    if(!isClose && !isSelfClose){
-      if(skipDepth === 0) skipStart = tokStart;
-      skipDepth++;
-    } else if(isClose){
-      skipDepth = Math.max(0, skipDepth - 1);
-      if(skipDepth === 0 && skipStart !== -1){ ranges.push([skipStart, tokStart + tok.length]); skipStart = -1; }
-    }
-  }
-  // Abertura de bloco (skip-pair OU mso) que NUNCA fecha: NÃO protege até o fim do
-  // documento. Protegia antes ("defensivo pra HTML malformado"), mas isso escondia conteúdo
-  // real: no previewer, resolveConditionalBranch() dropa o ramo inativo da condicional e
-  // pode levar junto o </code> (ou </style>) de fechamento, deixando um <code> órfão aberto
-  // — daí TUDO daquele ponto até o EOF (incluindo o outro ramo, ex: id42 do Eligible) virava
-  // "região protegida" e o Pass A do preview não conseguia posicionar aqueles trechos.
-  // Melhor deixar uma abertura órfã proteger NADA (pior caso: um data-tid cai dentro de um
-  // bloco de code/style solto — inofensivo) do que esconder metade do e-mail.
-  return ranges.sort((a,b) => a[0]-b[0]);
-}
 
-function isPosProtected(pos, ranges){
-  for(const [start,end] of ranges){
-    if(start > pos) break; // ranges vêm ordenados — nenhum range depois pode conter pos
-    if(pos < end) return true;
-  }
-  return false;
-}
-
-// "before" termina bem no meio de um {% ... %} ainda sem fechar (ex: a palavra "and" também
-// aparece como operador booleano dentro de {% if x and y %}) — olha só a ÚLTIMA ocorrência
-// de cada marcador antes de "pos", não uma contagem cumulativa desde o início do documento:
-// um {% ou %} qualquer de uma tag JÁ fechada bem antes não pode mais "vazar" e confundir uma
-// posição bem mais à frente (mesma classe de fragilidade que motivou trocar
-// isInsideSkippedTag() por computeProtectedRanges() acima).
-function isInsideOpenLiquidTag(before){
-  return before.lastIndexOf('{%') > before.lastIndexOf('%}');
-}
-
-/* ═══════════ HTML EXPORT MODAL ═══════════ */
-function buildTaggedHtml(silent) {
-  if(!S.rawHtml) return '';
-  function replaceFirst(str, search, replacement){
-    const i = str.indexOf(search); if(i === -1) return str;
-    return str.slice(0,i) + replacement + str.slice(i+search.length);
-  }
-  // Mesma normalização da extração: desembrulha <code> puramente-Liquid ANTES de tagueiar, senão
-  // o src da linha ("Enjoy your first {{...}} days on us.", já sem o <code>) não seria encontrado
-  // no HTML (que ainda teria o <code> no meio). Assim a frase inteira é achada e tagueada como
-  // uma unidade só, com a merge tag dentro. O <code> some do HTML tagueado exportado — aceitável:
-  // ele só dava monospace a um snippet de Liquid que renderiza como valor simples no Braze.
-  let tagged = unwrapLiquidOnlyCode(S.rawHtml);
-  // Limpa marcadores de tradução que ficaram GRUDADOS dentro de comentários HTML comuns
-  // (<!-- -->) por um tageamento antigo — acontecia quando um comentário divisor de seção
-  // repetia, como texto, o mesmo título de uma seção real (ex: "<!-- SECTION: Not a gym
-  // person? -->") e o posicionador cravava o {%translation idN%} nessa primeira ocorrência
-  // (dentro do comentário) em vez da de conteúdo. Sozinho o comentário nunca renderiza, então a
-  // linha "não mudava no previewer", e sem limpar aqui o id sairia DUPLICADO no export (a tag
-  // velha do comentário + a nova, agora posicionada no conteúdo real via computeProtectedRanges).
-  // Só comentário COMUM — condicionais mso/VML (<!--[if ...]>, <![endif]-->) ficam intactos, que
-  // é onde as traduções de fallback do Outlook legitimamente moram.
-  tagged = tagged.replace(/<!--[\s\S]*?-->/g, c =>
-    (/^<!--\[if/i.test(c) || /^<!--\s*<!\[endif\]/i.test(c) || /^<!--<!\[endif\]/i.test(c))
-      ? c
-      : c.replace(/\{%\s*translation\s+id\d+\s*%\}/gi, '').replace(/\{%\s*endtranslation\s*%\}/gi, ''));
-  const allRows = S.csv.rows.filter(r=>r.src||(r.isStyle&&r.outerKey));
-  // Linhas que não conseguimos encontrar/tagueiar no HTML final — sem isso, a linha some do
-  // export em silêncio e a pessoa acha que a tradução foi aplicada quando não foi.
-  const missed = [];
-  allRows.forEach(r=>{
-    if(r.isImg && r.imgTag){
-      const pos = tagged.indexOf(r.imgTag);
-      if(pos === -1){ missed.push(r); return; }
-      const newImgTag = r.imgTag.replace(/\bsrc=(?:"[^"]*"|'[^']*')/i, `src="{%translation ${r.id}%}${r.src}{%endtranslation%}"`);
-      tagged = tagged.slice(0, pos) + newImgTag + tagged.slice(pos + r.imgTag.length);
-      return;
-    }
-    // Liquid expression with default: wrap the WHOLE expression as one unit.
-    // {{custom_attribute.${x} | default: 'y'}} →
-    // {%translation idN%}{{custom_attribute.${x} | default: 'y'}}{%endtranslation%}
-    if((r.isLiquidFull || r.isLiquidDefault) && r.liquidToken){
-      const key = r.liquidToken;
-      const protectedRanges = computeProtectedRanges(tagged);
-      let searchFrom = 0, tagged_ok = false;
-      while(searchFrom < tagged.length){
-        const pos = tagged.indexOf(key, searchFrom);
-        if(pos === -1) break;
-        const before = tagged.slice(0, pos);
-        // Skip occurrences already wrapped by a previous row's translation tag —
-        // without this check, repeated identical Liquid expressions (e.g. the same
-        // {{custom_attribute...}} used in several places) all matched the SAME first
-        // occurrence and nested {%translation%} tags on top of each other instead of
-        // tagging their own distinct occurrence in the document.
-        const opens  = (before.match(/\{%translation [^%]+?%\}/g)||[]).length;
-        const closes = (before.match(/\{%endtranslation%\}/g)||[]).length;
-        if(opens > closes){ searchFrom = pos + key.length; continue; }
-        if(isInsideOpenLiquidTag(before)){ searchFrom = pos + key.length; continue; }
-        if(isPosProtected(pos, protectedRanges)){ searchFrom = pos + key.length; continue; }
-        tagged = tagged.slice(0, pos) + `{%translation ${r.id}%}${key}{%endtranslation%}` + tagged.slice(pos + key.length);
-        tagged_ok = true;
-        break;
-      }
-      if(!tagged_ok) missed.push(r);
-      return;
-    }
-    const key = r.isStyle&&r.outerKey ? r.outerKey : r.src;
-    if(!key){ missed.push(r); return; }
-    // "key" continua com o texto CRU original (precisa bater literalmente com o HTML de
-    // origem pra achar a posição certa) — mas o que é INSERIDO como conteúdo da tag de
-    // tradução precisa ser exatamente csvSourceText(r), a MESMA função que gera a coluna
-    // de origem do CSV exportado (ver buildCsvStringForSave). Antes disso usava
-    // curlifyApostrophes(r.src) direto — src cru, sem o colapso de espaço/quebra de linha
-    // interna que mergeLiquidInline() aplica (\s{2,} → um espaço só). Pra qualquer linha
-    // cujo HTML de origem tivesse o texto quebrado em mais de uma linha/indentado no meio
-    // (comum em e-mail escrito à mão), a Braze recebia um HTML com a quebra de linha crua
-    // dentro da tag de tradução, mas um CSV com o mesmo trecho já colapsado num espaço só —
-    // duas strings diferentes por um detalhe de espaço, e a Braze recusava o upload com
-    // "translation file includes default text that doesn't match the message content".
-    // Usando csvSourceText(r) aqui (a mesma função, não uma reimplementação do colapso),
-    // os dois artefatos ficam garantidamente idênticos por construção, não só "parecidos".
-    // A tag de tradução tem que ABRAÇAR o texto, sem espaço/quebra de linha sobrando dentro
-    // ({%translation%}Start free trial{%endtranslation%}, não {%translation%} Start free trial ).
-    // O espaço das pontas existia de propósito no HTML de origem (espaçamento visual entre
-    // elementos) — então ele não some: sai de DENTRO da tag e volta pra FORA dela, preservando
-    // o render. lead/trail vêm da versão crua; o conteúdo (srcCurly) e a coluna de origem do
-    // CSV usam csvSourceText (já sem as pontas) — os dois batem por construção (a Braze exige).
-    const raw = csvSourceTextRaw(r);
-    const lead = raw.slice(0, raw.length - raw.replace(/^\s+/, '').length);
-    const trail = raw.slice(raw.replace(/\s+$/, '').length);
-    const srcCurly = curlifyApostrophes(csvSourceText(r));
-    const replacement = r.isStyle
-      ? `${r.openTag}${lead}{%translation ${r.id}%}${srcCurly}{%endtranslation%}${trail}${r.closeTag}`
-      : `${lead}{%translation ${r.id}%}${srcCurly}{%endtranslation%}${trail}`;
-    const protectedRanges = computeProtectedRanges(tagged);
-    let searchFrom = 0, tagged_ok = false;
-    while(searchFrom < tagged.length){
-      const pos = tagged.indexOf(key, searchFrom);
-      if(pos === -1) break;
-      const before = tagged.slice(0, pos);
-      // Skip if inside an HTML attribute (between < and > with an unclosed quote)
-      const lastTag = before.lastIndexOf('<');
-      const lastTagClose = before.lastIndexOf('>');
-      if(lastTag > lastTagClose){
-        // We're inside a tag — check if inside a quoted attribute value
-        const inTag = before.slice(lastTag);
-        const dq = (inTag.match(/"/g)||[]).length;
-        const sq = (inTag.match(/'/g)||[]).length;
-        if(dq % 2 !== 0 || sq % 2 !== 0){ searchFrom = pos + key.length; continue; }
-      }
-      const opens  = (before.match(/\{%translation [^%]+?%\}/g)||[]).length;
-      const closes = (before.match(/\{%endtranslation%\}/g)||[]).length;
-      if(opens > closes){ searchFrom = pos + key.length; continue; }
-      // Skip if inside um {% ... %} ainda ABERTO (ex: dentro da condição de um {% if %} que
-      // ainda não fechou) — sem isso, uma palavra comum tipo "and" que também aparece como
-      // operador booleano dentro de uma condição podia casar com essa ocorrência ERRADA (a
-      // primeira do documento), colocando a tag de tradução DENTRO da sintaxe do Liquid e
-      // quebrando o parser do Braze ("endtranslation is not a valid delimiter for if tags").
-      if(isInsideOpenLiquidTag(before)){ searchFrom = pos + key.length; continue; }
-      if(isPosProtected(pos, protectedRanges)){ searchFrom = pos + key.length; continue; }
-      tagged = tagged.slice(0, pos) + replacement + tagged.slice(pos + key.length);
-      tagged_ok = true;
-      break;
-    }
-    if(!tagged_ok) missed.push(r);
-  });
-  if(missed.length && !silent){
-    console.warn(`[buildTaggedHtml] ${missed.length} linha(s) não encontrada(s) no HTML e ficaram de fora do export:`, missed.map(r=>({id:r.id, src:(r.src||'').slice(0,80)})));
-    if(typeof showNotif === 'function') showNotif(`${missed.length} linha(s) não foram encontradas no HTML e ficaram sem tradução no export — veja o console para detalhes.`, 'warn');
-  }
-  return tagged;
-}
-
-// Re-sincroniza o texto DENTRO de cada {%translation idN%}...{%endtranslation%} JÁ EXISTENTE
-// num HTML salvo, pra bater exatamente com csvSourceText() da linha correspondente (a mesma
-// fonte usada pra gerar a coluna de origem do CSV, ver buildCsvStringForSave). Necessário
-// porque um projeto só é tageado UMA VEZ, na criação (buildTaggedHtml, acima) — reabrir/
-// editar/salvar de novo nunca re-tageia o HTML do zero (só criaria tags aninhadas em cima
-// das que já existem), então um projeto tageado ANTES da correção do buildTaggedHtml ficaria
-// com o texto antigo (não colapsado) preso dentro da tag PARA SEMPRE, mesmo com o código já
-// corrigido — o autosave recalcula o CSV a cada save, mas nunca tocava no HTML já salvo.
-// Ignora linhas de imagem (isImg): a tag ali envolve a URL dentro do atributo src=, não
-// texto, e buildTaggedHtml nunca aplicou curlifyApostrophes nesse caso — refazer isso aqui
-// mudaria um comportamento à parte, não relacionado ao mismatch de espaço/quebra de linha.
-function repairTaggedHtmlDefaults(html, rows) {
-  if(!html) return html;
-  const byId = new Map((rows||[]).filter(r=>!r.isImg).map(r => [r.id, r]));
-  return html.replace(/\{%translation\s+(\S+?)%\}([\s\S]*?)\{%endtranslation%\}/g, (match, id, oldInner) => {
-    const row = byId.get(id);
-    if(!row) return match;
-    // csvSourceText já vem sem as pontas — o conteúdo da tag tem que bater com ele. O espaço
-    // que porventura esteja nas pontas do conteúdo ATUAL não é deletado: sai de dentro da tag
-    // e volta pra fora dela (mesmo critério do buildTaggedHtml), preservando o espaçamento
-    // visual do e-mail. Assim a tag abraça o texto sem que o render mude.
-    const fresh = curlifyApostrophes(csvSourceText(row));
-    const lead = oldInner.slice(0, oldInner.length - oldInner.replace(/^\s+/, '').length);
-    const trail = oldInner.slice(oldInner.replace(/\s+$/, '').length);
-    const rebuilt = `${lead}{%translation ${id}%}${fresh}{%endtranslation%}${trail}`;
-    return rebuilt === match ? match : rebuilt;
-  });
-}
 
 function openHtmlModal() {
   // Se o HTML já veio tageado (projeto reaberto, ou importado via "Edit an uploaded
@@ -10423,45 +9511,9 @@ function closeEmptyLangModal() {
   modal2.style.display = 'none';
 }
 
-// Convert lang code to Braze format: pt-BR → pt_br (lowercase, underscore)
-// Retorna o locale key do Braze (ex: pt_br) — usado EXCLUSIVAMENTE no CSV/XLSX exportado.
-function toBrazeLang(lang) {
-  return lang.toLowerCase().replace(/-/g, '_');
-}
 
-// Ordem FIXA e global de exibição/exportação dos idiomas — mesma sequência em QUALQUER
-// tela (editor, previewer, approver, cards) e em QUALQUER export (CSV/XLSX), independente
-// da ordem em que os idiomas foram adicionados no projeto. Padrão da plataforma, não é
-// configurável por projeto. Guardada no formato INTERNO (pt-BR, não pt_br) porque quase
-// todo lugar itera nesse formato e só chama toBrazeLang() na hora de exibir/exportar.
-const LOCALE_DISPLAY_ORDER = ['de-DE','en-GB','en-IE','es-AR','es-CL','es-ES','es-MX','it-IT','pt-BR','pt-PT','ro-RO'];
-const _LOCALE_ORDER_INDEX = Object.fromEntries(LOCALE_DISPLAY_ORDER.map((l, i) => [l.toLowerCase(), i]));
 
-// Devolve uma CÓPIA ordenada do array de idiomas: primeiro os locales da lista fixa acima,
-// na ordem definida; depois qualquer locale fora da lista (customizado), em ordem
-// alfabética, no fim. NUNCA reordena o array original in-place — vários lugares (ex:
-// buildTable + rowsHTML, renderCampaignLangBar + renderCampaignGrid) iteram o MESMO array
-// separadamente pra montar cabeçalho e corpo, e reordenar in-place desalinharia as colunas.
-// É SÓ camada de apresentação/export — o array salvo (S.csv.langs/item.langs/p.data.langs)
-// continua na ordem de criação, sem migração de nenhum dado existente.
-function sortLangsForDisplay(langs) {
-  const known = [], unknown = [];
-  (langs || []).forEach(l => {
-    (Object.prototype.hasOwnProperty.call(_LOCALE_ORDER_INDEX, (l||'').toLowerCase()) ? known : unknown).push(l);
-  });
-  known.sort((a, b) => _LOCALE_ORDER_INDEX[a.toLowerCase()] - _LOCALE_ORDER_INDEX[b.toLowerCase()]);
-  unknown.sort((a, b) => (a||'').localeCompare(b||''));
-  return [...known, ...unknown];
-}
 
-// Retorna o nome de exibição completo (ex: "Brazil (pt_br)") — usado na UI (headers da tabela,
-// chips do viewer, header do modal de comentário). NUNCA no CSV.
-function langDisplayName(lang) {
-  const c = S.allC.find(x => x.lang === lang);
-  const localeKey = toBrazeLang(lang);
-  if(c && c.name) return `${c.name} (${localeKey})`;
-  return localeKey;
-}
 
 function dlCSV(){
   const langs = S.csv.langs;
@@ -10760,6 +9812,7 @@ window.addEventListener('message', function(e){
 <!-- APPROVAL VIEW canvas — SEPARADO só pra organização (ver modules/approval-canvas.js). Código de
      escopo global (classic script, sem IIFE): as funções seguem globais e leem os globais do app
      em runtime. Carregado DEPOIS do script inline (referências só acontecem em runtime). -->
+<script src="modules/translation-engine.js"></script>
 <script src="modules/approval-canvas.js"></script>
 <!-- Módulo "Pasta/Folder" — ISOLADO (ver modules/folders.js). Carregado DEPOIS do script inline
      pra poder chamar os globais do app (projGetAll, parseSavedProjectHtml, etc.) em runtime. -->
