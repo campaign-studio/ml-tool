@@ -1478,3 +1478,90 @@ function langDisplayName(lang) {
   return localeKey;
 }
 
+// Renderiza o CORPO (linhas <tr>) da grade de tradução — extraído de rowsHTML() pra poder
+// ser reaproveitado (loose grid + campaign grid) com a MESMA marcação. Lê tudo de cfg:
+//   cfg.rows         — array de linhas (S.csv.rows)
+//   cfg.langs        — array de idiomas JÁ na ordem de exibição (sortLangsForDisplay(...))
+//   cfg.originLang   — idioma de origem (S.allC.find(c=>c.code===S.origin)?.lang || null)
+//   cfg.pendingImgIds— ids de imagens pendentes (S.pendingImgIds || [])
+// Os handlers inline (switchAndHL/setCellV/sendHL/autoH/highlightFromTable/delRow/
+// ackTextMismatch) e os helpers csvSourceText/cellCommentBtn/escHtml continuam GLOBAIS.
+function renderTranslationGridBody(cfg) {
+  const langsOrdered = cfg.langs;
+  return cfg.rows.map((row,ri)=>{
+    // ── IMAGE ROW ──
+    if(row.isImg){
+      const id  = (row.id||'').replace(/"/g,'&quot;');
+      const src = (row.src||'').replace(/"/g,'&quot;');
+      const origLang = cfg.originLang;
+      const tls = langsOrdered.map((l,ci)=>{
+        const v=(row.translations[l]||'').replace(/"/g,'&quot;');
+        const isEmpty = !(row.translations[l]||'').trim();
+        return `<td class="tl tl-cell cell-nav${isEmpty ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}">
+          <div class="tl-inner">
+            <input class="img-url" type="text" readonly placeholder="URL for ${l}…" value="${v}"
+              onfocus="switchAndHL(${ri},'${l}')"
+              oninput="setCellV(${ri},'${l}',this.value);sendHL(${ri},'${l}')"
+            />
+            ${cellCommentBtn(ri, l, row)}
+          </div>
+        </td>`;
+      }).join('');
+      const thumbSrc = src.startsWith('{{') ? '' : src;
+      return `<tr class="img-row">
+        <td class="rn">${ri+1}</td>
+        <td class="cid">${id}</td>
+        <td class="src" onclick="highlightFromTable(${ri},'${origLang||''}')">
+          <div class="img-thumb-wrap">
+            ${thumbSrc ? `<img class="img-thumb" src="${thumbSrc.replace(/"/g,'&quot;')}" onerror="this.style.display='none'">` : '<div class="img-thumb" style="display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--text3)">Liquid</div>'}
+            <span class="img-src-txt">${src.length>60?src.slice(0,57)+'…':src}</span>
+          </div>
+        </td>
+        ${tls}
+        <td class="del"><button onclick="event.stopPropagation();delRow(${ri})">×</button></td>
+      </tr>`;
+    }
+    const id  = (row.id||'').replace(/"/g,'&quot;');
+    // Mesmo texto que vai pro CSV exportado (csvSourceText) — sem isso, a grade principal
+    // (o que a pessoa realmente olha pra traduzir) mostrava o Liquid cru (content_blocks,
+    // custom_attribute, context) no meio da frase, mesmo já tendo sido "limpo" só no CSV.
+    const displaySrc = csvSourceText(row).replace(/</g,'&lt;').replace(/"/g,'&quot;');
+    const origLang = cfg.originLang;
+    const tls = langsOrdered.map((l,ci)=>{
+      const v=(row.translations[l]||'').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+      const isEmpty = !(row.translations[l]||'').trim();
+      return `<td class="tl tl-cell cell-nav${isEmpty ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}">
+        <div class="tl-inner">
+          <textarea rows="1" readonly
+            onfocus="switchAndHL(${ri},'${l}')"
+            oninput="autoH(this);setCellV(${ri},'${l}',this.value);sendHL(${ri},'${l}')"
+          >${v}</textarea>
+          ${cellCommentBtn(ri, l, row)}
+        </div>
+      </td>`;
+    }).join('');
+    const mismatch = row._textMismatch;
+    const mismatchTitle = mismatch ? `HTML: "${String(mismatch.htmlSrc).replace(/"/g,'&quot;').slice(0,150)}" — CSV said: "${String(mismatch.csvSrc).replace(/"/g,'&quot;').slice(0,150)}"` : '';
+    const warnBadge = mismatch
+      ? `<span class="text-warn-badge" id="warnBadge-${ri}" title="${mismatchTitle}" onclick="event.stopPropagation();ackTextMismatch(${ri})">⚠</span>`
+      : '';
+    // Marcador VML na coluna Origin: quando o trecho é o label de uma forma VML (fallback
+    // Outlook, ex: botão <v:roundrect>), mostra a tag ali pra quem edita saber que é VML.
+    const vmlBadge = row.vmlTag
+      ? `<span class="vml-badge" title="Este trecho está dentro de uma forma VML (fallback Outlook): &lt;${escHtml(row.vmlTag)}&gt;">VML: ${escHtml(row.vmlTag)}</span>`
+      : '';
+    // Imagem adicionada DEPOIS que o projeto já tinha aprovação: a aprovação foi mantida (regra
+    // silenciosa), mas o item fica marcado como "novo — revisar" até uma nova aprovação.
+    const pendingBadge = cfg.pendingImgIds.includes(id)
+      ? `<span class="vml-badge" style="background:#fff3cd;border-color:#ffe08a;color:#8a6d3b;" title="Image added after the project was already approved. The existing approval was kept, but this item came in later and needs review.">⏳ new — review</span>`
+      : '';
+    return `<tr>
+      <td class="rn" style="width:22px!important;max-width:22px!important">${ri+1}</td>
+      <td class="cid" style="width:38px!important;max-width:38px!important">${id}</td>
+      <td class="src" onclick="highlightFromTable(${ri},'${origLang||''}')">${warnBadge}${vmlBadge}${pendingBadge}<textarea rows="1" readonly style="${row.isLiquidFull ? 'color:var(--text3);font-size:10.5px;' : ''}cursor:default;">${displaySrc}</textarea></td>
+      ${tls}
+      <td class="del"><button onclick="event.stopPropagation();delRow(${ri})">×</button></td>
+    </tr>`;
+  }).join('');
+}
+

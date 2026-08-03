@@ -1,0 +1,19 @@
+2026-08-03 — Extração do corpo da grade de tradução (STEP 1 da unificação loose/campaign)
+
+O QUE MUDOU
+- modules/translation-engine.js: nova função global renderTranslationGridBody(cfg) que reproduz
+  EXATAMENTE a lógica de montagem das linhas <tr> que estava dentro de rowsHTML(). Lê de cfg:
+  cfg.rows, cfg.langs (já ordenados p/ exibição), cfg.originLang, cfg.pendingImgIds.
+- index.html: rowsHTML() agora só delega, chamando renderTranslationGridBody com:
+    rows: S.csv.rows
+    langs: sortLangsForDisplay(S.csv.langs)
+    originLang: S.allC.find(c=>c.code===S.origin)?.lang || null
+    pendingImgIds: S.pendingImgIds || []
+
+POR QUE
+- Passo preparatório pra reaproveitar o MESMO renderizador de corpo na campaign grid depois.
+
+GARANTIA
+- Refactor puro: a saída HTML de rowsHTML() é byte-idêntica à anterior pro mesmo S.
+  Apenas as FONTES DE DADOS foram trocadas; templates literais copiados verbatim.
+- node --check modules/translation-engine.js passa.
