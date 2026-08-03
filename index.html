@@ -7880,6 +7880,7 @@ function renderConfirm() {
 }
 
 function buildTable() {
+  _gridBodyId = 'gstb'; _gridWrite = null; // contexto do controlador = editor avulso (default)
   // Update mail chrome subject with template name
   const subj = document.getElementById('mailSubject');
   if(subj) subj.textContent = S.csv.name || 'Wellhub';
@@ -8039,10 +8040,18 @@ function setCellV(ri,l,v){
    (td.tl-cell, com data-r=linha e data-c=índice da coluna de idioma na ordem fixa
    sortLangsForDisplay). Dois modos: NAVEGAÇÃO (campo readonly; setas/Tab/Enter movem a
    seleção) e EDIÇÃO (Enter/F2/duplo-clique/digitar; setas movem o cursor no texto). */
-let _grid = { r:0, c:0, aR:0, aC:0, editing:false, editOrig:null, wired:false };
+let _grid = { r:0, c:0, aR:0, aC:0, editing:false, editOrig:null };
+// Contexto do grid ATIVO — parametriza o controlador (nav/paste/copy estilo planilha) pra servir
+// tanto o editor avulso quanto o grid de itens de campanha. Defaults = editor avulso (comportamento
+// idêntico ao de antes). O grid da campanha troca esses valores ao renderizar (ver sub-passo 3).
+// Como o controlador lê S.csv (que, durante a edição de um item de campanha, JÁ é o item — ver
+// activateCampaignItemIntoS), só o alvo do DOM (tbody/host) e a escrita (autosave/preview) diferem.
+let _gridBodyId = 'gstb';   // tbody onde estão as células
+let _gridWrite = null;      // escrita programática de uma célula (paste/delete/digitar); null = setCellV (avulso)
+let _gridWiredHosts = new Set(); // hosts já com os listeners delegados (um por grid)
 
 function gridLangs(){ return sortLangsForDisplay(S.csv.langs); }
-function gridBody(){ return document.getElementById('gstb'); }
+function gridBody(){ return document.getElementById(_gridBodyId); }
 function gridCellEl(r,c){ const b=gridBody(); return b ? b.querySelector(`td.tl-cell[data-r="${r}"][data-c="${c}"]`) : null; }
 function gridField(td){ return td ? td.querySelector('textarea,input') : null; }
 function gridDims(){ return { rows: S.csv.rows.length, cols: gridLangs().length }; }
@@ -8096,7 +8105,7 @@ function gridEnterEdit(initialChar){
   f.removeAttribute('readonly');
   if(initialChar!=null){ // digitou algo em cima da célula: substitui (igual Excel)
     f.value=initialChar;
-    setCellV(_grid.r,lang,f.value);
+    (_gridWrite||setCellV)(_grid.r,lang,f.value);
     td.classList.toggle('tl-missing', !f.value.trim());
   }
   gridReapplyHighlight();
@@ -8119,7 +8128,7 @@ function gridWriteCell(r,c,value,skipEmpty){
   if(!lang||!row) return false;
   if(skipEmpty && !String(value||'').length) return false;   // colar vazio NÃO apaga (igual Excel)
   if(isCellPasteBlocked(row,lang)) return false;              // não cola sobre célula travada
-  setCellV(r,lang,value);
+  (_gridWrite||setCellV)(r,lang,value);
   const td=gridCellEl(r,c); if(td){ const f=gridField(td); if(f) f.value=value; td.classList.toggle('tl-missing', !String(value||'').trim()); }
   return true;
 }
@@ -8250,16 +8259,18 @@ function gridOnDblclick(e){
   gridEnterEdit(null);
 }
 
-// Liga os listeners UMA vez, delegados no #gst (persiste entre re-renders do corpo).
-function wireGridController(){
-  if(_grid.wired) return;
-  const host=document.getElementById('gst'); if(!host) return;
+// Liga os listeners UMA vez por HOST, delegados (persistem entre re-renders do corpo). hostId
+// default = #gst (editor avulso); o grid da campanha passa o seu próprio host (ver sub-passo 3).
+function wireGridController(hostId){
+  hostId = hostId || 'gst';
+  if(_gridWiredHosts.has(hostId)) return;
+  const host=document.getElementById(hostId); if(!host) return;
   host.addEventListener('keydown', gridOnKeydown, true);
   host.addEventListener('paste', gridOnPaste, true);
   host.addEventListener('copy', gridOnCopy, true);
   host.addEventListener('mousedown', gridOnMousedown, true);
   host.addEventListener('dblclick', gridOnDblclick, true);
-  _grid.wired=true;
+  _gridWiredHosts.add(hostId);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
