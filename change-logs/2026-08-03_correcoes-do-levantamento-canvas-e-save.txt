@@ -1,0 +1,44 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-03
+Tema: Correções dos bugs achados pelos 3 subagents de diagnóstico (canvas-approver-design-qa +
+      save-fuzzer). O bug crítico do parseBrazeCsv (translation-fuzzer) foi corrigido em commit à parte.
+
+===============================================================================
+CANVAS APPROVER (modules/approval-canvas.js + index.html) — achados do canvas-approver-design-qa
+===============================================================================
+#2 [MODERADO] Frames de e-mail nunca encolhiam abaixo de 900px (faixa branca morta abaixo do rodapé).
+  - Causa: o reporter de altura injetado em buildApprovalFrameHtml usava
+    Math.max(body.scrollHeight, documentElement.scrollHeight, 400). documentElement.scrollHeight fica
+    preso à altura ATUAL do iframe (placeholder inicial 900px), então o max só crescia, nunca reduzia.
+  - Fix: mede só o CONTEÚDO (document.body.scrollHeight/offsetHeight, mín 60) — independe da altura
+    do iframe, então o frame encolhe pro tamanho real. O piso de 400 do handler (av-height) continua.
+
+#3 [BAIXO] Caixa de novo comentário (av-newpin-box) podia abrir cortada nas bordas direita/inferior.
+  - Fix (openNewPinBox): clamp inicial do left em innerWidth-244; e, após o append (com a altura real
+    medida), reposiciona se right/bottom ultrapassam a viewport (abre acima do ponto se não couber).
+
+#4 [BAIXO] Scrollbar horizontal aparecia mesmo no "Fit all".
+  - Causa: avFitToFrames usava availW = clientWidth-80, ignorando a folga AV_HPAD (64px×2) que
+    _updateAvHScrollbarNow soma no contentScreenW — o conteúdo+folga passava marginalmente da viewport.
+  - Fix: availW = clientWidth - AV_HPAD*2 - 16, então no fit tudo cabe sem a barra.
+
+#5 [BAIXO] Sidebar de comentários (340px fixo) espremia o canvas até quase zero em telas estreitas.
+  - Fix (CSS .av-sidebar): media queries — 300/240px em ≤820px, 220/180px em ≤560px — deixa o canvas
+    utilizável em telas menores.
+
+===============================================================================
+SAVE (index.html) — nota de robustez do save-fuzzer
+===============================================================================
+#6 goToDashboard (caminho AVULSO) fazia o flush do autosave mas não dava await no push (dependia só
+   do guard _pendingProjectsPush + do ghPullProjects da saída esperar). Já era seguro, mas frágil.
+  - Fix: await withTimeout(_pendingProjectsPush, 8000) explícito após o flush, antes de seguir —
+    garante que a última edição foi confirmada no banco antes de sair (paridade com o caminho de campanha).
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- node --check passa nos dois módulos; sem erros de console no load.
+- Fixes conferidos por inspeção de código; #4/#6 confirmados por runtime (AV_HPAD presente, await
+  presente). A conferência VISUAL interativa dos frames do canvas (altura encolhendo, clamp do
+  comentário) fica pra conferência logada — a aba de teste ficou com viewport 0 (pane oculto).
+NÃO houve escrita no banco (sbClient bloqueado). Bug crítico do CSV corrigido em commit separado.

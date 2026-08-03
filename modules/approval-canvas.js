@@ -479,7 +479,10 @@ function avFitToFrames() {
   if(!vp || !frames.length) return;
   let totalW = 0;
   frames.forEach(f => { totalW += avFrameWFor(f.type) + avFrameGapFor(f.type); });
-  const availW = vp.clientWidth - 80;
+  // Desconta a MESMA folga de tela (AV_HPAD nas duas pontas) que _updateAvHScrollbarNow soma em
+  // contentScreenW — senão, no "Fit all", o conteúdo + folga passava marginalmente da viewport e a
+  // scrollbar horizontal aparecia mesmo tudo cabendo. (Bug achado pelo canvas-approver-design-qa.)
+  const availW = vp.clientWidth - AV_HPAD * 2 - 16;
   _avView.scale = Math.max(0.15, Math.min(1, availW / totalW));
   _avView.tx = 40;
   _avView.ty = 60;
@@ -678,7 +681,13 @@ function buildApprovalFrameHtml(f) {
   const scEnd = '</scr' + 'ipt>';
   const script = sc + `(function(){
     function rh(){
-      var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, 400);
+      // Mede a altura do CONTEÚDO (document.body), NÃO documentElement.scrollHeight — este fica
+      // preso à altura ATUAL do próprio iframe (o placeholder inicial de 900px), então o max só
+      // crescia e nunca reduzia, deixando um e-mail curto com ~500px de espaço branco morto abaixo
+      // do rodapé. body.scrollHeight reflete o conteúdo real, independente da altura do iframe, então
+      // o frame passa a encolher pro tamanho certo. (Bug achado pelo canvas-approver-design-qa.)
+      var b = document.body;
+      var h = Math.max(b.scrollHeight, b.offsetHeight, 60);
       window.parent.postMessage({type:'av-height', key:${JSON.stringify(f.key)}, height:h}, '*');
     }
     window.addEventListener('load', function(){ setTimeout(rh, 80); });
@@ -797,7 +806,10 @@ function openNewPinBox(f, vp, screenX, screenY, xPct, yPct, lang, quote, rowId) 
   // era o bug: "quando o zoom tá muito próximo, o box abre meio distante da seleção").
   // position:fixed + coordenadas de tela elimina esse descompasso — a caixa sempre abre bem
   // ao lado de onde a pessoa selecionou, em qualquer nível de zoom.
-  box.style.left = Math.max(4, screenX) + 'px';
+  // Clamp inicial na borda DIREITA (a caixa tem ~240px) — sem isso, selecionar perto da direita
+  // abria a caixa parcialmente fora da tela. O clamp vertical/refino fino é feito após o append,
+  // quando dá pra medir a altura real. (Bug achado pelo canvas-approver-design-qa.)
+  box.style.left = Math.min(Math.max(4, screenX), Math.max(4, window.innerWidth - 244)) + 'px';
   box.style.top = (screenY + 12) + 'px';
   const esc = s => String(s || '').replace(/</g, '&lt;');
   // Mesma estrutura dos outros comentários do app (thread do CSV builder e sidebar da Approval
@@ -828,6 +840,11 @@ function openNewPinBox(f, vp, screenX, screenY, xPct, yPct, lang, quote, rowId) 
   // risco de scroll indesejado ao focar (#avCanvasViewport, com overflow:hidden, não é mais
   // ancestral deste elemento), mas preventScroll:true continua aqui por segurança/consistência.
   document.body.appendChild(box);
+  // Refino: com a caixa já no DOM dá pra medir a altura real e garantir que nenhuma borda
+  // (direita/inferior) fique cortada — ex: seleção perto do rodapé da tela.
+  const r = box.getBoundingClientRect();
+  if(r.right > window.innerWidth - 8) box.style.left = Math.max(4, window.innerWidth - r.width - 8) + 'px';
+  if(r.bottom > window.innerHeight - 8) box.style.top = Math.max(4, screenY - r.height - 12) + 'px';
   setTimeout(() => document.getElementById('avNewPinText')?.focus({preventScroll:true}), 0);
 }
 
