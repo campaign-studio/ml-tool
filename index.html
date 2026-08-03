@@ -644,8 +644,17 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .empty-state svg{margin-bottom:10px;opacity:.6;}
 .empty-state p{font-size:12.5px;line-height:1.5;}
 
-.member-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 14px;transition:border-color .15s;}
+.member-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 14px;transition:border-color .15s;will-change:transform;}
 .member-row:hover{border-color:var(--border-s);}
+/* Área de Membros agrupada por papel (Superadmins / Admins / Members). */
+.member-section + .member-section{margin-top:18px;}
+.member-sec-head{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:0 0 8px;display:flex;align-items:center;gap:8px;}
+.member-sec-count{background:var(--s2);border-radius:20px;padding:1px 9px;font-size:10.5px;font-weight:700;color:var(--text2);}
+.member-sec-list{display:flex;flex-direction:column;gap:8px;}
+.member-empty{font-size:12px;color:var(--text3);padding:10px 14px;border:1px dashed var(--border);border-radius:10px;text-align:center;}
+/* Realce breve quando um card acabou de aterrissar na nova seção (após a transição FLIP). */
+.member-row-landed{animation:memberLand 1s ease;}
+@keyframes memberLand{0%,55%{box-shadow:0 0 0 2px var(--accent);}100%{box-shadow:0 0 0 2px transparent;}}
 .member-email{font-size:13px;font-weight:600;color:var(--text);}
 .member-name-input{border:none;background:none;font-size:13px;font-weight:600;color:var(--text);padding:2px 4px;border-radius:5px;width:100%;font-family:var(--sans);}
 .member-name-input:hover{background:var(--s2);}
@@ -1339,7 +1348,14 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 
 <!-- ═══════════ MEMBERS MODAL (admin only — opened from the profile menu) ═══════════ -->
 <div id="membersModal" class="modal-ov" style="display:none;">
-  <div class="card modal-card" style="width:100%;max-width:520px;max-height:82vh;display:flex;flex-direction:column;">
+  <div class="card modal-card" style="width:100%;max-width:520px;max-height:82vh;display:flex;flex-direction:column;position:relative;">
+    <!-- Overlay de bloqueio enquanto uma troca de papel é confirmada no banco. Removido SEMPRE
+         no finally de dashSetUserRole — nunca fica travado, mesmo em erro/timeout. -->
+    <div id="roleBusyOverlay" style="display:none;position:absolute;inset:0;background:var(--surface);border-radius:inherit;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:5;">
+      <div class="move-spinner"></div>
+      <div id="roleBusyText" style="font-size:13.5px;font-weight:600;color:var(--text);">Updating role…</div>
+      <div style="font-size:11.5px;color:var(--text3);">Please wait — saving to the database</div>
+    </div>
     <div class="ci" style="padding:28px 28px 8px;flex-shrink:0;">
       <div class="modal-head" style="margin-bottom:2px;">
         <h1>Members</h1>
@@ -2189,7 +2205,10 @@ function reconcileSeedUsers(users) {
 
 function authSaveUsers(users) {
   localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
-  sbPushUsers(users); // sincroniza com o Supabase em segundo plano
+  // Devolve a promise do push — a maioria dos chamadores ignora (sync em segundo plano), mas
+  // quem PRECISA saber que o banco confirmou (ex: troca de papel, pra travar/destravar a tela)
+  // pode dar await. Mesmo padrão de projSaveAll → ghMergeAndPushProjects.
+  return sbPushUsers(users);
 }
 
 // Sessão guardada SÓ EM MEMÓRIA — ao recarregar/reabrir a página, sempre pede login de novo.
@@ -2676,7 +2695,9 @@ async function sbOnUsersChanged() {
   const membersModal = document.getElementById('membersModal');
   const list = document.getElementById('dashUserList');
   const isEditingList = list && list.contains(document.activeElement);
-  if(membersModal && membersModal.style.display !== 'none' && !isEditingList) renderDashUserList();
+  // _roleBusy: não re-renderiza no meio de uma troca de papel em voo — brigaria com o overlay
+  // de bloqueio e com a animação FLIP (o dashSetUserRole já reconcilia o estado no fim).
+  if(membersModal && membersModal.style.display !== 'none' && !isEditingList && !_roleBusy) renderDashUserList();
 }
 
 // Um upsert em lote dispara vários eventos; o debounce agrupa num único refresh.
@@ -4673,14 +4694,11 @@ function dlItemCSV() {
   URL.revokeObjectURL(a.href);
 }
 
-function renderDashUserList() {
-  const users = authGetUsers();
-  const me = authCurrentUser();
-  const list = document.getElementById('dashUserList');
-  const deptOptions = key => `<option value="">No department</option>` +
-    DEPARTMENTS.map(d => `<option value="${d.key}" ${d.key===key?'selected':''}>${d.label}</option>`).join('');
-  list.innerHTML = users.map((u, i) => `
-    <div class="member-row">
+// Markup de UM card de membro (sem o índice — todos os handlers identificam por e-mail).
+// data-email é o que o FLIP usa pra medir a posição do MESMO card antes/depois do re-render.
+function dashUserCardHtml(u, me, deptOptions) {
+  return `
+    <div class="member-row" data-email="${(u.email||'').replace(/"/g,'&quot;')}">
       <span class="person-dot" style="background:${avColorForEmail(u.email)}" title="${u.email}"></span>
       <div style="flex:1;min-width:0;">
         <input class="member-name-input" value="${(u.name||'').replace(/"/g,'&quot;')}" placeholder="Add a name…"
@@ -4699,8 +4717,35 @@ function renderDashUserList() {
         </select>
       </div>
       ${u.email.toLowerCase() !== me.email.toLowerCase() ? `<button class="btn-danger" onclick="dashRemoveUser('${u.email}')">Remove</button>` : '<span style="font-size:11px;color:var(--text3);">you</span>'}
-    </div>
-  `).join('');
+    </div>`;
+}
+
+function renderDashUserList() {
+  const users = authGetUsers();
+  const me = authCurrentUser();
+  const list = document.getElementById('dashUserList');
+  const deptOptions = key => `<option value="">No department</option>` +
+    DEPARTMENTS.map(d => `<option value="${d.key}" ${d.key===key?'selected':''}>${d.label}</option>`).join('');
+
+  // Agrupa por papel (Superadmins → Admins → Members), cada seção ordenada por nome/e-mail.
+  const groups = { superadmin: [], admin: [], member: [] };
+  users.forEach(u => { (groups[u.role] || groups.member).push(u); });
+  Object.values(groups).forEach(arr => arr.sort((a, b) =>
+    (a.name || a.email || '').localeCompare(b.name || b.email || '')));
+  // Superadmins: sempre visível pra um superadmin; pra admin comum, só se houver alguém.
+  const showSuper = isSuperadmin(me.role) || groups.superadmin.length > 0;
+  const sections = [['superadmin', 'Superadmins'], ['admin', 'Admins'], ['member', 'Members']]
+    .filter(([role]) => role === 'superadmin' ? showSuper : true);
+  list.innerHTML = sections.map(([role, label]) => {
+    const arr = groups[role];
+    const body = arr.length
+      ? arr.map(u => dashUserCardHtml(u, me, deptOptions)).join('')
+      : `<div class="member-empty">No one here yet</div>`;
+    return `<div class="member-section">
+      <div class="member-sec-head">${label} <span class="member-sec-count">${arr.length}</span></div>
+      <div class="member-sec-list">${body}</div>
+    </div>`;
+  }).join('');
 
   // Popula o select de departamento do formulário "Add member" também.
   const addSel = document.getElementById('dashNewUserDept');
@@ -4747,25 +4792,103 @@ async function dashSetUserDept(email, dept) {
   renderDashUserList();
 }
 
-// Troca o papel de conta de um membro. Re-checa a permissão contra os dados FRESCOS (não só
-// contra o que a UI mostrou), pra que uma chamada direta pelo console — ou um render antigo —
-// não escape das regras de canChangeUserRole/allowedRoleTargets.
-async function dashSetUserRole(email, newRole) {
-  await dashPullUsersIfPossible();
-  const me = authCurrentUser(); // resolvido DEPOIS do pull — papel do actor sempre fresco
-  const users = authGetUsers();
-  const target = users.find(x => x.email.toLowerCase() === email.toLowerCase());
-  if(!me || !target) return;
-  if(!canChangeUserRole(me, target) || !allowedRoleTargets(me, target).includes(newRole)) {
-    showNotif('You do not have permission to make that role change.', 'warn');
-    renderDashUserList();
-    return;
+// ── Estado de BLOQUEIO da troca de papel (mesmo padrão do "move to folder") ───────────────────
+let _roleBusy = false;
+let _pendingRoleFlip = null; // { email } — card a animar da seção antiga pra nova após confirmar
+function _roleBeforeUnload(e){ e.preventDefault(); e.returnValue = ''; return ''; }
+function setRoleBusy(on, text){
+  _roleBusy = !!on;
+  const ov = document.getElementById('roleBusyOverlay');
+  if(ov){
+    if(on && text){ const t = document.getElementById('roleBusyText'); if(t) t.textContent = text; }
+    ov.style.display = on ? 'flex' : 'none';
   }
-  if(target.role === newRole) return; // nada mudou
-  target.role = newRole;
-  authSaveUsers(users);
+  if(on) window.addEventListener('beforeunload', _roleBeforeUnload);
+  else window.removeEventListener('beforeunload', _roleBeforeUnload);
+}
+function prefersReducedMotion(){ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+
+// Re-renderiza a lista com uma transição FLIP (First-Last-Invert-Play): mede a posição de todos
+// os cards ANTES, re-renderiza agrupado, e anima cada card que mudou de lugar da posição antiga
+// pra nova. O card que trocou de papel ainda ganha um realce breve. Respeita prefers-reduced-motion.
+function renderDashUserListWithFlip(){
+  const flip = _pendingRoleFlip; _pendingRoleFlip = null;
+  const list = document.getElementById('dashUserList');
+  if(!list || !flip || prefersReducedMotion()){ renderDashUserList(); return; }
+  const first = {};
+  list.querySelectorAll('[data-email]').forEach(el => { first[el.getAttribute('data-email')] = el.getBoundingClientRect(); });
   renderDashUserList();
-  notifAdd(email, me.email, `${me.email} changed your account role to ${roleLabel(newRole)}.`);
+  list.querySelectorAll('[data-email]').forEach(el => {
+    const f = first[el.getAttribute('data-email')]; if(!f) return;
+    const l = el.getBoundingClientRect();
+    const dx = f.left - l.left, dy = f.top - l.top;
+    if(!dx && !dy) return;
+    el.style.transition = 'none';
+    el.style.transform = `translate(${dx}px, ${dy}px)`;
+    requestAnimationFrame(() => {
+      el.style.transition = 'transform .3s cubic-bezier(.2,.8,.2,1)';
+      el.style.transform = '';
+    });
+    el.addEventListener('transitionend', () => { el.style.transition = ''; el.style.transform = ''; }, { once: true });
+  });
+  const moved = list.querySelector(`[data-email="${(flip.email||'').replace(/"/g,'\\"')}"]`);
+  if(moved){ moved.classList.add('member-row-landed'); setTimeout(() => moved.classList.remove('member-row-landed'), 1000); }
+}
+
+// Troca o papel de conta de um membro. Trava a tela até o banco CONFIRMAR (não otimista), recheca
+// permissão contra dados frescos, detecta troca concorrente, protege o último superadmin, e só
+// depois anima o card pra nova seção. finally SEMPRE destrava.
+async function dashSetUserRole(email, newRole) {
+  if(_roleBusy){ renderDashUserList(); return; } // já tem uma troca em andamento — reverte o select
+  // Papel em que baseei a troca (leitura local, ANTES do pull) — usado pra detectar troca concorrente.
+  const preTarget = authGetUsers().find(x => x.email.toLowerCase() === email.toLowerCase());
+  const fromRole = preTarget ? preTarget.role : null;
+
+  setRoleBusy(true, 'Updating role…');
+  try {
+    await dashPullUsersIfPossible();                 // puxa o estado mais novo
+    const me = authCurrentUser();                    // actor resolvido DEPOIS do pull
+    const users = authGetUsers();
+    const target = users.find(x => x.email.toLowerCase() === email.toLowerCase());
+    if(!me || !target){ showNotif('User not found.', 'warn'); return; }
+
+    // Troca concorrente: outro admin já mexeu nessa pessoa desde que abri o select.
+    if(fromRole !== null && target.role !== fromRole && target.role !== newRole){
+      showNotif("This person's role was just changed by someone else — showing the latest.", 'warn', 4500);
+      return;
+    }
+    if(!canChangeUserRole(me, target) || !allowedRoleTargets(me, target).includes(newRole)){
+      showNotif('You do not have permission to make that role change.', 'warn');
+      return;
+    }
+    if(target.role === newRole) return; // nada mudou
+
+    // Guard do último superadmin: nunca rebaixar o único que sobrou (travaria a gestão de admins).
+    if(target.role === 'superadmin' && newRole !== 'superadmin'){
+      if(users.filter(u => isSuperadmin(u.role)).length <= 1){
+        showNotif('You cannot demote the last superadmin.', 'warn', 4500);
+        return;
+      }
+    }
+
+    target.role = newRole;
+    await withTimeout(authSaveUsers(users), 8000, 'authSaveUsers (role)'); // ESPERA o banco confirmar
+    notifAdd(email, me.email, `${me.email} changed your account role to ${roleLabel(newRole)}.`);
+    _pendingRoleFlip = { email };                    // confirmado → anima pra nova seção no finally
+  } catch(e){
+    // Erro/timeout: reverte o papel LOCAL pro original (o authSaveUsers grava local antes de
+    // empurrar; sem reverter, a UI mostraria a nova seção mesmo o banco tendo falhado — "limbo").
+    console.warn('Role change failed:', e);
+    if(fromRole !== null){
+      const u2 = authGetUsers();
+      const t2 = u2.find(x => x.email.toLowerCase() === email.toLowerCase());
+      if(t2 && t2.role !== fromRole){ t2.role = fromRole; localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(u2)); }
+    }
+    showNotif('Could not update the role — please try again. Nothing was changed.', 'warn', 4500);
+  } finally {
+    setRoleBusy(false);
+    renderDashUserListWithFlip(); // sucesso: anima; erro/no-op: só re-renderiza (sem _pendingRoleFlip)
+  }
 }
 
 async function dashAddUser() {

@@ -1,0 +1,62 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-03
+Tema: Área de Membros — (1) estado de espera/bloqueio ao trocar o papel de alguém, aguardando a
+      confirmação REAL do banco; (2) redesign em seções por papel (Superadmins/Admins/Members)
+      com transição suave (FLIP) do card ao mudar de categoria.
+
+===============================================================================
+DIAGNÓSTICO
+===============================================================================
+A troca de papel (dashSetUserRole) era OTIMISTA: chamava authSaveUsers, que gravava no
+localStorage e disparava sbPushUsers SEM await (fire-and-forget). Ou seja, não esperava o banco.
+E a lista era única, misturando todos os papéis na ordem de criação.
+
+===============================================================================
+O QUE ENTROU (index.html)
+===============================================================================
+1) ESTADO DE ESPERA (mesmo padrão do "move to folder"):
+   - authSaveUsers agora RETORNA a promise do sbPushUsers (pra dar await na confirmação real).
+   - #roleBusyOverlay dentro da modal de Membros (spinner + "Updating role…") + setRoleBusy/
+     _roleBusy + beforeunload durante o voo.
+   - dashSetUserRole reescrito: guard de reentrância, try/catch/FINALLY (SEMPRE destrava),
+     await withTimeout(authSaveUsers,8000). Erro/timeout → reverte o papel LOCAL pro original
+     (localStorage) e avisa — nunca deixa a pessoa "no limbo" entre seções.
+   - sbOnUsersChanged não re-renderiza a lista enquanto _roleBusy (não briga com o overlay/animação).
+
+2) REDESIGN EM SEÇÕES:
+   - renderDashUserList agrupa por papel: Superadmins → Admins → Members, cada seção com contagem,
+     ordenada por nome/e-mail, com placeholder "No one here yet" quando vazia. Seção Superadmins:
+     sempre visível pra um superadmin; pra admin comum, só se houver alguém.
+   - Card extraído em dashUserCardHtml(u, me, deptOptions), com data-email (âncora do FLIP).
+   - Cards SÓLIDOS (mantém .member-row atual — sem backdrop-filter pesado, conforme decidido).
+
+3) TRANSIÇÃO FLIP (confirmar-depois-animar):
+   - renderDashUserListWithFlip: mede a posição de todos os cards ANTES, re-renderiza agrupado, e
+     anima cada card que mudou de lugar (translate da posição antiga→nova, .3s). O card que trocou
+     de papel ganha realce breve (.member-row-landed). Respeita prefers-reduced-motion (sem anim).
+
+===============================================================================
+EDGE CASES COBERTOS
+===============================================================================
+- Erro/timeout de rede → reverte pro papel original (localStorage) + card volta à seção original;
+  overlay some (finally); toast de warn. Sem limbo.
+- Edição concorrente (outro admin muda a MESMA pessoa durante o pull) → detecta (papel do clique
+  vs papel recém-puxado), ABORTA a escrita, preserva a mudança do outro e mostra o estado mais novo.
+- Guard do último superadmin → impede rebaixar o único superadmin restante.
+- Reentrância / duplo clique → 2ª troca em voo vira no-op (e reverte o select).
+- Auto-render ao vivo suprimido durante o voo.
+
+===============================================================================
+COMO FOI VERIFICADO (navegador real, sbClient bloqueado, mocks; store real via localStorage)
+===============================================================================
+- Seções: Superadmins/Admins/Members com contagem e ordenação corretas, placeholder quando vazia.
+- Sucesso (member→admin): overlay=flex durante, _roleBusy=true; 2º clique no meio = no-op; ao
+  confirmar → papel gravado, card passa pra seção Admins; overlay=none, _roleBusy=false.
+- Último superadmin: rebaixar o único = bloqueado, segue superadmin.
+- Erro (reject do push): overlay some no finally, localStorage revertido pra 'admin', card volta pra
+  Admins, toast de warn.
+- Concorrência: warn "changed by someone else", push NÃO feito, papel do outro admin preservado,
+  UI mostra o mais novo.
+- Sem erros de console.
+Conferência visual logada (layout das seções + animação) fica pra você — a aba de teste está
+deslogada, o loginOverlay cobre a modal.
