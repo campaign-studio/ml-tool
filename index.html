@@ -2480,6 +2480,15 @@ function setSyncDot(state) {
   const m = meta[state] || meta.off;
   if(dot) dot.style.background = m.c;
   if(label) label.textContent = m.t;
+  // Chip do DASHBOARD (#dashSyncStatus): o header do editor fica escondido no dashboard, então o
+  // mesmo status aparece aqui — assim rename/assign-folder/leave e edições de membro (que salvam
+  // rápido e não bloqueiam) também mostram "Saving…/Saved". Só os estados de save (não o ocioso).
+  const dash = document.getElementById('dashSyncStatus');
+  if(dash) {
+    const show = state === 'saving' || state === 'saved' || state === 'error';
+    dash.textContent = show ? m.t : '';
+    dash.style.color = m.c;
+  }
 }
 
 
@@ -2928,6 +2937,7 @@ function isUserRecentlyDeleted(email) {
 async function sbPushUsers(users) {
   const sb = sbClient();
   if(!sb) return;
+  setSyncDot('saving'); // edições de membro também refletem o estado real da gravação
   const pushPromise = (async () => {
     try {
       // Mesma proteção do push de projects: busca os tombstones mais recentes ANTES
@@ -2940,8 +2950,10 @@ async function sbPushUsers(users) {
         const { error } = await sb.from('users').upsert(rows);
         if(error) throw error;
       }
+      setSyncDot('saved');
     } catch(e) {
       console.warn('Supabase sync (push users) error:', e);
+      setSyncDot('error');
     }
   })();
   _pendingUsersPush = pushPromise;

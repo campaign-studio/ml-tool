@@ -1,0 +1,37 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-03
+Tema: Indicador "Saving…/Saved" universal — agora aparece também no DASHBOARD e cobre o push de
+      USUÁRIOS. Fecha a varredura das ações de banco não-destrutivas (rename, assign-folder, leave,
+      edições de membro), sem overlays pesados pra edições rápidas.
+
+===============================================================================
+CONTEXTO
+===============================================================================
+As ações destrutivas (deletar pasta, remover membro, mover, trocar papel, share) já têm overlay/
+spinner bloqueante. As não-destrutivas (renomear projeto/pasta, assign-folder, leave, trocar
+departamento/nome de membro) salvam rápido e fecham na hora — não bloqueiam. O indicador certo pra
+elas é o chip leve "Saving…/Saved", não um overlay. Mas o chip do header do editor fica ESCONDIDO
+no dashboard, e o push de usuários não passava por ele.
+
+===============================================================================
+O QUE ENTROU (index.html)
+===============================================================================
+- setSyncDot(state) agora atualiza TAMBÉM o chip do dashboard (#dashSyncStatus): mostra
+  "Saving…/Saved/Save failed" nos estados de save e fica vazio no ocioso. Assim rename/assign-folder/
+  leave (que rodam no dashboard, via projSaveAll) mostram o status mesmo com o header do editor oculto.
+- sbPushUsers passou a dirigir o chip: setSyncDot('saving') no início do push, 'saved' quando o
+  upsert do Supabase confirma, 'error' no catch. Assim TODA edição de membro (departamento, nome,
+  papel, remover) reflete o estado REAL da gravação.
+
+Resultado — cobertura completa e proporcional:
+- Ações destrutivas / que bloqueiam → overlay ("Deleting…/Removing…/Saving…").
+- Autosave do editor + metadata rápida (projeto e usuário) → chip "Saving…/Saved" (dashboard e editor).
+Sempre refletindo a confirmação real do banco (nunca otimista).
+
+===============================================================================
+COMO FOI VERIFICADO (navegador real, fake supabase, sem escrever no banco)
+===============================================================================
+- Chip do dashboard: "Saving…", "Saved", "Save failed" nos estados de save; vazio no ocioso ('on').
+- Push de usuários: "Saving…" durante o upsert, "Saved" depois — refletido no chip do dashboard E
+  no label do editor.
+- Sem erros de console.
