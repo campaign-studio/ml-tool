@@ -1,0 +1,43 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-03
+Tema: Editor de HTML tagueado — edição concorrente do MESMO HTML agora tenta MERGE 3-vias por
+      linha em vez de só "último a salvar vence + prompt de sobrescrever". Passo à parte, conforme
+      combinado no fim da revisão do fluxo de pasta.
+
+===============================================================================
+ANTES
+===============================================================================
+Se alguém mudava o mesmo rawHtml enquanto você editava, performSaveTaggedHtmlEdit só perguntava
+"alguém mudou, sobrescrever a versão dele?". Salvar = jogar fora a edição do outro (mesmo que as
+duas edições fossem em partes completamente diferentes do HTML).
+
+===============================================================================
+AGORA (index.html)
+===============================================================================
+- diff3MergeLines(base, mine, theirs): merge 3-vias por LINHA. base = loadedHtml (versão de quando
+  o editor abriu), mine = minha edição, theirs = o que está no banco agora. Junta edições em regiões
+  DIFERENTES automaticamente; conflito real (os dois mexeram na mesma região de formas diferentes)
+  → { clean:false }. Conservador: âncoras = linhas iguais nos TRÊS lados, então na dúvida gera
+  conflito (seguro) em vez de merge duvidoso. NUNCA inventa conteúdo — só recombina linhas
+  existentes. Guarda de tamanho (>6000 linhas → não tenta).
+- _lcsLinePairs(a,b): LCS por linha (base do diff3).
+- performSaveTaggedHtmlEdit: quando o remoto mudou, tenta o merge; se clean E o resultado passa em
+  validateTaggedHtmlEdit (tags {%translation%} balanceadas, ids preservados, condicionais Liquid
+  balanceadas) → salva o MERGE e avisa "suas mudanças foram fundidas com as do outro". Só cai no
+  prompt de "sobrescrever?" se houver conflito real OU se o merge ferir a integridade das tags —
+  nunca sobrescreve o trabalho do outro em silêncio.
+
+===============================================================================
+COMO FOI VERIFICADO (navegador real, sem escrever no banco)
+===============================================================================
+- Edições em linhas diferentes (B e D) → merge limpo [A,B2,C,D2,E].
+- Mesma região, valores diferentes → clean:false (cai no prompt).
+- Mesma mudança dos dois lados → merge limpo.
+- Um lado insere linha + o outro edita outra linha → merge limpo.
+- HTML real com {%translation%}: cada lado edita um id diferente → os DOIS sobrevivem (HELLO+WORLD)
+  e validateTaggedHtmlEdit passa.
+- theirs == base → fica a minha versão.
+- Sem erros de console.
+
+NOTA: merge é por LINHA. Duas edições na MESMA linha (mesmo que em pedaços diferentes dela) contam
+como conflito → prompt. É o trade-off seguro pra não gerar HTML quebrado.

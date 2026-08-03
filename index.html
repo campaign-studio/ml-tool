@@ -5451,10 +5451,57 @@ function syncTaggedHtmlIntoLiveCampaign(projectId, itemId, rawHtml, taggedHtmlBe
   }
 }
 
+// LCS de dois arrays de linhas → pares [i,j] casados (subsequência comum, crescente).
+function _lcsLinePairs(a, b) {
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for(let i = n - 1; i >= 0; i--) for(let j = m - 1; j >= 0; j--)
+    dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const pairs = []; let i = 0, j = 0;
+  while(i < n && j < m) {
+    if(a[i] === b[j]) { pairs.push([i, j]); i++; j++; }
+    else if(dp[i + 1][j] >= dp[i][j + 1]) i++; else j++;
+  }
+  return pairs;
+}
+
+// Merge 3-vias por LINHA (base = versão de quando abri o editor; mine = minha edição; theirs = o
+// que está no banco agora). Junta edições em regiões DIFERENTES automaticamente; se os dois
+// mexeram na MESMA região de formas diferentes, devolve { clean:false } (o chamador cai no prompt
+// de "sobrescrever?"). NUNCA inventa conteúdo — só recombina linhas existentes. Conservador de
+// propósito: âncoras = linhas iguais nos TRÊS, então na dúvida gera conflito (seguro) em vez de
+// um merge duvidoso.
+function diff3MergeLines(baseStr, mineStr, theirsStr) {
+  const base = baseStr.split('\n'), mine = mineStr.split('\n'), theirs = theirsStr.split('\n');
+  if(Math.max(base.length, mine.length, theirs.length) > 6000) return { clean: false, text: null }; // guarda contra caso patológico
+  const theirsOf = new Map(_lcsLinePairs(base, theirs).map(([bi, ti]) => [bi, ti]));
+  const anchors = [];
+  for(const [bi, mi] of _lcsLinePairs(base, mine)) if(theirsOf.has(bi)) anchors.push([bi, mi, theirsOf.get(bi)]);
+  const out = [];
+  const eq = (x, y) => x.length === y.length && x.every((v, k) => v === y[k]);
+  let pb = -1, pm = -1, pt = -1, conflict = false;
+  const emit = (bs, be, ms, me, ts, te) => {
+    const bR = base.slice(bs, be), mR = mine.slice(ms, me), tR = theirs.slice(ts, te);
+    if(eq(mR, bR)) out.push(...tR);        // eu não mexi aqui → fica a versão do outro
+    else if(eq(tR, bR)) out.push(...mR);   // o outro não mexeu aqui → fica a minha
+    else if(eq(mR, tR)) out.push(...mR);   // os dois fizeram a MESMA mudança
+    else conflict = true;                  // conflito real
+  };
+  for(const [bi, mi, ti] of anchors) {
+    emit(pb + 1, bi, pm + 1, mi, pt + 1, ti);
+    if(conflict) return { clean: false, text: null };
+    out.push(base[bi]); // linha-âncora (igual nos três)
+    pb = bi; pm = mi; pt = ti;
+  }
+  emit(pb + 1, base.length, pm + 1, mine.length, pt + 1, theirs.length);
+  if(conflict) return { clean: false, text: null };
+  return { clean: true, text: out.join('\n') };
+}
+
 async function performSaveTaggedHtmlEdit(force) {
   if(!_editHtmlCurrentTarget) return;
   const { projectId, itemId, loadedHtml } = _editHtmlCurrentTarget;
-  const newHtml = document.getElementById('editHtmlTextarea').value;
+  let newHtml = document.getElementById('editHtmlTextarea').value;
 
   // Relê fresco na hora de salvar (não usa a cópia carregada quando o editor abriu) — pra
   // detectar se alguém mais mudou esse mesmo HTML enquanto esta tela estava aberta.
@@ -5465,7 +5512,17 @@ async function performSaveTaggedHtmlEdit(force) {
   const currentStoredHtml = item ? item.rawHtml : p.data.html;
 
   if(!force && currentStoredHtml !== loadedHtml) {
-    if(!(await uiConfirm('Someone else changed this HTML since you opened this editor. Save your version anyway and overwrite theirs?', {title:'Overwrite?', okLabel:'Save anyway', danger:true}))) return;
+    // Alguém mudou este HTML enquanto eu editava. Tenta MERGE 3-vias (base = loadedHtml) — se as
+    // edições foram em regiões diferentes, junta as duas automaticamente (e valida a integridade
+    // das tags antes de aceitar). Só cai no prompt de "sobrescrever?" se houver conflito real ou
+    // se o merge ferir a estrutura de tags — nunca sobrescreve o trabalho do outro em silêncio.
+    const merged = diff3MergeLines(loadedHtml, newHtml, currentStoredHtml);
+    if(merged.clean && merged.text != null && !validateTaggedHtmlEdit(currentStoredHtml, merged.text).hasWarnings) {
+      newHtml = merged.text;
+      showNotif('Someone else edited this HTML meanwhile — your changes were merged with theirs.', 'ok', 4000);
+    } else {
+      if(!(await uiConfirm('Someone else changed this HTML since you opened this editor, and the changes overlap (can\'t be merged automatically). Save your version anyway and overwrite theirs?', {title:'Overwrite?', okLabel:'Save anyway', danger:true}))) return;
+    }
   }
 
   target.taggedHtmlBeforeManualEdit = currentStoredHtml;
