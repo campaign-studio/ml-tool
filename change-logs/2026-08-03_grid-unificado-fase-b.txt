@@ -1,0 +1,43 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-03
+Tema: Phase B — unificação dos grids: o grid de itens de campanha (email/in-app/push) agora usa o
+      MESMO controlador estilo-planilha do editor avulso (navegação por setas/Tab, F2/digitar pra
+      editar, copiar/colar intervalo do Excel, delete). Feito em sub-passos verificados.
+
+===============================================================================
+SUB-PASSOS
+===============================================================================
+1) rowsHTML() do editor avulso extraído num renderTranslationGridBody(cfg) parametrizado no
+   translation-engine.js; rowsHTML só delega. Saída BYTE-A-BYTE idêntica (provado por hash antes/
+   depois via git stash). Editor avulso inalterado.
+2) Controlador do grid parametrizado: _gridBodyId (tbody alvo), _gridWrite (escrita programática;
+   default setCellV = avulso), _gridWiredHosts (listeners por host). gridBody() usa _gridBodyId;
+   gridEnterEdit/gridWriteCell escrevem por (_gridWrite||setCellV); wireGridController(hostId) liga
+   por host. Defaults = avulso → comportamento idêntico (o controlador já lia S.csv, que durante a
+   edição de um item de campanha JÁ é o item — ver activateCampaignItemIntoS).
+3) renderCampaignGrid passou a emitir células compatíveis com o controlador: td.tl-cell.cell-nav +
+   data-r/data-c + <textarea readonly> (o readonly é gerenciado pelo controlador), tbody id=campGstb;
+   e, após render, aponta o controlador pro grid da campanha: _gridBodyId='campGstb',
+   _gridWrite=setCampaignCell, wireGridController('campaignItemTable'), gridReapplyHighlight().
+   O host é o <table id="campaignItemTable"> (persiste entre re-renders; a delegação sobrevive).
+
+Guarda de segurança do controlador: cada evento checa gridBody().contains(td) — se _gridBodyId
+aponta pro grid ativo, funciona; senão, no-op. Então os dois grids (avulso #gst e campanha
+#campaignItemTable) coexistem sem interferência.
+
+NOTA: o "lock de currency" (isCellPasteBlocked) já era um stub que sempre retorna false — não havia
+lock implementado; nada a portar ali.
+
+===============================================================================
+COMO FOI VERIFICADO (navegador real, mocks, sem escrever no banco)
+===============================================================================
+- Sub-passo 1: hash do rowsHTML() idêntico antes/depois (len 12589) num S representativo.
+- Sub-passo 2: defaults gstb/null, gridBody→#gstb, wireGridController idempotente por host.
+- Sub-passo 3: renderCampaignGrid gera células td.tl-cell.cell-nav com data-r/data-c + textarea
+  readonly, tbody=campGstb, contexto apontado (_gridWrite=setCampaignCell, host wired). Controlador:
+  digitar 'Z' em (0,0)=de-DE → item de-DE='Z'; 'Q' em (0,1)=pt-BR → pt-BR='Q'; colar matriz 2x2 →
+  células certas (respeitando a ordem fixa de colunas); copiar intervalo → TSV correto. Sem erros.
+- Editor avulso: intocado nos 3 sub-passos (buildTable reseta o contexto pro avulso).
+
+FALTA (conferência sua, logado): a EXPERIÊNCIA interativa do grid da campanha (clicar, digitar,
+setas/Tab, colar do Excel de verdade) + confirmar que o editor avulso segue igual.

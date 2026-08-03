@@ -4380,15 +4380,25 @@ function renderCampaignGrid(item) {
   // coluna precisa ser editável (a pessoa escreve o texto original ali mesmo).
   // Email/in-app continuam com a origem travada (vem do HTML tageado).
   const originEditable = item.type === 'push';
-  const tbody = '<tbody>' + rows.map((row, ri) => `
+  // Células de tradução no MESMO formato do editor avulso (td.tl-cell.cell-nav + data-r/data-c +
+  // textarea readonly), pra o controlador de grid compartilhado (nav/copy/paste estilo planilha)
+  // funcionar aqui também. O readonly é gerenciado pelo controlador (F2/Enter/digitar entram em
+  // edição); a escrita vai por setCampaignCell (ver _gridWrite abaixo).
+  const tbody = '<tbody id="campGstb">' + rows.map((row, ri) => `
     <tr>
       <td class="rn">${ri + 1}</td>
       <td class="cid">${escHtml(row.label || row.id)}</td>
       <td class="src"><textarea rows="1" ${originEditable ? `oninput="setCampaignOrigin(${ri},this.value)"` : 'readonly'}>${escHtml(row.src)}</textarea></td>
-      ${langs.map(l => `<td class="tl tl-cell${!(row.translations[l] || '').trim() ? ' tl-missing' : ''}"><textarea rows="1" oninput="setCampaignCell(${ri},'${escJsAttr(l)}',this.value)">${escHtml(row.translations[l] || '')}</textarea></td>`).join('')}
+      ${langs.map((l, ci) => `<td class="tl tl-cell cell-nav${!(row.translations[l] || '').trim() ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}"><textarea rows="1" readonly oninput="autoH(this);setCampaignCell(${ri},'${escJsAttr(l)}',this.value)">${escHtml(row.translations[l] || '')}</textarea></td>`).join('')}
     </tr>
   `).join('') + '</tbody>';
   table.innerHTML = colgroup + thead + tbody;
+  // Aponta o controlador compartilhado pro grid da campanha e liga os listeners no host (o
+  // <table> persiste entre re-renders; só o innerHTML troca, então a delegação sobrevive).
+  _gridBodyId = 'campGstb';
+  _gridWrite = setCampaignCell;
+  wireGridController('campaignItemTable');
+  gridReapplyHighlight();
 }
 
 function setCampaignOrigin(ri, value) {
