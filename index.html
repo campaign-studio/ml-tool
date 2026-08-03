@@ -530,6 +530,86 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .folder-chip-icon{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border:none;background:var(--s2);color:var(--text3);border-radius:50%;font-size:10.5px;cursor:pointer;flex-shrink:0;}
 .folder-chip-icon:hover{background:var(--acc-bg);color:var(--accent);}
 
+/* ═══════════ CARD DE PASTA (listagem externa) — clicável, glass, ações no hover ═══════════ */
+.folder-card{position:relative;display:flex;align-items:center;gap:16px;padding:16px 18px;border-radius:18px;
+  background:var(--surface);border:1px solid var(--border);cursor:pointer;
+  box-shadow:0 1px 3px rgba(20,20,40,.05);transition:border-color .18s,box-shadow .18s,transform .18s;}
+.folder-card:hover{border-color:var(--border-s);box-shadow:0 14px 32px rgba(20,20,40,.10);transform:translateY(-2px);}
+.folder-card-icon{flex-shrink:0;width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;
+  color:#fff;background:linear-gradient(150deg,var(--wh-navy,#1d2b4a),var(--wh-navy2,#2a3d63));box-shadow:0 4px 12px rgba(20,20,40,.18);}
+.folder-card-body{flex:1;min-width:0;}
+.folder-card-name{display:flex;align-items:center;gap:8px;font-size:14.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.folder-card-summary{margin-top:3px;font-size:12px;color:var(--text3);font-weight:600;}
+.folder-shared-tag{font-size:10px;font-weight:700;color:#6d28d9;background:#f5f3ff;border:1px solid #e9e5ff;border-radius:20px;padding:1px 8px;white-space:nowrap;}
+.folder-card-actions{display:flex;gap:6px;flex-shrink:0;opacity:0;transition:opacity .14s;}
+.folder-card:hover .folder-card-actions{opacity:1;}
+.folder-icon-btn{width:32px;height:32px;border-radius:9px;border:1px solid var(--border-s);background:var(--surface);color:var(--text2);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .12s,color .12s,border-color .12s;}
+.folder-icon-btn:hover{background:var(--acc-bg);color:var(--accent);border-color:var(--accent);}
+.folder-icon-btn.danger:hover{background:#fef2f2;color:#dc2626;border-color:#fca5a5;}
+/* Botões de escopo do delete de pasta */
+.del-scope-btn{display:block;width:100%;text-align:left;padding:11px 14px;border-radius:11px;border:1.5px solid var(--border-s);background:var(--surface);cursor:pointer;font-family:var(--sans);transition:border-color .12s,background .12s;}
+.del-scope-btn strong{display:block;font-size:13px;color:var(--text);}
+.del-scope-btn span{display:block;font-size:11.5px;color:var(--text3);margin-top:2px;}
+.del-scope-btn:hover{border-color:var(--accent);}
+.del-scope-btn.active{border-color:var(--accent);background:var(--acc-bg);}
+
+/* ═══════════ APPROVE BY LOCALE — abas de locale + itens ═══════════ */
+.abl-tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid var(--border);}
+.abl-tab{padding:9px 16px;border:1px solid var(--border);border-bottom:none;border-radius:9px 9px 0 0;background:var(--s2);color:var(--text2);font-size:12.5px;font-weight:700;cursor:pointer;position:relative;top:2px;font-family:var(--sans);}
+.abl-tab:hover{color:var(--accent);}
+.abl-tab.active{background:var(--surface);color:var(--text);box-shadow:0 -2px 6px rgba(0,0,0,.04);}
+.abl-group{margin-bottom:26px;}
+.abl-group-head{font-size:15px;font-weight:800;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+.abl-item{display:flex;align-items:center;gap:14px;padding:12px 16px;border:1px solid var(--border);border-radius:12px;background:var(--surface);margin-bottom:10px;}
+.abl-item-type{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:3px 9px;border-radius:20px;background:var(--s2);color:var(--text3);flex-shrink:0;}
+.abl-item-name{flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.abl-approved{display:inline-flex;align-items:center;gap:6px;padding:7px 15px;border-radius:9px;border:1px solid #a7f3d0;background:#ecfdf5;color:#059669;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;}
+.abl-approved:hover{background:#d1fae5;}
+/* Approve by Locale dentro da pasta: seções por tipo + grade de cards com preview localizado. */
+.abl-section{margin-bottom:34px;}
+.abl-section-head{font-size:15px;font-weight:800;color:var(--text);margin:0 0 14px;display:flex;align-items:center;gap:9px;}
+.abl-section-count{font-size:11px;font-weight:800;color:var(--text3);background:var(--s2);border-radius:20px;padding:2px 10px;}
+.abl-grid{display:grid;gap:20px;}
+.abl-grid-inapp{grid-template-columns:repeat(auto-fill,minmax(300px,320px));}
+/* E-mails no formato "Approve copies": faixa de canvas com scroll horizontal, frames largura real
+   um ao lado do outro. */
+.abl-ecanvas{display:flex;gap:48px;align-items:flex-start;overflow-x:auto;padding:8px 4px 22px;background:var(--s2);border-radius:14px;}
+.abl-eframe{flex-shrink:0;background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.06);}
+.abl-eframe-head{display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;left:0;}
+.abl-eframe-vp{background:#fff;}
+.abl-grid-push{grid-template-columns:repeat(auto-fill,minmax(320px,360px));}
+.abl-card{border:1px solid var(--border);border-radius:14px;background:var(--surface);overflow:hidden;display:flex;flex-direction:column;}
+.abl-card-preview{overflow:hidden;background:var(--s2);}
+.abl-card-preview-email{height:520px;}
+.abl-card-preview-inapp{height:540px;background:linear-gradient(160deg,#2b2f38,#0f1116);}
+.abl-card-preview-push{min-height:120px;background:#eef1f6;}
+.abl-card-foot{display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid var(--border);}
+.abl-card-name{flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.abl-approve-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:9px;border:none;background:#6d28d9;color:#fff;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;box-shadow:0 2px 8px rgba(109,40,217,.25);}
+.abl-approve-btn:hover{background:#5b21b6;}
+
+/* ═══════════ CARD DE ITEM DENTRO DA PASTA (e-mail/in-app/push) — cores sólidas ═══════════ */
+.camp-item-card{position:relative;display:flex;flex-direction:column;border-radius:18px;overflow:hidden;
+  background:var(--surface);border:1px solid var(--border);
+  box-shadow:0 1px 3px rgba(20,20,40,.05);transition:border-color .18s,box-shadow .18s,transform .18s;}
+.camp-item-card:hover{border-color:var(--border-s);box-shadow:0 16px 36px rgba(20,20,40,.12);transform:translateY(-3px);}
+.camp-item-preview{height:440px;overflow:hidden;background:#f2f1f6;position:relative;}
+.camp-item-preview iframe{width:100%;height:100%;border:none;}
+/* Rodapé em COLUNA: linha de info (nome + progresso) em cima, linha de AÇÕES embaixo — sempre
+   visíveis (não escondidas no hover), pra "Remove from folder" e "Delete" ficarem evidentes. */
+.camp-item-foot{display:flex;flex-direction:column;gap:10px;padding:13px 15px;border-top:1px solid var(--border);background:var(--s2);}
+.camp-item-info{display:flex;align-items:center;gap:10px;min-width:0;}
+.camp-item-name{flex:1;min-width:0;font-size:14px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.camp-item-progress{flex-shrink:0;}
+.camp-item-actions{display:flex;gap:7px;flex-wrap:wrap;}
+.camp-item-actions .tbtn{flex-shrink:0;}
+/* Botão "Remove from folder" — evidente (borda âmbar), e "Delete item" — vermelho. */
+.camp-item-btn-remove{border-color:#fcd34d!important;color:#b45309!important;background:#fffbeb!important;font-weight:600;}
+.camp-item-btn-remove:hover{background:#fef3c7!important;}
+.camp-item-btn-delete{border-color:#fca5a5!important;color:#dc2626!important;background:#fff5f5!important;}
+.camp-item-btn-delete:hover{background:#fee2e2!important;}
+
 .proj-row{position:relative;overflow:hidden;display:flex;flex-direction:column;gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:24px 26px 22px 32px;box-shadow:0 1px 3px rgba(20,20,40,.05);transition:border-color .2s,box-shadow .2s,transform .2s;}
 .proj-row::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--wh-navy),var(--wh-navy2));opacity:.85;transition:width .2s;}
 .proj-row:hover{border-color:var(--border-s);box-shadow:0 14px 32px rgba(20,20,40,.09);transform:translateY(-2px);}
@@ -663,6 +743,17 @@ td.tl.tl-cell{padding:0;}
 td.tl.tl-missing{background:#fef2f2;}
 td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
 
+/* ═══════════ SELEÇÃO ESTILO PLANILHA (grid de tradução) ═══════════ */
+/* Célula ativa (seleção única) — borda forte tipo Excel. box-shadow em vez de outline pra
+   não deslocar o layout. */
+td.tl-cell.cell-active{box-shadow:inset 0 0 0 2px var(--accent);}
+/* Células dentro de um intervalo (Shift+setas / arrastar) — realce suave. */
+td.tl-cell.cell-range{background:rgba(37,99,235,.10);}
+/* Em modo de NAVEGAÇÃO (textarea/input readonly) o cursor é seta, não texto — deixa claro que
+   ali você seleciona/navega; pra editar entra em modo de edição (Enter/F2/duplo-clique/digitar). */
+td.tl-cell.cell-nav textarea,td.tl-cell.cell-nav input{cursor:default;}
+td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
+
 /* Aviso amarelo de "texto de referência diferente do CSV" numa linha — não bloqueia
    nada, só chama atenção pra pessoa conferir com calma. Clicar marca como visto:
    fica verde por um instante e depois some, sem precisar recarregar a tabela. */
@@ -764,6 +855,10 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
 .av-hdr-title{font-size:15px;font-weight:700;color:var(--text);}
 .av-hdr-sub{font-size:11.5px;color:var(--text3);}
 .av-hdr-actions{display:flex;align-items:center;gap:8px;margin-left:auto;}
+.av-locale-tabs{display:flex;align-items:center;gap:4px;margin-left:18px;flex-wrap:nowrap;overflow-x:auto;max-width:52vw;}
+.av-locale-tab{flex-shrink:0;padding:6px 13px;border:1px solid var(--border);border-radius:8px;background:var(--s2);color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans);white-space:nowrap;}
+.av-locale-tab:hover{color:var(--accent);}
+.av-locale-tab.active{background:#6d28d9;border-color:#6d28d9;color:#fff;}
 .av-body{flex:1;display:flex;overflow:hidden;}
 
 /* Infinite pannable/zoomable canvas — all country frames laid out side by side, like a Figma page */
@@ -935,12 +1030,6 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
         <h1 class="dash-title">Dashboard</h1>
         <span id="dashSyncStatus" class="dash-sync"></span>
       </div>
-      <div style="display:flex;gap:10px;">
-        <button class="btn-next" id="newProjBtn" style="width:auto;padding:10px 20px;margin-top:0;" onclick="projCreate()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-          New project
-        </button>
-      </div>
     </div>
 
     <!-- TAB: PROJECTS -->
@@ -949,10 +1038,15 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
            nenhuma pasta), então a barra de busca sumia junto pra quem não usava pastas. Agora
            é um bloco próprio, independente das pastas. -->
       <div class="dash-section" style="padding-top:0;border-top:none;margin-bottom:0;">
-        <div style="display:flex;align-items:center;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <!-- Filtro de pasta: "Tudo" (pastas + soltos) x "Fora de pasta" (só os soltos). -->
+          <div class="dash-sort" id="folderFilter">
+            <button class="dash-sort-btn active" id="folderFilterAll" onclick="setFolderFilter('all')">All</button>
+            <button class="dash-sort-btn" id="folderFilterLoose" onclick="setFolderFilter('unfoldered')">Unfoldered</button>
+          </div>
           <div class="dash-search-wrap" style="margin-left:auto;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5"/></svg>
-            <input type="text" id="dashProjectSearch" class="dash-search-input" placeholder="Search projects…" oninput="setDashProjectSearch(this.value)">
+            <input type="text" id="dashProjectSearch" class="dash-search-input" placeholder="Search projects & folders…" oninput="setDashProjectSearch(this.value)">
           </div>
         </div>
       </div>
@@ -967,12 +1061,33 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
         </div>
       </div>
 
+      <!-- PASTAS (kind:'campaign') — agrupam e-mail/in-app/push. Ficam ACIMA dos e-mails soltos.
+           Movida pra cá (antes ficava abaixo). Reaproveita o mesmo array/sync de projetos. -->
+      <div class="dash-section" id="campaignsSection" style="padding-top:0;border-top:none;">
+        <div class="dash-section-head">
+          <div class="sec-lbl" style="margin-bottom:0;">Folders</div>
+          <button class="btn-next" style="width:auto;padding:8px 16px;margin-top:0;font-size:12px;" onclick="openNewCampaignModal()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;"><path d="M12 5v14M5 12h14"/></svg>
+            New folder
+          </button>
+        </div>
+        <div id="campaignsList" style="display:flex;flex-direction:column;gap:14px;margin-top:12px;"></div>
+      </div>
+
       <div class="dash-section">
         <div class="dash-section-head">
           <div class="sec-lbl" style="margin-bottom:0;">Projects I started</div>
-          <div class="dash-sort" id="dashSort">
-            <button class="dash-sort-btn active" onclick="setDashSortMode('created', this)">Newest first</button>
-            <button class="dash-sort-btn" onclick="setDashSortMode('updated', this)">Last edited</button>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div class="dash-sort" id="dashSort">
+              <button class="dash-sort-btn active" onclick="setDashSortMode('created', this)">Newest first</button>
+              <button class="dash-sort-btn" onclick="setDashSortMode('updated', this)">Last edited</button>
+            </div>
+            <!-- "New project" agora vive aqui, no mesmo estilo/formato do "New folder" (mesma
+                 hierarquia: Folders tem New folder, Projects tem New project). -->
+            <button class="btn-next" id="newProjBtn" style="width:auto;padding:8px 16px;margin-top:0;font-size:12px;" onclick="projCreate()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;"><path d="M12 5v14M5 12h14"/></svg>
+              New project
+            </button>
           </div>
         </div>
         <div id="myProjectsList" style="display:flex;flex-direction:column;gap:14px;"></div>
@@ -987,21 +1102,6 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
         <div class="sec-lbl">To approve</div>
         <div id="toApproveProjectsList" style="display:flex;flex-direction:column;gap:14px;"></div>
       </div>
-    </div>
-
-    <!-- ═══ PROJETOS — área separada: um "projeto" aqui agrupa vários itens de conteúdo
-         (e-mail, in-app, push) num único lugar, com uma aba por item no editor. Não mexe
-         em nada da parte de e-mail solto acima — é um tipo de registro à parte (p.kind
-         === 'campaign'), reaproveitando o mesmo array/sync de projetos por baixo. ═══ -->
-    <div class="dash-section" id="campaignsSection" style="margin-top:12px;padding-top:28px;border-top:1px solid var(--border);">
-      <div class="dash-section-head">
-        <div class="sec-lbl" style="margin-bottom:0;">Projetos</div>
-        <button class="btn-next" style="width:auto;padding:8px 16px;margin-top:0;font-size:12px;" onclick="openNewCampaignModal()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;"><path d="M12 5v14M5 12h14"/></svg>
-          New project
-        </button>
-      </div>
-      <div id="campaignsList" style="display:flex;flex-direction:column;gap:14px;margin-top:12px;"></div>
     </div>
 
   </div>
@@ -1116,11 +1216,7 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
     </button>
     <span id="campaignScreenTitle" style="font-size:13px;font-weight:700;color:var(--text);flex-shrink:0;margin-right:8px;">Project</span>
     <div id="campaignTabs" style="display:flex;gap:6px;flex:1;"></div>
-    <button class="tbtn" style="border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;flex-shrink:0;" onclick="openCampaignBulkApprovalView()" title="Approve every language of every asset in this tab">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
-      Approve all copies
-    </button>
-    <button class="dash-sort-btn" style="background:var(--s2);flex-shrink:0;" onclick="openManageContentModal()" title="Add content">+ Add content</button>
+    <button id="campAddContentBtn" class="dash-sort-btn" style="background:var(--s2);flex-shrink:0;" onclick="openManageContentModal()" title="Add content">+ Add content</button>
   </div>
   <div id="campaignItemEmpty" style="display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--text3);">
     <p style="font-size:13px;">No content yet — click "+ Add content" to add an email, in-app message, or push.</p>
@@ -1128,7 +1224,13 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
   <!-- Galeria: landing da aba ativa — mostra TODOS os assets daquele tipo já com
        preview + Edit/Approve copies em cima de cada um, sem precisar abrir nada. -->
   <div id="campaignGallery" style="flex:1;display:none;overflow:auto;padding:24px;">
-    <div id="campaignGalleryGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;max-width:1400px;margin:0 auto;"></div>
+    <div id="campaignGalleryGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:22px;max-width:1500px;margin:0 auto;"></div>
+  </div>
+  <!-- Approve by Locale (dentro da pasta): recorte por idioma. Abas de locale + corpo agrupado
+       por tipo, cada asset renderizado no locale escolhido, com Approve só daquele idioma. -->
+  <div id="campaignLocaleView" style="flex:1;display:none;flex-direction:column;overflow:hidden;">
+    <div id="campLocaleTabs" class="abl-tabs"></div>
+    <div id="campLocaleBody" style="flex:1;overflow:auto;padding:22px 24px 40px;"></div>
   </div>
   <div id="campaignItemBody" style="flex:1;display:none;overflow:hidden;">
     <div style="display:flex;height:100%;">
@@ -1421,6 +1523,68 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
       <div style="display:flex;gap:10px;margin-top:22px;">
         <button class="btn-back" style="flex:1;" onclick="closeAssignFolderModal()">Cancel</button>
         <button class="btn-next" style="flex:1;margin-top:0;" onclick="confirmAssignFolder()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MOVE TO FOLDER (mover e-mail avulso pra dentro de uma Pasta/campanha) ═══════════ -->
+<div id="moveToFolderModal" class="modal-ov" style="display:none;">
+  <div class="card modal-card" style="width:100%;max-width:440px;">
+    <div class="ci" style="padding:28px;">
+      <h1 style="margin:0 0 6px;">Move to a folder</h1>
+      <p class="sub" id="moveToFolderSub" style="margin-bottom:16px;"></p>
+      <div id="moveToFolderList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;max-height:320px;overflow:auto;"></div>
+      <div style="display:flex;gap:10px;margin-top:8px;">
+        <button class="btn-back" style="flex:1;" onclick="closeMoveToFolderModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ DELETAR PASTA — escopo (só a pasta / tudo) + código de confirmação aleatório ═══════════ -->
+<div id="deleteFolderModal" class="modal-ov" style="display:none;">
+  <div class="card modal-card" style="width:100%;max-width:470px;">
+    <div class="ci" style="padding:28px;">
+      <h1 style="margin:0 0 6px;">Delete folder</h1>
+      <p class="sub" style="margin-bottom:16px;">Delete <strong id="deleteFolderName"></strong>. <span style="color:#dc2626;font-weight:700;">This action cannot be undone.</span></p>
+      <div id="deleteFolderScopeRow" style="margin-bottom:16px;">
+        <label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:8px;">What should happen to the projects inside?</label>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button type="button" id="scopeFolderOnly" class="del-scope-btn" onclick="setDeleteFolderScope('folderonly')">
+            <strong>Folder only</strong><span id="scopeFolderOnlyHint">— emails go back to the standalone list</span>
+          </button>
+          <button type="button" id="scopeContents" class="del-scope-btn" onclick="setDeleteFolderScope('contents')">
+            <strong>The folder AND everything inside</strong><span>— deletes emails, in-apps and pushes too</span>
+          </button>
+        </div>
+      </div>
+      <div id="deleteFolderSharedWarn" style="display:none;margin-bottom:14px;font-size:12px;font-weight:600;color:#b45309;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:9px 11px;"></div>
+      <div class="field" style="margin-bottom:0;">
+        <label>Type <code id="deleteFolderCode" style="font-size:15px;font-weight:800;letter-spacing:2px;background:var(--s2);padding:2px 9px;border-radius:6px;color:var(--text);"></code> to confirm</label>
+        <input id="deleteFolderCodeInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Confirmation code" oninput="updateDeleteFolderBtn()" onkeydown="if(event.key==='Enter'){event.preventDefault();if(!document.getElementById('deleteFolderBtn').disabled)confirmDeleteFolder();}">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:22px;">
+        <button class="btn-back" style="flex:1;" onclick="closeDeleteFolderModal()">Cancel</button>
+        <button class="btn-danger" id="deleteFolderBtn" style="flex:1;" disabled onclick="confirmDeleteFolder()">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ UI MODAL genérico — substitui alert()/confirm()/prompt() do navegador por um
+     pop-up da própria plataforma (uiAlert/uiConfirm/uiPrompt, baseados em Promise). ═══════════ -->
+<div id="uiModal" class="modal-ov" style="display:none;">
+  <div class="card modal-card" style="width:100%;max-width:430px;">
+    <div class="ci" style="padding:26px;">
+      <h1 id="uiModalTitle" style="margin:0 0 8px;font-size:18px;"></h1>
+      <p class="sub" id="uiModalMsg" style="margin-bottom:16px;white-space:pre-wrap;"></p>
+      <div class="field" id="uiModalField" style="margin-bottom:0;display:none;">
+        <input id="uiModalInput" type="text" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter'){event.preventDefault();uiModalResolve(true);}">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;">
+        <button class="btn-back" id="uiModalCancel" style="flex:1;" onclick="uiModalResolve(false)">Cancel</button>
+        <button class="btn-next" id="uiModalOk" style="flex:1;margin-top:0;" onclick="uiModalResolve(true)">OK</button>
       </div>
     </div>
   </div>
@@ -1844,9 +2008,12 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
 <div id="approvalView">
   <div class="av-hdr">
     <div>
-      <div class="av-hdr-title">Approve copies</div>
+      <div class="av-hdr-title" id="avHdrTitle">Approve copies</div>
       <div class="av-hdr-sub" id="avSubtitle"></div>
     </div>
+    <!-- Abas de LOCALE (só no modo "Approve by Locale"): troca o idioma sem sair do canvas —
+         "lá dentro tem abas para os outros países". Escondidas no modo single (Approve copies). -->
+    <div class="av-locale-tabs" id="avLocaleTabs" style="display:none;"></div>
     <div class="av-hdr-actions">
       <div class="av-online-stack" id="avOnlineStack"></div>
       <button class="btn-back" onclick="closeApprovalView()">Close</button>
@@ -3188,6 +3355,52 @@ function escJsAttr(s) {
   return String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
+// ── Pop-ups da plataforma (substituem alert/confirm/prompt do navegador) ─────────────────────
+// Baseados em Promise: uiAlert(msg) → resolve void; uiConfirm(msg) → resolve boolean;
+// uiPrompt(msg, {def}) → resolve string (ou null se cancelou). Um modal só, reaproveitado.
+let _uiModalResolver = null, _uiModalMode = 'alert';
+function uiModalResolve(ok) {
+  const resolver = _uiModalResolver; _uiModalResolver = null;
+  const m = document.getElementById('uiModal'); if(m) m.style.display = 'none';
+  if(!resolver) return;
+  if(_uiModalMode === 'prompt') resolver(ok ? document.getElementById('uiModalInput').value : null);
+  else if(_uiModalMode === 'confirm') resolver(!!ok);
+  else resolver();
+}
+function _uiOpen(o) {
+  o = o || {};
+  return new Promise(res => {
+    _uiModalResolver = res; _uiModalMode = o.mode || 'alert';
+    document.getElementById('uiModalTitle').textContent = o.title || (o.mode === 'alert' ? 'Heads up' : 'Please confirm');
+    document.getElementById('uiModalMsg').textContent = o.message || '';
+    const field = document.getElementById('uiModalField'), input = document.getElementById('uiModalInput');
+    if(o.mode === 'prompt') { field.style.display = ''; input.value = o.def || ''; input.placeholder = o.placeholder || ''; }
+    else field.style.display = 'none';
+    const cancel = document.getElementById('uiModalCancel'), ok = document.getElementById('uiModalOk');
+    cancel.style.display = (o.mode === 'alert') ? 'none' : '';
+    cancel.textContent = o.cancelLabel || 'Cancel';
+    ok.textContent = o.okLabel || 'OK';
+    ok.className = o.danger ? 'btn-danger' : 'btn-next';
+    ok.style.flex = '1'; ok.style.marginTop = '0';
+    document.getElementById('uiModal').style.display = 'flex';
+    if(o.mode === 'prompt') setTimeout(() => { input.focus(); input.select(); }, 30);
+  });
+}
+function uiAlert(message, opts) { return _uiOpen(Object.assign({}, opts, { message: message, mode: 'alert' })); }
+function uiConfirm(message, opts) { return _uiOpen(Object.assign({}, opts, { message: message, mode: 'confirm' })); }
+function uiPrompt(message, opts) { return _uiOpen(Object.assign({}, opts, { message: message, mode: 'prompt' })); }
+
+// Filtro de pasta do dashboard: 'all' (pastas + soltos, padrão) | 'unfoldered' (só os soltos,
+// esconde a seção de Pastas). Puramente de visualização — não muda dado nenhum.
+let _folderFilter = 'all';
+function setFolderFilter(mode) {
+  _folderFilter = (mode === 'unfoldered') ? 'unfoldered' : 'all';
+  const a = document.getElementById('folderFilterAll'), l = document.getElementById('folderFilterLoose');
+  if(a) a.classList.toggle('active', _folderFilter === 'all');
+  if(l) l.classList.toggle('active', _folderFilter === 'unfoldered');
+  renderDashboard();
+}
+
 function renderDashFolders(mine) {
   const section = document.getElementById('dashFoldersSection');
   const select = document.getElementById('dashFolderSelect');
@@ -3270,7 +3483,7 @@ async function deleteFolderEverywhere(name) {
   const me = authCurrentUser();
   const before = projGetAll().filter(p => p.owner.toLowerCase() === me.email.toLowerCase() && p.folder === name).length;
   if(!before) return;
-  if(!confirm(`Remove the "${name}" folder? The ${before} project${before > 1 ? 's' : ''} inside won't be deleted — they'll just stop being organized under this folder.`)) return;
+  if(!(await uiConfirm(`Remove the "${name}" folder? The ${before} project${before > 1 ? 's' : ''} inside won't be deleted — they'll just stop being organized under this folder.`, {title:'Remove folder', okLabel:'Remove', danger:true}))) return;
   if(ghConfigured()) await ghPullProjects();
   const projects = projGetAll();
   projects.forEach(p => {
@@ -3348,6 +3561,9 @@ function renderDashboard() {
   // pra ficar fácil achar o que falta revisar sem precisar procurar em "Shared with me".
   const toApprove = sortDashProjects(projects.filter(p => p.owner.toLowerCase() !== me.email.toLowerCase() && (p.approvers||[]).some(e => e.toLowerCase() === me.email.toLowerCase())));
   renderCampaignsList();
+  // Filtro "Fora de pasta" esconde a seção de Pastas (só os soltos ficam). 'all' mostra as duas.
+  const campSec = document.getElementById('campaignsSection');
+  if(campSec) campSec.style.display = (_folderFilter === 'unfoldered') ? 'none' : '';
 
   renderDashFolders(mine);
   const byFolder = _dashFolderFilter ? mine.filter(p => p.folder === _dashFolderFilter) : mine;
@@ -3407,7 +3623,9 @@ function renderCampaignsList() {
   const me = authCurrentUser();
   const list = document.getElementById('campaignsList');
   if(!me || !list) return;
-  const mine = campaignGetAll().filter(p => p.owner.toLowerCase() === me.email.toLowerCase());
+  // Pastas VISÍVEIS: minhas + compartilhadas comigo + onde sou approver (via módulo Folders) —
+  // antes só mostrava as minhas, então uma pasta compartilhada nunca aparecia pra quem recebeu.
+  const mine = (window.Folders ? Folders.visibleTo(me.email) : campaignGetAll().filter(p => p.owner.toLowerCase() === me.email.toLowerCase()));
   if(!mine.length) {
     list.innerHTML = `<div class="empty-state"><p>No projects yet.<br>Click "New project" above to group emails, in-apps and pushes together.</p></div>`;
     return;
@@ -3415,41 +3633,53 @@ function renderCampaignsList() {
   // Mesma barra de busca do topo da tela (dashProjectSearch) — antes só filtrava "Projects
   // I started", deixando as campanhas sempre com a lista inteira, sem respeitar a busca.
   const searchTerm = _dashProjectSearch.trim().toLowerCase();
-  const filtered = searchTerm ? mine.filter(p => (p.name || '').toLowerCase().includes(searchTerm)) : mine;
+  // Busca funciona DENTRO das pastas: uma pasta aparece se o termo casar o nome dela OU o nome
+  // de qualquer item (e-mail/in-app/push) dentro dela.
+  const filtered = searchTerm ? mine.filter(p =>
+    (p.name || '').toLowerCase().includes(searchTerm) ||
+    (p.items || []).some(it => (it.name || '').toLowerCase().includes(searchTerm))
+  ) : mine;
   if(!filtered.length) {
-    list.innerHTML = `<div class="empty-state"><p>No projects match "${escHtml(_dashProjectSearch.trim())}".</p></div>`;
+    list.innerHTML = `<div class="empty-state"><p>No folders match "${escHtml(_dashProjectSearch.trim())}".</p></div>`;
     return;
   }
   list.innerHTML = sortDashProjects(filtered).map(campaignRowHtml).join('');
 }
 
+// Card EXTERNO da pasta (na listagem): só ícone de pasta + nome + resumo do conteúdo. O card
+// INTEIRO é clicável (abre a pasta) — sem botão "Open" separado, sem tags de tradução/status.
+// Share/Delete ficam como ícones discretos que aparecem no hover (com stopPropagation pra não
+// abrir a pasta ao clicar neles).
 function campaignRowHtml(p) {
   const items = p.items || [];
-  const typeCounts = {};
-  items.forEach(it => { typeCounts[it.type] = (typeCounts[it.type] || 0) + 1; });
-  const typeLabel = { email: 'Email', inapp: 'In-app', push: 'Push' };
-  const badges = Object.keys(typeCounts).map(t =>
-    `<span class="lang-chip">${escHtml(typeLabel[t] || t)} ×${typeCounts[t]}</span>`
-  ).join('');
-  const progressBadge = translationProgressBadgeHtml(campaignTranslationStats(p));
+  const counts = { email: 0, inapp: 0, push: 0 };
+  items.forEach(it => { if(counts[it.type] != null) counts[it.type]++; });
+  const plural = { email: ['email', 'emails'], inapp: ['in-app', 'in-apps'], push: ['push', 'pushes'] };
+  const parts = ['email','inapp','push'].filter(t => counts[t] > 0).map(t => `${counts[t]} ${plural[t][counts[t] > 1 ? 1 : 0]}`);
+  const summary = parts.length ? parts.join(' · ') : 'Empty folder';
+  const me = authCurrentUser();
+  const isOwner = me && p.owner && p.owner.toLowerCase() === me.email.toLowerCase();
+  const canShare = isOwner || canShareProject(p);
+  const canDelete = isOwner || (me && isSuperadmin(me.role));
+  const sharedTag = (!isOwner && p.owner) ? `<span class="folder-shared-tag" title="Shared by ${escHtml(p.owner)}">🔗 Shared</span>` : '';
   return `
-    <div class="proj-row">
-      <div class="proj-body">
-        <div class="proj-info">
-          <div class="proj-header">
-            <div class="proj-name">
-              ${escHtml(p.name)}
-              <button class="proj-rename-btn" title="Rename project" onclick="event.stopPropagation();renameCampaign('${p.id}')">✎</button>
-            </div>
-          </div>
-          <div class="proj-meta">Created on ${new Date(p.createdAt).toLocaleDateString('en-US')}${p.updatedAt ? ` · Last edited ${relativeTime(p.updatedAt)}` : ''}</div>
-          <div class="proj-flags" style="margin-top:6px;">${badges || '<span style="font-size:11px;color:var(--text3);">No content yet</span>'}</div>
-          ${progressBadge ? `<div class="proj-badges" style="margin-top:6px;">${progressBadge}</div>` : ''}
-        </div>
+    <div class="folder-card" onclick="openCampaignEditor('${escJsAttr(p.id)}')" title="Open folder">
+      <div class="folder-card-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
       </div>
-      <div class="proj-actions">
-        <button class="btn-go" onclick="openCampaignEditor('${p.id}')">Open Project</button>
-        <button class="btn-danger" onclick="deleteCampaign('${p.id}')">Delete</button>
+      <div class="folder-card-body">
+        <div class="folder-card-name">${escHtml(p.name)} ${sharedTag}
+          ${isOwner ? `<button class="proj-rename-btn" title="Rename folder" onclick="event.stopPropagation();renameCampaign('${escJsAttr(p.id)}')">✎</button>` : ''}
+        </div>
+        <div class="folder-card-summary">${escHtml(summary)}</div>
+      </div>
+      <div class="folder-card-actions">
+        ${canShare ? `<button class="folder-icon-btn" title="Share" onclick="event.stopPropagation();openShareModal('${escJsAttr(p.id)}')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+        </button>` : ''}
+        ${canDelete ? `<button class="folder-icon-btn danger" title="Delete folder" onclick="event.stopPropagation();openDeleteFolderModal('${escJsAttr(p.id)}')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
+        </button>` : ''}
       </div>
     </div>
   `;
@@ -3458,7 +3688,7 @@ function campaignRowHtml(p) {
 async function renameCampaign(id) {
   const p = campaignGetAll().find(x => x.id === id);
   if(!p) return;
-  const name = prompt('Project name', p.name);
+  const name = await uiPrompt('Project name', {title:'Rename', def:p.name});
   if(!name || !name.trim()) return;
   if(ghConfigured()) await ghPullProjects();
   const projects = projGetAll();
@@ -3539,6 +3769,13 @@ function openCampaignEditor(id) {
   _campaignItemIndex = -1;
   _campaignViewMode = 'gallery';
   _campaignActiveType = 'email';
+  _campaignByLocale = false;
+  // APPROVER-ONLY: quem foi compartilhado como approver (está em p.approvers e não é dono) abre a
+  // pasta só pra APROVAR — sem editar tradução/HTML, sem adicionar/remover/excluir conteúdo. Mesma
+  // regra dos projetos avulsos, agora aplicada à pasta. _approverMode gate as ações de edição.
+  const me = authCurrentUser();
+  const isOwner = me && p.owner && p.owner.toLowerCase() === me.email.toLowerCase();
+  _approverMode = !!(me && !isOwner && (p.approvers || []).some(e => e.toLowerCase() === me.email.toLowerCase()));
   currentProjectId = p.id; // pro código de aprovação (notificações/lock) resolver o projeto certo
   document.getElementById('dashboardScreen').style.display = 'none';
   document.getElementById('campaignScreen').style.display = 'flex';
@@ -3610,15 +3847,21 @@ function renderCampaignTabs() {
   const items = _campaign.items || [];
   const types = ['email', 'inapp', 'push'];
   const typeLabel = { email: 'Email', inapp: 'In-app', push: 'Push' };
-  wrap.innerHTML = types.map(type => {
+  const typeBtns = types.map(type => {
     const count = items.filter(it => it.type === type).length;
-    const isActiveType = _campaignActiveType === type;
+    const isActiveType = !_campaignByLocale && _campaignActiveType === type;
     return `<button class="dash-sort-btn ${isActiveType ? 'active' : ''}" style="white-space:nowrap;" onclick="switchCampaignTab('${type}')">${typeLabel[type]}${count ? ` (${count})` : ''}</button>`;
   }).join('');
+  // Aba especial: recorte por IDIOMA em vez de por tipo (aprovação separada por locale).
+  const localeBtn = `<span style="width:1px;background:var(--border);margin:2px 4px;flex-shrink:0;"></span>
+    <button class="dash-sort-btn ${_campaignByLocale ? 'active' : ''}" style="white-space:nowrap;" onclick="openCampaignByLocale()" title="Review & approve every asset one language at a time">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px;vertical-align:-2px;"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20"/></svg>By Locale</button>`;
+  wrap.innerHTML = typeBtns + localeBtn;
 }
 
 function switchCampaignTab(type) {
   _campaignActiveType = type;
+  _campaignByLocale = false;
   _campaignViewMode = 'gallery';
   _campaignItemIndex = -1;
   renderCampaignTabs();
@@ -3663,8 +3906,23 @@ function renderCampaignMain() {
   const emptyEl = document.getElementById('campaignItemEmpty');
   const galleryEl = document.getElementById('campaignGallery');
   const bodyEl = document.getElementById('campaignItemBody');
+  const localeEl = document.getElementById('campaignLocaleView');
   if(!_campaign) return;
+  // Approver-only não adiciona conteúdo — esconde o "+ Add content".
+  const addBtn = document.getElementById('campAddContentBtn');
+  if(addBtn) addBtn.style.display = (_approverMode || _campaignByLocale) ? 'none' : '';
   const items = _campaign.items || [];
+
+  // Modo "By Locale": recorte por idioma, ocupa a tela toda (esconde galeria/edit/vazio).
+  if(_campaignByLocale) {
+    emptyEl.style.display = 'none';
+    galleryEl.style.display = 'none';
+    bodyEl.style.display = 'none';
+    if(localeEl) localeEl.style.display = 'flex';
+    renderCampaignByLocale();
+    return;
+  }
+  if(localeEl) localeEl.style.display = 'none';
 
   if(_campaignViewMode === 'edit' && _campaignItemIndex >= 0 && items[_campaignItemIndex]) {
     const item = items[_campaignItemIndex];
@@ -3694,12 +3952,15 @@ function renderCampaignMain() {
 }
 
 function backToCampaignGallery() {
+  _campaignByLocale = false;
   _campaignViewMode = 'gallery';
   _campaignItemIndex = -1;
+  renderCampaignTabs();
   renderCampaignMain();
 }
 
 function openCampaignItemEdit(idx) {
+  _campaignByLocale = false;
   _campaignItemIndex = idx;
   _campaignViewMode = 'edit';
   renderCampaignMain();
@@ -3716,20 +3977,32 @@ function renderCampaignGallery(pairs) {
   const grid = document.getElementById('campaignGalleryGrid');
   if(!grid) return;
   grid.innerHTML = pairs.map(({ it, idx }) => `
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;">
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);">
-        <span style="flex:1;min-width:0;font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(it.name)}</span>
-        ${translationProgressBadgeHtml(campaignItemTranslationStats(it), 'flex-shrink:0;font-size:10px;padding:2px 8px;')}
-        <button class="tbtn" style="height:26px;padding:0 10px;font-size:11px;border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;" onclick="openCampaignItemApprove(${idx})">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
-          Approve
-        </button>
-        <button class="tbtn html" style="height:26px;padding:0 10px;font-size:11px;" onclick="openCampaignItemEdit(${idx})">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          Edit
-        </button>
+    <div class="camp-item-card">
+      <div class="camp-item-preview" id="campAssetPreview-${idx}"></div>
+      <div class="camp-item-foot">
+        <div class="camp-item-info">
+          <div class="camp-item-name">${escHtml(it.name)}</div>
+          <div class="camp-item-progress">${translationProgressBadgeHtml(campaignItemTranslationStats(it), 'font-size:10px;padding:2px 8px;')}</div>
+        </div>
+        <div class="camp-item-actions">
+          <button class="tbtn" style="height:30px;padding:0 12px;font-size:11.5px;border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;" title="Approve copies" onclick="openCampaignItemApprove(${idx})">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
+            Approve
+          </button>
+          ${_approverMode ? '' : `<button class="tbtn html" style="height:30px;padding:0 12px;font-size:11.5px;" title="Edit translations" onclick="openCampaignItemEdit(${idx})">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Edit
+          </button>`}
+          ${(!_approverMode && it.type === 'email' && _campaign) ? `<button class="tbtn camp-item-btn-remove" style="height:30px;padding:0 12px;font-size:11.5px;" title="Remove this email from the folder — it goes back to the standalone list" onclick="removeItemFromFolder('${escJsAttr(_campaign.id)}','${escJsAttr(it.id)}')">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 015 5v1"/></svg>
+            Remove from folder
+          </button>` : ''}
+          ${_approverMode ? '' : `<button class="tbtn camp-item-btn-delete" style="height:30px;padding:0 11px;font-size:11.5px;" title="Delete this item permanently" onclick="deleteContentItem(${idx})">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
+            Delete
+          </button>`}
+        </div>
       </div>
-      <div id="campAssetPreview-${idx}" style="flex:1;background:#f2f1f6;"></div>
     </div>
   `).join('');
   pairs.forEach(({ it, idx }) => renderCampaignAssetThumb(it, idx));
@@ -3763,10 +4036,9 @@ function renderCampaignAssetThumb(item, idx) {
   const html = buildPreviewHtml(origLangName);
   const srcdoc = html.replace(/"/g, '&quot;');
   const isInapp = item.type === 'inapp';
-  const h = 340;
-  wrap.innerHTML = `<div style="height:${h}px;overflow:hidden;">
-    <iframe style="width:100%;height:${h}px;border:none;background:${isInapp ? 'transparent' : '#fff'};" srcdoc="${srcdoc}"></iframe>
-  </div>`;
+  // Preenche o container do card (.camp-item-preview, altura fixa via CSS) — sem altura fixa
+  // aqui, pra a casca visual do card mandar no tamanho.
+  wrap.innerHTML = `<iframe style="width:100%;height:100%;border:none;background:${isInapp ? 'transparent' : '#fff'};" srcdoc="${srcdoc}"></iframe>`;
 }
 
 // "Approve copies" de um item de campanha — reaproveita a MESMA Approval View
@@ -3774,7 +4046,7 @@ function renderCampaignAssetThumb(item, idx) {
 function openCampaignApprovalView() {
   const item = _campaign && _campaignItemIndex >= 0 ? _campaign.items[_campaignItemIndex] : null;
   if(!item) return;
-  if(item.type !== 'push' && !item.rawHtml) { alert('Upload an HTML first.'); return; }
+  if(item.type !== 'push' && !item.rawHtml) { uiAlert('Upload an HTML first.'); return; }
   currentProjectId = _campaign.id; // pra notificações/checagem de lock apontarem pro projeto certo
   activateCampaignItemIntoS(item);
   openApprovalView();
@@ -4244,7 +4516,7 @@ function onAddItemHtmlFile(f) {
   r.readAsText(f);
 }
 
-function confirmAddItem() {
+async function confirmAddItem() {
   if(!_campaign || !_addItemState.origin || !_addItemState.targets.length) return;
   const type = _manageContentTab;
   if(type !== 'push' && !_addItemState.html) return;
@@ -4256,11 +4528,16 @@ function confirmAddItem() {
 
   _campaign.items = _campaign.items || [];
   const n = _campaign.items.filter(x => x.type === type).length + 1;
+  // Nome SEMPRE perguntado ao subir conteúdo (default = auto). É o que rotula o item na campanha
+  // e no Approve by Locale. Cancelar não adiciona.
+  const defName = (type === 'push' ? 'Push ' : type === 'inapp' ? 'In-app ' : 'Email ') + n;
+  const nm = ((await uiPrompt('Name this content:', { title: 'Content name', def: defName })) || '').trim();
+  if(!nm) return;
   let item;
 
   if(type === 'push') {
     item = {
-      id: 'item_' + Date.now(), type: 'push', name: 'Push ' + n, origin: _addItemState.origin,
+      id: 'item_' + Date.now(), type: 'push', name: nm, origin: _addItemState.origin,
       langs: targetLangs,
       rows: [
         { id: 'id1', label: 'Title', src: '', isImg: false, translations: Object.fromEntries(targetLangs.map(l => [l, ''])) },
@@ -4279,7 +4556,7 @@ function confirmAddItem() {
     }));
     item = {
       id: 'item_' + Date.now(), type,
-      name: (type === 'inapp' ? 'In-app ' : 'Email ') + n,
+      name: nm,
       rawHtml: _addItemState.html, origin: _addItemState.origin, langs: targetLangs, rows
     };
   }
@@ -4701,6 +4978,7 @@ function projRowHtml(p, isOwner) {
         </div>
       </div>
       <div class="proj-actions">
+        ${isOwner ? `<button class="btn-back" title="Mover este e-mail para dentro de uma pasta" onclick="openMoveToFolderModal('${p.id}')">📂 Move to folder</button>` : ''}
         ${canShare ? `<button class="btn-back" onclick="openShareModal('${p.id}')">Share with your team</button>` : ''}
         ${isApprover ? `<button class="btn-go" style="background:#6d28d9;" ${locked ? 'disabled' : ''} onclick="approverOpenProject('${p.id}')">Approve copies</button>` : ''}
         ${!isApprover ? `<button class="btn-go" id="openBtn-${p.id}" ${(locked && !lockedByMe) || reviewers.length ? 'disabled' : ''} onclick="projOpen('${p.id}', this)">Open Project</button>` : ''}
@@ -4917,7 +5195,7 @@ function syncTaggedHtmlIntoLiveCampaign(projectId, itemId, rawHtml, taggedHtmlBe
   }
 }
 
-function performSaveTaggedHtmlEdit(force) {
+async function performSaveTaggedHtmlEdit(force) {
   if(!_editHtmlCurrentTarget) return;
   const { projectId, itemId, loadedHtml } = _editHtmlCurrentTarget;
   const newHtml = document.getElementById('editHtmlTextarea').value;
@@ -4931,7 +5209,7 @@ function performSaveTaggedHtmlEdit(force) {
   const currentStoredHtml = item ? item.rawHtml : p.data.html;
 
   if(!force && currentStoredHtml !== loadedHtml) {
-    if(!confirm('Someone else changed this HTML since you opened this editor. Save your version anyway and overwrite theirs?')) return;
+    if(!(await uiConfirm('Someone else changed this HTML since you opened this editor. Save your version anyway and overwrite theirs?', {title:'Overwrite?', okLabel:'Save anyway', danger:true}))) return;
   }
 
   target.taggedHtmlBeforeManualEdit = currentStoredHtml;
@@ -4946,9 +5224,9 @@ function performSaveTaggedHtmlEdit(force) {
   showNotif('Saved. Approval status was not changed.', 'ok', 3000);
 }
 
-function revertTaggedHtmlEditClick() {
+async function revertTaggedHtmlEditClick() {
   if(!_editHtmlCurrentTarget) return;
-  if(!confirm('Revert to the version from before the last manual edit?')) return;
+  if(!(await uiConfirm('Revert to the version from before the last manual edit?', {title:'Revert', okLabel:'Revert', danger:true}))) return;
   const { projectId, itemId } = _editHtmlCurrentTarget;
   const found = findEditableHtmlTarget(projectId, itemId);
   if(!found) return;
@@ -5094,20 +5372,20 @@ async function projOpen(id, btn) {
   const reviewers = activeApprovers(p);
   if(reviewers.length) {
     const names = reviewers.map(u => authorName(u.email)).join(', ');
-    alert(`This project is currently being reviewed by ${names}. Please try again once the review is done.`);
+    uiAlert(`This project is currently being reviewed by ${names}. Please try again once the review is done.`);
     resetBtn();
     return;
   }
 
   if(projIsLocked(p) && p.lockedBy.toLowerCase() !== me.email.toLowerCase()) {
-    alert(`This project is currently being edited by ${authorName(p.lockedBy)}. Please try again in a few minutes.`);
+    uiAlert(`This project is currently being edited by ${authorName(p.lockedBy)}. Please try again in a few minutes.`);
     resetBtn();
     return;
   }
 
   // Mesma pessoa, mas outra aba/janela já com este projeto aberto e ativo
   if(projIsLocked(p) && p.lockedBy.toLowerCase() === me.email.toLowerCase() && p.lockSessionId && p.lockSessionId !== _tabSessionId) {
-    if(!confirm('You already have this project open in another tab or window. Editing it here too can cause your changes to overwrite each other. Continue anyway?')) { resetBtn(); return; }
+    if(!(await uiConfirm('You already have this project open in another tab or window. Editing it here too can cause your changes to overwrite each other. Continue anyway?', {title:'Already open', okLabel:'Continue', danger:true}))) { resetBtn(); return; }
   }
 
   p.lockedBy = me.email;
@@ -5123,7 +5401,7 @@ async function projOpen(id, btn) {
     await ghPullProjects();
     const reChecked = projGetAll().find(x => x.id === id);
     if(reChecked && reChecked.lockedBy && reChecked.lockedBy.toLowerCase() !== me.email.toLowerCase()) {
-      alert(`${authorName(reChecked.lockedBy)} just started editing this project at the same time. Please try again in a few minutes.`);
+      uiAlert(`${authorName(reChecked.lockedBy)} just started editing this project at the same time. Please try again in a few minutes.`);
       resetBtn();
       return;
     }
@@ -5142,7 +5420,7 @@ async function projOpen(id, btn) {
     // Projeto antigo, criado antes da funcionalidade de salvar o conteúdo do projeto —
     // não tem HTML/CSV salvo pra reabrir. Não há mais um fluxo manual de re-upload
     // pra recuperar esses projetos legados; melhor avisar do que falhar em silêncio.
-    alert(`"${p.name}" was created before this tool started saving full project content, so there's nothing to reopen. Please recreate it as a new project.`);
+    uiAlert(`"${p.name}" was created before this tool started saving full project content, so there's nothing to reopen. Please recreate it as a new project.`);
     resetBtn();
   }
 }
@@ -5166,7 +5444,7 @@ let _pendingDeleteId = null;
 // Tira a própria pessoa do sharedWith/approvers de um projeto que não é dela — some
 // da lista "Shared with me"/"To approve", sem mexer no projeto pra mais ninguém.
 async function leaveSharedProject(id) {
-  if(!confirm('Leave this project? You will lose access unless someone shares it with you again.')) return;
+  if(!(await uiConfirm('Leave this project? You will lose access unless someone shares it with you again.', {title:'Leave project', okLabel:'Leave', danger:true}))) return;
   const me = authCurrentUser();
   if(!me) return;
   if(ghConfigured()) await ghPullProjects();
@@ -5218,7 +5496,7 @@ async function confirmGenericDelete() {
     await confirmProjDelete();
   } catch(e) {
     console.warn('Delete failed:', e);
-    alert('Something went wrong deleting this. Please try again.');
+    uiAlert('Something went wrong deleting this. Please try again.');
   } finally {
     if(btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
   }
@@ -5240,6 +5518,375 @@ async function confirmProjDelete() {
   if(currentProjectId === id) currentProjectId = null;
   closeDeleteConfirmModal();
   renderDashboard();
+}
+
+// ── MOVER um e-mail avulso PARA DENTRO de uma pasta (escrita crítica) ────────────────────────
+// Ordem de segurança (nunca perde o avulso): 1) converte (lossless, via Folders) e adiciona o
+// item na pasta; 2) SALVA; 3) VERIFICA na leitura que o item entrou de verdade; 4) só ENTÃO
+// remove o avulso. Se qualquer passo falhar antes do 4, o avulso continua intacto.
+async function moveProjectToFolder(projectId, folderId) {
+  const me = authCurrentUser(); if(!me) return;
+  if(!window.Folders) { showNotif("The folders module didn't load — please reload the page.", 'warn'); return; }
+  // Puxa o estado mais novo antes de mexer (mesmo cuidado do delete) pra não sobrescrever
+  // mudança concorrente de outra aba/pessoa.
+  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+
+  let projects = projGetAll();
+  const plan = Folders.planMoveIntoFolder(projects, projectId, folderId);
+  if(!plan.ok) { showNotif(plan.error, 'warn'); return; }
+
+  // 1+2) aplica (troca a pasta pela versão com o item) e salva — o avulso CONTINUA na lista aqui.
+  plan.folderWithItem.updatedAt = Date.now();
+  const withItem = projects.map(p => p.id === folderId ? plan.folderWithItem : p);
+  await withTimeout(projSaveAll(withItem), 8000, 'projSaveAll (add item)');
+
+  // 3) VERIFICA na leitura local que o item entrou (mesma contagem de linhas) ANTES de deletar.
+  const check = projGetAll().find(p => p.id === folderId);
+  const landed = check && (check.items||[]).some(it => it.id === plan.item.id && (it.rows||[]).length === plan.item.rows.length);
+  if(!landed) { showNotif('Could not save the item into the folder — the standalone email was KEPT intact.', 'warn'); return; }
+
+  // 4) agora sim remove o avulso (tombstone + filtra + salva). O conteúdo já está seguro na pasta,
+  // e o item guarda _fromProjectData pra permitir "remover da pasta" recriar o avulso depois.
+  await withTimeout(markProjectDeleted(projectId), 8000, 'markProjectDeleted');
+  const after = projGetAll().filter(p => p.id !== projectId);
+  await withTimeout(projSaveAll(after), 8000, 'projSaveAll (remove avulso)');
+
+  closeMoveToFolderModal();
+  showNotif('Email moved to the folder.', 'ok', 2600);
+  renderDashboard();
+}
+
+let _moveToFolderProjId = null;
+function openMoveToFolderModal(projectId) {
+  const me = authCurrentUser(); if(!me) return;
+  const p = projGetAll().find(x => x.id === projectId && x.kind !== 'campaign');
+  if(!p) { showNotif('Project not found.', 'warn'); return; }
+  _moveToFolderProjId = projectId;
+  const sub = document.getElementById('moveToFolderSub');
+  if(sub) sub.textContent = `"${p.name}" becomes an email item inside the chosen folder (it leaves the standalone list).`;
+  // Só dá pra mover pra pasta que você controla (dono ou pode compartilhar).
+  const folders = (window.Folders ? Folders.all() : campaignGetAll())
+    .filter(f => (f.owner||'').toLowerCase() === me.email.toLowerCase() || canShareProject(f));
+  const rows = folders.map(f =>
+    `<button class="btn-back" style="justify-content:flex-start;text-align:left;" onclick="moveProjectToFolder('${escJsAttr(_moveToFolderProjId)}','${escJsAttr(f.id)}')">📁 ${escHtml(f.name)} <span style="color:var(--text3);font-size:11px;margin-left:6px;">${(f.items||[]).length} item(s)</span></button>`
+  ).join('');
+  const list = document.getElementById('moveToFolderList');
+  if(list) list.innerHTML = (rows || `<p class="sub" style="margin:0 0 6px;">You don't have any folder yet.</p>`) +
+    `<button class="btn-next" style="margin-top:6px;" onclick="createFolderAndMove()">➕ Create a new folder and move</button>`;
+  document.getElementById('moveToFolderModal').style.display = 'flex';
+}
+function closeMoveToFolderModal() {
+  const m = document.getElementById('moveToFolderModal'); if(m) m.style.display = 'none';
+  _moveToFolderProjId = null;
+}
+async function createFolderAndMove() {
+  const projId = _moveToFolderProjId; if(!projId) return;
+  const me = authCurrentUser(); if(!me) return;
+  const name = ((await uiPrompt('New folder name:', {title:'New folder', placeholder:'e.g. Summer Wave 1'})) || '').trim(); if(!name) return;
+  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+  const folder = { id:'camp_'+Date.now(), kind:'campaign', name, owner:me.email, sharedWith:[], approvers:[], items:[], createdAt:Date.now(), updatedAt:Date.now() };
+  const projects = projGetAll(); projects.push(folder);
+  await withTimeout(projSaveAll(projects), 8000, 'projSaveAll (nova pasta)');
+  await moveProjectToFolder(projId, folder.id);
+}
+
+// ── REMOVER item da pasta → volta a ser e-mail avulso (escrita, mesma trava anti-perda) ──────
+// Ordem: 1) RECRIA o avulso (id novo, pra dodgear o tombstone do id antigo do move) + salva;
+// 2) VERIFICA que entrou; 3) só ENTÃO tira o item da pasta. Se falhar antes do 3, o item
+// continua na pasta (nada perdido). No pior caso entre 2 e 3, fica duplicado (avulso + item) —
+// recuperável, nunca perda.
+async function removeItemFromFolder(folderId, itemId) {
+  const me = authCurrentUser(); if(!me) return;
+  if(!window.Folders) { showNotif("The folders module didn't load — please reload the page.", 'warn'); return; }
+  if(!(await uiConfirm('Remove this item from the folder? It goes back to being a standalone email in the list.', {title:'Remove from folder', okLabel:'Remove'}))) return;
+  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+
+  const now = Date.now();
+  const newId = 'p_' + now;
+  let projects = projGetAll();
+  const plan = Folders.planRemoveFromFolder(projects, folderId, itemId, newId, now);
+  if(!plan.ok) { showNotif(plan.error, 'warn'); return; }
+
+  // 1) recria o avulso + salva (o item AINDA está na pasta aqui).
+  const withLoose = projects.concat([plan.newLooseProject]);
+  await withTimeout(projSaveAll(withLoose), 8000, 'projSaveAll (restaura avulso)');
+  // 2) verifica que o avulso entrou antes de tirar da pasta.
+  const check = projGetAll().find(p => p.id === newId);
+  if(!check || !(check.data && typeof check.data.html === 'string')) {
+    showNotif('Could not recreate the standalone email — the item was KEPT in the folder.', 'warn'); return;
+  }
+  // 3) só ENTÃO tira o item da pasta.
+  const after = projGetAll().map(p => p.id === folderId
+    ? { ...p, items: (p.items||[]).filter(it => it.id !== itemId), updatedAt: Date.now() }
+    : p);
+  await withTimeout(projSaveAll(after), 8000, 'projSaveAll (tira item da pasta)');
+
+  // Se o editor de campanha está aberto nessa pasta, mantém o objeto vivo em dia.
+  if(typeof _campaign !== 'undefined' && _campaign && _campaign.id === folderId) {
+    _campaign.items = (_campaign.items||[]).filter(it => it.id !== itemId);
+    if(typeof renderCampaignTabs === 'function') renderCampaignTabs();
+    if(typeof renderCampaignMain === 'function') renderCampaignMain();
+  }
+  showNotif('Item removed from the folder — it went back to the standalone emails list.', 'ok', 2800);
+  renderDashboard();
+}
+
+// ── DELETAR PASTA: escopo (só a pasta / tudo) + código aleatório de confirmação ──────────────
+let _deleteFolderId = null, _deleteFolderCode = '', _deleteFolderScope = 'folderonly';
+// Código curto, MAIÚSCULO, sem caracteres ambíguos (0/O, 1/I/L) — via crypto (não Math.random).
+function genConfirmCode(len) {
+  const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';  // sem 0 O 1 I L (ambíguos)
+  const n = len || 5, arr = new Uint32Array(n);
+  (window.crypto || window.msCrypto).getRandomValues(arr);
+  let s = ''; for(let i=0;i<n;i++) s += A[arr[i] % A.length];
+  return s;
+}
+function openDeleteFolderModal(folderId) {
+  const me = authCurrentUser(); if(!me) return;
+  const p = projGetAll().find(x => x.id === folderId && x.kind === 'campaign'); if(!p) return;
+  _deleteFolderId = folderId;
+  _deleteFolderCode = genConfirmCode(5);       // regenerado a cada abertura; só vive com o modal
+  const items = p.items || [];
+  const isEmpty = items.length === 0;
+  const emails = items.filter(it => it.type === 'email').length;
+  const others = items.length - emails;
+  // Pasta vazia: nada a preservar → pula a pergunta de escopo (é sempre "só a pasta").
+  _deleteFolderScope = isEmpty ? 'folderonly' : 'folderonly';
+  document.getElementById('deleteFolderName').textContent = p.name;
+  document.getElementById('deleteFolderScopeRow').style.display = isEmpty ? 'none' : '';
+  const hint = document.getElementById('scopeFolderOnlyHint');
+  if(hint) hint.textContent = others > 0
+    ? `— ${emails} email(s) go back to standalone; ${others} in-app/push are deleted`
+    : '— emails go back to the standalone list';
+  // Aviso de compartilhamento: deletar remove o acesso de quem tem a pasta.
+  const sharedWith = [...new Set([...(p.sharedWith||[]), ...(p.approvers||[])].map(e => (e||'').toLowerCase()))].filter(Boolean);
+  const warn = document.getElementById('deleteFolderSharedWarn');
+  if(warn){
+    if(sharedWith.length){ warn.style.display = ''; warn.textContent = `⚠ This folder is shared with ${sharedWith.length} person(s) — they will lose access to all its content.`; }
+    else warn.style.display = 'none';
+  }
+  document.getElementById('deleteFolderCode').textContent = _deleteFolderCode;
+  const input = document.getElementById('deleteFolderCodeInput'); if(input) input.value = '';
+  setDeleteFolderScope(_deleteFolderScope);
+  updateDeleteFolderBtn();
+  document.getElementById('deleteFolderModal').style.display = 'flex';
+}
+function setDeleteFolderScope(scope) {
+  _deleteFolderScope = (scope === 'contents') ? 'contents' : 'folderonly';
+  const a = document.getElementById('scopeFolderOnly'), b = document.getElementById('scopeContents');
+  if(a) a.classList.toggle('active', _deleteFolderScope === 'folderonly');
+  if(b) b.classList.toggle('active', _deleteFolderScope === 'contents');
+}
+function updateDeleteFolderBtn() {
+  const input = (document.getElementById('deleteFolderCodeInput').value || '').trim().toUpperCase();
+  const btn = document.getElementById('deleteFolderBtn');
+  if(btn) btn.disabled = (input !== _deleteFolderCode);
+}
+function closeDeleteFolderModal() {
+  const m = document.getElementById('deleteFolderModal'); if(m) m.style.display = 'none';
+  _deleteFolderId = null; _deleteFolderCode = '';
+}
+async function confirmDeleteFolder() {
+  const folderId = _deleteFolderId, scope = _deleteFolderScope;
+  if(!folderId) return;
+  // Guard duplo (o botão já fica desabilitado): o código digitado precisa bater.
+  const typed = (document.getElementById('deleteFolderCodeInput').value || '').trim().toUpperCase();
+  if(typed !== _deleteFolderCode) { showNotif('Incorrect confirmation code.', 'warn'); return; }
+  const me = authCurrentUser(); if(!me) return;
+  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+  const projects = projGetAll();
+  const folder = projects.find(p => p.id === folderId && p.kind === 'campaign');
+  if(!folder) { closeDeleteFolderModal(); renderDashboard(); return; }
+
+  if(scope === 'folderonly') {
+    // Preserva os e-mails como avulsos (in-app/push somem com a pasta). Trava anti-perda:
+    // recria TODOS os e-mails + verifica que entraram ANTES de apagar a pasta.
+    const now = Date.now();
+    const restored = (folder.items || []).filter(it => it.type === 'email').map((it, i) => {
+      const lp = window.Folders.folderItemToProject(it, folder.owner);
+      lp.id = 'p_' + now + '_' + i;   // id novo (dodgeia tombstone de move anterior)
+      lp.createdAt = now; lp.updatedAt = now;
+      return lp;
+    });
+    if(restored.length){
+      await withTimeout(projSaveAll(projects.concat(restored)), 8000, 'projSaveAll (restaura avulsos)');
+      const after1 = projGetAll();
+      const allLanded = restored.every(r => after1.some(p => p.id === r.id && p.data && typeof p.data.html === 'string'));
+      if(!allLanded){ showNotif('Failed to recreate the standalone emails — the folder was KEPT intact.', 'warn'); return; }
+    }
+  }
+  // Tombstone da pasta (tanto no 'contents' quanto DEPOIS do restore no 'folderonly').
+  await withTimeout(markProjectDeleted(folderId), 8000, 'markProjectDeleted');
+  await withTimeout(deleteNotifsForProject(folderId), 8000, 'deleteNotifsForProject');
+  const finalList = projGetAll().filter(p => p.id !== folderId);
+  await withTimeout(projSaveAll(finalList), 8000, 'projSaveAll (remove pasta)');
+  if(currentProjectId === folderId) currentProjectId = null;
+  closeDeleteFolderModal();
+  showNotif(scope === 'folderonly' ? 'Folder deleted — the emails went back to the standalone list.' : 'Folder and all its content deleted.', 'ok', 3000);
+  renderDashboard();
+}
+
+// ── APPROVE BY LOCALE (dentro da pasta) ──────────────────────────────────────────────────────
+// Recorta a pasta ABERTA por IDIOMA em vez de por tipo: escolhe um locale (aba) e vê TODOS os
+// assets daquela pasta naquele idioma — todos os e-mails, depois todos os in-apps, depois todos
+// os pushes — já renderizados na versão localizada, cada um com Approve/Approved SÓ daquele
+// locale. Serve pra SEPARAR a aprovação por idioma. Reusa o mesmo dado de aprovação por item
+// (item.approvalDoneByLang[locale]) — é o mesmo campo por outro recorte, não uma camada nova.
+let _campaignByLocale = false;   // modo "By Locale" ligado no editor da pasta
+let _campaignLocale = null;      // locale ativo nesse modo (ex: 'pt-BR')
+
+// Todos os locales presentes em QUALQUER item da pasta aberta, na ordem fixa da plataforma.
+function campaignLocalesInUse() {
+  const set = new Set();
+  (_campaign && _campaign.items || []).forEach(it => (it.langs || []).forEach(l => set.add(l)));
+  return sortLangsForDisplay([...set]);
+}
+
+// "By Locale" abre DIRETO o canvas de aprovação (mesma tela do "Approve copies", com zoom/pan +
+// comentários + threads), recortado por idioma — um frame por asset da pasta naquele locale.
+// As abas de país ficam DENTRO do canvas (renderAvLocaleTabs).
+function openCampaignByLocale() {
+  if(!_campaign) return;
+  const locales = campaignLocalesInUse();
+  if(!locales.length) { uiAlert('No translated content yet — add content with at least one language first.'); return; }
+  if(!_campaignLocale || !locales.includes(_campaignLocale)) _campaignLocale = locales[0];
+  openApprovalViewByLocale(_campaignLocale);
+}
+
+function setCampaignLocale(l) { _campaignLocale = l; renderCampaignByLocale(); }
+
+// Renderiza a visão por-locale dentro da pasta: abas de idioma + corpo agrupado por tipo,
+// cada asset com o preview localizado e o botão de aprovar SÓ daquele locale.
+function renderCampaignByLocale() {
+  const view = document.getElementById('campaignLocaleView'); if(!view || !_campaign) return;
+  const locales = campaignLocalesInUse();
+  const tabsEl = document.getElementById('campLocaleTabs');
+  if(tabsEl) tabsEl.innerHTML = locales.map(l =>
+    `<button class="abl-tab ${l === _campaignLocale ? 'active' : ''}" onclick="setCampaignLocale('${escJsAttr(l)}')">${escHtml(toBrazeLang(l))}</button>`
+  ).join('') + (_campaignLocale ?
+    `<button class="abl-tab" style="margin-left:auto;border:1px solid var(--border-s);" title="Open the Figma-style approval canvas for this language (comments, PNG, approve)" onclick="openApprovalViewByLocale('${escJsAttr(_campaignLocale)}')">🖼 Approve in canvas</button>`
+    : '');
+  const body = document.getElementById('campLocaleBody'); if(!body) return;
+  if(!_campaignLocale) {
+    body.innerHTML = `<div style="text-align:center;color:var(--text3);font-size:13px;padding:60px 12px;">No translated content yet. Add emails, in-apps or pushes with at least one language.</div>`;
+    return;
+  }
+  const loc = _campaignLocale;
+  const items = (_campaign.items || []).map((it, idx) => ({ it, idx })).filter(x => (x.it.langs || []).includes(loc));
+  if(!items.length) { body.innerHTML = `<div style="text-align:center;color:var(--text3);font-size:13px;padding:60px 12px;">Nothing in ${escHtml(toBrazeLang(loc))} yet.</div>`; return; }
+  const typeOrder = ['email', 'inapp', 'push'];
+  const typeLabel = { email: 'Emails', inapp: 'In-apps', push: 'Pushes' };
+  const approveBtnHtml = (it, idx) => isLangApproved(it.approvalDoneByLang, loc)
+    ? `<button class="abl-approved" title="Approved for ${escHtml(toBrazeLang(loc))} — click to undo" onclick="campToggleLocaleApproval(${idx})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Approved</button>`
+    : `<button class="abl-approve-btn" onclick="campToggleLocaleApproval(${idx})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6L9 17l-5-5"/></svg> Approve</button>`;
+  body.innerHTML = typeOrder.map(type => {
+    const group = items.filter(x => x.it.type === type);
+    if(!group.length) return '';
+    const head = `<div class="abl-section-head">${typeLabel[type]} <span class="abl-section-count">${group.length}</span></div>`;
+    // E-MAIL: mesmo formato do "Approve copies" — frames em largura real (680px), um ao lado do
+    // outro numa faixa de canvas com scroll horizontal, cada iframe crescendo até a altura real.
+    if(type === 'email') {
+      return `<div class="abl-section">${head}
+        <div class="abl-ecanvas">
+          ${group.map(({ it, idx }) => `
+            <div class="abl-eframe" style="width:${AV_FRAME_W}px;">
+              <div class="abl-eframe-head">
+                <div class="abl-card-name" title="${escJsAttr(it.name)}">${escHtml(it.name)}</div>
+                ${approveBtnHtml(it, idx)}
+              </div>
+              <div class="abl-eframe-vp" id="campLocPrev-${idx}" style="width:${AV_FRAME_W}px;"></div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    }
+    // IN-APP / PUSH: cards compactos em grade (conteúdo curto, não precisa de largura de e-mail).
+    return `<div class="abl-section">${head}
+      <div class="abl-grid abl-grid-${type}">
+        ${group.map(({ it, idx }) => `<div class="abl-card">
+            <div class="abl-card-preview abl-card-preview-${it.type}" id="campLocPrev-${idx}"></div>
+            <div class="abl-card-foot">
+              <div class="abl-card-name" title="${escJsAttr(it.name)}">${escHtml(it.name)}</div>
+              ${approveBtnHtml(it, idx)}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+  // Preencher os previews depois do markup existir no DOM.
+  items.forEach(({ it, idx }) => renderCampaignLocaleThumb(it, idx, loc));
+}
+
+// Preview localizado de UM asset no locale escolhido (reusa buildPreviewHtml via S emprestado,
+// ou o cartãozinho de push com as traduções daquele locale).
+function renderCampaignLocaleThumb(item, idx, loc) {
+  const wrap = document.getElementById('campLocPrev-' + idx); if(!wrap) return;
+  if(item.type === 'push') {
+    const titleRow = (item.rows || []).find(r => r.id === 'id1');
+    const bodyRow = (item.rows || []).find(r => r.id === 'id2');
+    const title = titleRow ? (titleRow.translations?.[loc] || '') : '';
+    const bodyTxt = bodyRow ? (bodyRow.translations?.[loc] || '') : '';
+    wrap.innerHTML = `
+      <div style="padding:16px 12px;">
+        <div style="max-width:300px;margin:0 auto;background:#fff;border-radius:14px;padding:13px;box-shadow:0 2px 12px rgba(0,0,0,.1);display:flex;gap:10px;">
+          <div style="width:36px;height:36px;border-radius:10px;background:#d8385e;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;">🔔</div>
+          <div style="min-width:0;">
+            <div style="font-weight:700;font-size:13px;color:#000;margin-bottom:2px;">${escHtml(title) || '<em style="color:#aaa;">No title</em>'}</div>
+            <div style="font-size:12px;color:#333;line-height:1.4;">${escHtml(bodyTxt) || '<em style="color:#aaa;">No body</em>'}</div>
+          </div>
+        </div>
+      </div>`;
+    return;
+  }
+  activateCampaignItemIntoS(item);
+  if(!S.rawHtml) { wrap.innerHTML = `<p style="text-align:center;color:var(--text3);font-size:12px;padding:40px 12px;">No HTML uploaded.</p>`; return; }
+  const isInapp = item.type === 'inapp';
+  if(isInapp) {
+    // In-app: cartão de celular, altura fixa (preenche o card).
+    const srcdoc = buildPreviewHtml(loc).replace(/"/g, '&quot;');
+    wrap.innerHTML = `<iframe style="width:100%;height:100%;border:none;background:transparent;" srcdoc="${srcdoc}"></iframe>`;
+    return;
+  }
+  // E-mail: largura real (680px) e altura AUTO — igual ao "Approve copies". Injeta um reporter
+  // de altura (postMessage 'abl-height') pra o iframe crescer até a altura real do e-mail em vez
+  // de ficar espremido num box fixo.
+  const frameId = 'ablFrame-' + idx;
+  const html = injectAblHeightReporter(buildPreviewHtml(loc), frameId);
+  const srcdoc = html.replace(/"/g, '&quot;');
+  wrap.innerHTML = `<iframe id="${frameId}" style="width:${AV_FRAME_W}px;height:900px;border:none;background:#fff;display:block;" srcdoc="${srcdoc}"></iframe>`;
+}
+
+// Anexa um reporter de altura ao HTML do preview: quando carrega, mede o conteúdo e avisa o pai
+// (postMessage 'abl-height') pra ele esticar o iframe até a altura real do e-mail.
+function injectAblHeightReporter(html, frameId) {
+  const sc = '<scr' + 'ipt>', scEnd = '</scr' + 'ipt>';
+  const script = sc + `(function(){
+    function rh(){ var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight,300); window.parent.postMessage({type:'abl-height',id:${JSON.stringify(frameId)},height:h},'*'); }
+    window.addEventListener('load', function(){ rh(); setTimeout(rh,120); setTimeout(rh,400); });
+  })();` + scEnd;
+  return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, script + '</body>') : (html + script);
+}
+if(!window.__ablHeightListener) {
+  window.__ablHeightListener = true;
+  window.addEventListener('message', function(e){
+    if(!e.data || e.data.type !== 'abl-height' || !e.data.id) return;
+    const fr = document.getElementById(e.data.id);
+    if(fr) fr.style.height = Math.max(200, e.data.height) + 'px';
+  });
+}
+
+// Alterna a aprovação de UM item NESSE locale — mesmo campo/regra da aprovação por item
+// (approvalDoneByLang; "undone:true" pra desaprovar, nunca deleta a chave — ver isLangApproved).
+// Mutação no _campaign em memória + autosave, igual toggleCampaignBulkApprove.
+function campToggleLocaleApproval(idx) {
+  const item = _campaign && _campaign.items[idx];
+  if(!item || !_campaignLocale) return;
+  item.approvalDoneByLang = item.approvalDoneByLang || {};
+  const me = authCurrentUser();
+  item.approvalDoneByLang[_campaignLocale] = isLangApproved(item.approvalDoneByLang, _campaignLocale)
+    ? { by: me ? me.email : null, at: Date.now(), undone: true }
+    : { by: me ? me.email : null, at: Date.now() };
+  scheduleCampaignAutosave();
+  renderCampaignByLocale();
 }
 
 let _renameProjectId = null;
@@ -7541,6 +8188,8 @@ function buildTable() {
   </thead>`;
 
   if(t) t.innerHTML = thead + `<tbody id="gstb">${rowsHTML()}</tbody>`;
+  wireGridController();       // liga navegação/paste estilo planilha (uma vez, delegado no #gst)
+  gridReapplyHighlight();     // re-aplica o realce da célula selecionada após re-render
   setTimeout(syncAllRowHeights, 0);
   openPendingCommentTarget();
   openPendingApprovalTarget();
@@ -7583,12 +8232,12 @@ function rowsHTML() {
       const id  = (row.id||'').replace(/"/g,'&quot;');
       const src = (row.src||'').replace(/"/g,'&quot;');
       const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
-      const tls = langsOrdered.map(l=>{
+      const tls = langsOrdered.map((l,ci)=>{
         const v=(row.translations[l]||'').replace(/"/g,'&quot;');
         const isEmpty = !(row.translations[l]||'').trim();
-        return `<td class="tl tl-cell${isEmpty ? ' tl-missing' : ''}">
+        return `<td class="tl tl-cell cell-nav${isEmpty ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}">
           <div class="tl-inner">
-            <input class="img-url" type="text" placeholder="URL for ${l}…" value="${v}"
+            <input class="img-url" type="text" readonly placeholder="URL for ${l}…" value="${v}"
               onfocus="switchAndHL(${ri},'${l}')"
               oninput="setCellV(${ri},'${l}',this.value);sendHL(${ri},'${l}')"
             />
@@ -7616,12 +8265,12 @@ function rowsHTML() {
     // custom_attribute, context) no meio da frase, mesmo já tendo sido "limpo" só no CSV.
     const displaySrc = csvSourceText(row).replace(/</g,'&lt;').replace(/"/g,'&quot;');
     const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
-    const tls = langsOrdered.map(l=>{
+    const tls = langsOrdered.map((l,ci)=>{
       const v=(row.translations[l]||'').replace(/</g,'&lt;').replace(/"/g,'&quot;');
       const isEmpty = !(row.translations[l]||'').trim();
-      return `<td class="tl tl-cell${isEmpty ? ' tl-missing' : ''}">
+      return `<td class="tl tl-cell cell-nav${isEmpty ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}">
         <div class="tl-inner">
-          <textarea rows="1"
+          <textarea rows="1" readonly
             onfocus="switchAndHL(${ri},'${l}')"
             oninput="autoH(this);setCellV(${ri},'${l}',this.value);sendHL(${ri},'${l}')"
           >${v}</textarea>
@@ -7642,7 +8291,7 @@ function rowsHTML() {
     // Imagem adicionada DEPOIS que o projeto já tinha aprovação: a aprovação foi mantida (regra
     // silenciosa), mas o item fica marcado como "novo — revisar" até uma nova aprovação.
     const pendingBadge = (S.pendingImgIds||[]).includes(id)
-      ? `<span class="vml-badge" style="background:#fff3cd;border-color:#ffe08a;color:#8a6d3b;" title="Imagem adicionada depois que o projeto já tinha aprovação. A aprovação existente foi mantida, mas este item entrou depois e precisa de revisão.">⏳ novo — revisar</span>`
+      ? `<span class="vml-badge" style="background:#fff3cd;border-color:#ffe08a;color:#8a6d3b;" title="Image added after the project was already approved. The existing approval was kept, but this item came in later and needs review.">⏳ new — review</span>`
       : '';
     return `<tr>
       <td class="rn" style="width:22px!important;max-width:22px!important">${ri+1}</td>
@@ -7730,6 +8379,234 @@ function setCellV(ri,l,v){
   }
   updatePreviewText(ri,l);
   scheduleAutosave();
+}
+
+/* ═══════════ NAVEGAÇÃO/SELEÇÃO/COLAR ESTILO PLANILHA (grid de tradução) ═══════════
+   Camada leve (sem lib) sobre a tabela já existente. Só atua nas COLUNAS DE IDIOMA
+   (td.tl-cell, com data-r=linha e data-c=índice da coluna de idioma na ordem fixa
+   sortLangsForDisplay). Dois modos: NAVEGAÇÃO (campo readonly; setas/Tab/Enter movem a
+   seleção) e EDIÇÃO (Enter/F2/duplo-clique/digitar; setas movem o cursor no texto). */
+let _grid = { r:0, c:0, aR:0, aC:0, editing:false, editOrig:null, wired:false };
+
+function gridLangs(){ return sortLangsForDisplay(S.csv.langs); }
+function gridBody(){ return document.getElementById('gstb'); }
+function gridCellEl(r,c){ const b=gridBody(); return b ? b.querySelector(`td.tl-cell[data-r="${r}"][data-c="${c}"]`) : null; }
+function gridField(td){ return td ? td.querySelector('textarea,input') : null; }
+function gridDims(){ return { rows: S.csv.rows.length, cols: gridLangs().length }; }
+// Placeholder do lock de célula (ex: linha de currency travada — recurso de outro prompt que
+// ainda não existe no código). Copiar sempre pode; colar/editar respeitam isto quando existir.
+function isCellPasteBlocked(row, lang){ return false; }
+
+function gridClearClasses(){
+  const b=gridBody(); if(!b) return;
+  b.querySelectorAll('td.tl-cell.cell-active,td.tl-cell.cell-range,td.tl-cell.cell-editing')
+    .forEach(td=>td.classList.remove('cell-active','cell-range','cell-editing'));
+}
+
+// Re-aplica o realce da seleção atual (chamado após buildTable re-renderizar o corpo).
+function gridReapplyHighlight(){
+  gridClearClasses();
+  const { rows, cols } = gridDims();
+  if(!rows || !cols) return;
+  _grid.r = Math.min(_grid.r, rows-1); _grid.c = Math.min(_grid.c, cols-1);
+  const r0=Math.min(_grid.r,_grid.aR), r1=Math.max(_grid.r,_grid.aR);
+  const c0=Math.min(_grid.c,_grid.aC), c1=Math.max(_grid.c,_grid.aC);
+  for(let r=r0;r<=r1;r++) for(let c=c0;c<=c1;c++){
+    const td=gridCellEl(r,c); if(td) td.classList.add('cell-range');
+  }
+  const act=gridCellEl(_grid.r,_grid.c);
+  if(act){ act.classList.remove('cell-range'); act.classList.add(_grid.editing?'cell-editing':'cell-active'); }
+}
+
+function gridSetActive(r,c,extend){
+  const { rows, cols } = gridDims();
+  if(!rows || !cols) return;
+  r=Math.max(0,Math.min(r,rows-1)); c=Math.max(0,Math.min(c,cols-1));
+  _grid.r=r; _grid.c=c;
+  if(!extend){ _grid.aR=r; _grid.aC=c; }
+  gridReapplyHighlight();
+  const td=gridCellEl(r,c);
+  if(td){ const f=gridField(td); if(f){ try{ f.focus({preventScroll:true}); }catch(e){ f.focus(); } td.scrollIntoView({block:'nearest',inline:'nearest'}); } }
+}
+
+function gridMove(dr,dc,extend){
+  if(extend){ gridSetActive(_grid.r+dr,_grid.c+dc,true); }
+  else { gridSetActive(_grid.r+dr,_grid.c+dc,false); }
+}
+
+function gridEnterEdit(initialChar){
+  const td=gridCellEl(_grid.r,_grid.c); const f=gridField(td); if(!f) return;
+  const lang=gridLangs()[_grid.c], row=S.csv.rows[_grid.r];
+  if(!lang||!row||isCellPasteBlocked(row,lang)) return; // célula travada não edita
+  _grid.editing=true; _grid.editOrig=f.value;
+  td.classList.remove('cell-nav');
+  f.removeAttribute('readonly');
+  if(initialChar!=null){ // digitou algo em cima da célula: substitui (igual Excel)
+    f.value=initialChar;
+    setCellV(_grid.r,lang,f.value);
+    td.classList.toggle('tl-missing', !f.value.trim());
+  }
+  gridReapplyHighlight();
+  try{ f.focus({preventScroll:true}); }catch(e){ f.focus(); }
+  const end=f.value.length; try{ f.setSelectionRange(end,end); }catch(e){}
+}
+
+function gridExitEdit(){
+  const td=gridCellEl(_grid.r,_grid.c); const f=gridField(td);
+  _grid.editing=false; _grid.editOrig=null;
+  if(f){ f.setAttribute('readonly',''); }
+  if(td){ td.classList.add('cell-nav'); }
+  gridReapplyHighlight();
+}
+
+// Escreve uma célula programaticamente (paste/delete) — persiste via setCellV e atualiza o DOM
+// (o campo é readonly, então oninput não dispara sozinho). Respeita lock e a regra "pular vazio".
+function gridWriteCell(r,c,value,skipEmpty){
+  const lang=gridLangs()[c], row=S.csv.rows[r];
+  if(!lang||!row) return false;
+  if(skipEmpty && !String(value||'').length) return false;   // colar vazio NÃO apaga (igual Excel)
+  if(isCellPasteBlocked(row,lang)) return false;              // não cola sobre célula travada
+  setCellV(r,lang,value);
+  const td=gridCellEl(r,c); if(td){ const f=gridField(td); if(f) f.value=value; td.classList.toggle('tl-missing', !String(value||'').trim()); }
+  return true;
+}
+
+// TSV quote-aware: linhas por \n, colunas por \t, campos entre aspas podem conter \t e \n.
+// É o formato que Excel/Google Sheets colocam no clipboard ao copiar um intervalo.
+function parseTSV(text){
+  const rows=[]; let row=[], cur='', i=0, q=false;
+  text=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  while(i<text.length){
+    const ch=text[i];
+    if(q){
+      if(ch==='"'){ if(text[i+1]==='"'){ cur+='"'; i+=2; continue; } q=false; i++; continue; }
+      cur+=ch; i++; continue;
+    }
+    if(ch==='"'){ q=true; i++; continue; }
+    if(ch==='\t'){ row.push(cur); cur=''; i++; continue; }
+    if(ch==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; i++; continue; }
+    cur+=ch; i++;
+  }
+  row.push(cur); rows.push(row);
+  // remove uma última linha vazia acidental (Excel costuma terminar com \n)
+  if(rows.length>1 && rows[rows.length-1].length===1 && rows[rows.length-1][0]==='') rows.pop();
+  return rows;
+}
+
+function buildTSV(){
+  const r0=Math.min(_grid.r,_grid.aR), r1=Math.max(_grid.r,_grid.aR);
+  const c0=Math.min(_grid.c,_grid.aC), c1=Math.max(_grid.c,_grid.aC);
+  const langs=gridLangs(); const lines=[];
+  for(let r=r0;r<=r1;r++){
+    const cells=[];
+    for(let c=c0;c<=c1;c++){
+      let v=String((S.csv.rows[r]&&S.csv.rows[r].translations[langs[c]])||'');
+      if(/[\t\n"]/.test(v)) v='"'+v.replace(/"/g,'""')+'"';  // quota campo com tab/quebra/aspas
+      cells.push(v);
+    }
+    lines.push(cells.join('\t'));
+  }
+  return lines.join('\n');
+}
+
+// Distribui o conteúdo colado a partir da célula ativa, pra direita/baixo (padrão planilha).
+function gridPasteMatrix(matrix){
+  const { rows, cols } = gridDims();
+  let wrote=0, overflow=false;
+  for(let dr=0;dr<matrix.length;dr++){
+    const r=_grid.r+dr; if(r>=rows){ overflow=true; break; }
+    const line=matrix[dr];
+    for(let dc=0;dc<line.length;dc++){
+      const c=_grid.c+dc; if(c>=cols){ overflow=true; continue; }
+      if(gridWriteCell(r,c,line[dc],true)) wrote++;
+    }
+  }
+  if(wrote) gridReapplyHighlight();
+  if(typeof showNotif==='function'){
+    if(overflow) showNotif(`Pasted ${wrote} cell(s); the overflow beyond the grid was ignored.`,'warn',3500);
+    else if(wrote) showNotif(`Pasted into ${wrote} cell(s).`,'ok',2000);
+  }
+}
+
+function gridOnKeydown(e){
+  // Só age quando o foco está numa célula de tradução (não em modais/comentários/outros inputs).
+  const td=e.target.closest && e.target.closest('td.tl-cell');
+  if(!td || !gridBody() || !gridBody().contains(td)) return;
+  const r=+td.getAttribute('data-r'), c=+td.getAttribute('data-c');
+  if(!Number.isInteger(r)||!Number.isInteger(c)) return;
+  if(r!==_grid.r||c!==_grid.c){ _grid.r=r; _grid.c=c; if(!e.shiftKey){ _grid.aR=r; _grid.aC=c; } }
+
+  if(_grid.editing){
+    if(e.key==='Escape'){ const f=gridField(td); if(f && _grid.editOrig!=null){ f.value=_grid.editOrig; setCellV(r,gridLangs()[c],f.value); td.classList.toggle('tl-missing', !f.value.trim()); } gridExitEdit(); e.preventDefault(); }
+    else if(e.key==='Enter' && !e.shiftKey && !e.altKey){ gridExitEdit(); gridMove(1,0,false); e.preventDefault(); }
+    else if(e.key==='Tab'){ gridExitEdit(); gridMove(0,e.shiftKey?-1:1,false); e.preventDefault(); }
+    // Alt+Enter/Shift+Enter e setas: deixa o textarea tratar (quebra de linha / mover cursor).
+    return;
+  }
+  // ── modo NAVEGAÇÃO ──
+  switch(e.key){
+    case 'ArrowUp':    gridMove(-1,0,e.shiftKey); e.preventDefault(); return;
+    case 'ArrowDown':  gridMove(1,0,e.shiftKey);  e.preventDefault(); return;
+    case 'ArrowLeft':  gridMove(0,-1,e.shiftKey); e.preventDefault(); return;
+    case 'ArrowRight': gridMove(0,1,e.shiftKey);  e.preventDefault(); return;
+    case 'Tab':        gridMove(0,e.shiftKey?-1:1,false); e.preventDefault(); return;
+    case 'Enter':      if(e.altKey){ gridEnterEdit(null); } else { gridMove(1,0,false); } e.preventDefault(); return;
+    case 'F2':         gridEnterEdit(null); e.preventDefault(); return;
+    case 'Backspace':
+    case 'Delete':     gridWriteCell(r,c,'',false); e.preventDefault(); return;
+    default:
+      // Ctrl/Cmd+C/V ficam pros handlers de copy/paste. Copiar/colar não entram em edição.
+      if((e.metaKey||e.ctrlKey)) return;
+      // Digitou um caractere imprimível → entra em edição substituindo (igual Excel).
+      if(e.key && e.key.length===1){ gridEnterEdit(e.key); e.preventDefault(); return; }
+  }
+}
+
+function gridOnPaste(e){
+  const td=e.target.closest && e.target.closest('td.tl-cell');
+  if(!td || !gridBody() || !gridBody().contains(td)) return;
+  if(_grid.editing) return;  // editando uma célula → deixa colar normal (só nela)
+  const text=(e.clipboardData||window.clipboardData).getData('text/plain');
+  if(text==null) return;
+  e.preventDefault();
+  gridPasteMatrix(parseTSV(text));
+}
+
+function gridOnCopy(e){
+  const td=e.target.closest && e.target.closest('td.tl-cell');
+  if(!td || !gridBody() || !gridBody().contains(td)) return;
+  if(_grid.editing) return;  // editando → copiar seleção de texto normal
+  const tsv=buildTSV();
+  if(e.clipboardData){ e.clipboardData.setData('text/plain', tsv); e.preventDefault(); }
+}
+
+function gridOnMousedown(e){
+  const td=e.target.closest && e.target.closest('td.tl-cell');
+  if(!td) return;
+  const r=+td.getAttribute('data-r'), c=+td.getAttribute('data-c');
+  if(!Number.isInteger(r)||!Number.isInteger(c)) return;
+  if(_grid.editing && (r!==_grid.r||c!==_grid.c)) gridExitEdit(); // clicou fora da célula em edição
+  gridSetActive(r,c, e.shiftKey);
+}
+
+function gridOnDblclick(e){
+  const td=e.target.closest && e.target.closest('td.tl-cell');
+  if(!td) return;
+  const r=+td.getAttribute('data-r'), c=+td.getAttribute('data-c');
+  gridSetActive(r,c,false);
+  gridEnterEdit(null);
+}
+
+// Liga os listeners UMA vez, delegados no #gst (persiste entre re-renders do corpo).
+function wireGridController(){
+  if(_grid.wired) return;
+  const host=document.getElementById('gst'); if(!host) return;
+  host.addEventListener('keydown', gridOnKeydown, true);
+  host.addEventListener('paste', gridOnPaste, true);
+  host.addEventListener('copy', gridOnCopy, true);
+  host.addEventListener('mousedown', gridOnMousedown, true);
+  host.addEventListener('dblclick', gridOnDblclick, true);
+  _grid.wired=true;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -8279,7 +9156,7 @@ async function autosaveCampaignApprovalState() {
     // (ver definição) — chamar nos dois lugares só refazia o mesmo innerHTML 2x à toa.
     renderApprovalSidebar();
     renderApprovalActivityFeed();
-    approvalLangs().langs.forEach(l => renderApprovalPins(l));
+    avBuildFrames().forEach(f => renderApprovalPins(f)); // descritor-driven (single e locale)
   }
 }
 
@@ -8399,7 +9276,7 @@ async function autosaveApprovalState() {
     // renderApprovalSidebar() já chama renderApprovalDoneBanner() internamente no fim.
     renderApprovalSidebar();
     renderApprovalActivityFeed();
-    approvalLangs().langs.forEach(l => renderApprovalPins(l));
+    avBuildFrames().forEach(f => renderApprovalPins(f)); // descritor-driven (single e locale)
   }
 }
 
@@ -8420,7 +9297,7 @@ function approvalBlockedByEdit() {
 function warnApprovalBlockedByEdit() {
   const p = projGetAll().find(x => x.id === currentProjectId);
   const who = p && p.lockedBy ? authorName(p.lockedBy) : 'someone';
-  alert(`${who} is currently editing this project. Comments and approval are paused until they're done.`);
+  uiAlert(`${who} is currently editing this project. Comments and approval are paused until they're done.`);
 }
 
 // Se alguém abre a Approval View e, enquanto está lá dentro, o dono começa a editar,
@@ -8460,8 +9337,8 @@ function updatePreviewText(ri, lang) {
     iframe.contentWindow.postMessage({type:'braze-update', ri, text: newText, src: row.src, tid: row.id}, '*');
 }
 function delRow(ri){S.csv.rows.splice(ri,1);reBody();debR();scheduleAutosave();}
-function delLang(l){
-  if(!confirm(`Remove column "${l}"?`))return;
+async function delLang(l){
+  if(!(await uiConfirm(`Remove column "${l}"?`, {title:'Remove column', okLabel:'Remove', danger:true})))return;
   S.csv.langs=S.csv.langs.filter(x=>x!==l);
   S.csv.rows.forEach(r=>delete r.translations[l]);
   S.targets=S.targets.filter(code=>S.allC.find(c=>c.code===code)?.lang!==l);
@@ -9234,7 +10111,15 @@ function computeProtectedRanges(html) {
       if(msoDepth === 0 && msoStart !== -1){ ranges.push([msoStart, tokStart + tok.length]); msoStart = -1; }
       continue;
     }
-    if(/^<!--/.test(tok)) continue; // comentário HTML comum — já isolado, nada a fazer
+    // Comentário HTML comum (<!-- -->): o CONTEÚDO nunca renderiza nem pode receber uma tag de
+    // tradução. Protege o range inteiro — sem isso, o posicionador de buildTaggedHtml (que busca
+    // o texto da linha por indexOf) cravava o {%translation idN%} numa ocorrência do texto que
+    // vivia DENTRO de um comentário divisor de seção (ex: "<!-- SECTION: Not a gym person? -->"),
+    // em vez da ocorrência de conteúdo real. Resultado: a linha "não mudava no previewer" (um
+    // <span data-tid> dentro de <!-- --> não é elemento de verdade, querySelector não acha) e o
+    // id saía duplicado no export. Protegendo o comentário, o texto de conteúdo real é o próximo
+    // alvo válido. (Condicionais mso/VML já foram tratadas acima — aqui só cai comentário comum.)
+    if(/^<!--/.test(tok)){ ranges.push([tokStart, tokStart + tok.length]); continue; }
     if(msoDepth > 0) continue;
 
     const nameM = tok.match(/^<\/?([a-zA-Z][a-zA-Z0-9-]*)/);
@@ -9294,6 +10179,19 @@ function buildTaggedHtml(silent) {
   // uma unidade só, com a merge tag dentro. O <code> some do HTML tagueado exportado — aceitável:
   // ele só dava monospace a um snippet de Liquid que renderiza como valor simples no Braze.
   let tagged = unwrapLiquidOnlyCode(S.rawHtml);
+  // Limpa marcadores de tradução que ficaram GRUDADOS dentro de comentários HTML comuns
+  // (<!-- -->) por um tageamento antigo — acontecia quando um comentário divisor de seção
+  // repetia, como texto, o mesmo título de uma seção real (ex: "<!-- SECTION: Not a gym
+  // person? -->") e o posicionador cravava o {%translation idN%} nessa primeira ocorrência
+  // (dentro do comentário) em vez da de conteúdo. Sozinho o comentário nunca renderiza, então a
+  // linha "não mudava no previewer", e sem limpar aqui o id sairia DUPLICADO no export (a tag
+  // velha do comentário + a nova, agora posicionada no conteúdo real via computeProtectedRanges).
+  // Só comentário COMUM — condicionais mso/VML (<!--[if ...]>, <![endif]-->) ficam intactos, que
+  // é onde as traduções de fallback do Outlook legitimamente moram.
+  tagged = tagged.replace(/<!--[\s\S]*?-->/g, c =>
+    (/^<!--\[if/i.test(c) || /^<!--\s*<!\[endif\]/i.test(c) || /^<!--<!\[endif\]/i.test(c))
+      ? c
+      : c.replace(/\{%\s*translation\s+id\d+\s*%\}/gi, '').replace(/\{%\s*endtranslation\s*%\}/gi, ''));
   const allRows = S.csv.rows.filter(r=>r.src||(r.isStyle&&r.outerKey));
   // Linhas que não conseguimos encontrar/tagueiar no HTML final — sem isso, a linha some do
   // export em silêncio e a pessoa acha que a tradução foi aplicada quando não foi.
@@ -9477,9 +10375,9 @@ document.addEventListener('click', (e) => {
 });
 
 function dlXLSX(){
-  if(typeof XLSX === 'undefined'){ alert('SheetJS not loaded.'); return; }
+  if(typeof XLSX === 'undefined'){ uiAlert('SheetJS not loaded.'); return; }
   const langs = sortLangsForDisplay(S.csv.langs); // ordem fixa global (não mexe em S.csv.langs)
-  if(!langs.length){ alert('No language configured.'); return; }
+  if(!langs.length){ uiAlert('No language configured.'); return; }
   checkEmptyLangsBeforeExport(() => {
     // curlifyApostrophes(csvSourceText(r)) — mesma fonte usada no CSV/HTML exportados (ver
     // buildCsvStringForSave/buildTaggedHtml). Usar r.src cru aqui geraria uma planilha com
@@ -9567,7 +10465,7 @@ function langDisplayName(lang) {
 
 function dlCSV(){
   const langs = S.csv.langs;
-  if(!langs.length){ alert('No language configured.'); return; }
+  if(!langs.length){ uiAlert('No language configured.'); return; }
   checkEmptyLangsBeforeExport(() => {
     // Reusa buildCsvStringForSave() em vez de remontar o CSV aqui \u2014 essa fun\u00E7\u00E3o reimplementava
     // a mesma l\u00F3gica s\u00F3 que com r.src CRU (sem curlifyApostrophes, sem passar por
@@ -9608,8 +10506,13 @@ function ensureHtml2Canvas() {
 // <iframe> com blob same-origin (dá pra acessar contentDocument). useCORS:true pra desenhar
 // as imagens do braze-images.com (que mandam header de CORS — confirmado, senão sairiam em
 // branco). Captura o corpo INTEIRO do e-mail (scrollHeight), não só a parte visível.
-async function downloadApprovalFramePng(lang) {
-  const vp = document.getElementById('avVp-' + cssSafeLang(lang));
+async function downloadApprovalFramePng(key) {
+  // key é agora a KEY do frame (ver frame descriptors). Resolve o frame e aponta S pro item
+  // dele (no-op no single) pra que S.csv.name/toBrazeLang(f.lang) usem o conteúdo certo.
+  const f = (typeof _avFramesByKey !== 'undefined' && _avFramesByKey[key]) || null;
+  if(f && typeof avActivateFrame === 'function') avActivateFrame(f);
+  const lang = f ? f.lang : key;
+  const vp = document.getElementById('avVp-' + key);
   const iframe = vp && vp.querySelector('iframe');
   const doc = iframe && iframe.contentDocument;
   if(!doc || !doc.body) { showNotif('Preview not ready yet — wait a moment and try again.', 'warn'); return; }
@@ -9807,20 +10710,24 @@ window.addEventListener('message', function(e){
   }
 
   if(e.data.type === 'av-height'){
+    // Frames agora são identificados por KEY (ver frame descriptors em approval-canvas.js):
+    // no single key===cssSafeLang(lang); no locale key==='it'+índice do item.
+    const f = _avFramesByKey[e.data.key];
+    if(!f) return;
     // In-app é overlay fixed em tela cheia — scrollHeight do documento não reflete o
     // tamanho real da mensagem (o overlay some do fluxo normal), então a altura fica
     // travada na "tela de celular" fixa em vez de tentar auto-ajustar.
-    if(_campaignInappPreview) { renderApprovalPins(e.data.lang); return; }
-    const vp = document.getElementById('avVp-' + cssSafeLang(e.data.lang));
+    if(f.type === 'inapp') { renderApprovalPins(f); return; }
+    const vp = document.getElementById('avVp-' + e.data.key);
     const iframe = vp ? vp.querySelector('iframe') : null;
     const minH = vp && vp.classList.contains('av-frame-viewport-bare') ? 0 : 400;
     if(iframe) iframe.style.height = Math.max(e.data.height, minH) + 'px';
-    renderApprovalPins(e.data.lang);
+    renderApprovalPins(f);
     return;
   }
 
   if(e.data.type === 'av-selection'){
-    onFrameSelection(e.data);
+    onFrameSelection(e.data); // data.key resolve o frame dentro de onFrameSelection
     return;
   }
 
@@ -9833,7 +10740,7 @@ window.addEventListener('message', function(e){
   if(e.data.type === 'av-wheel'){
     // Traduz a posição (relativa ao iframe) pra coordenadas da página, somando a posição
     // do próprio frame na tela — daí dá pra reusar a mesma lógica de zoom/pan de sempre.
-    const vp = document.getElementById('avVp-' + cssSafeLang(e.data.lang));
+    const vp = document.getElementById('avVp-' + e.data.key);
     if(!vp) return;
     const rect = vp.getBoundingClientRect();
     avViewportWheel({
@@ -9847,1102 +10754,15 @@ window.addEventListener('message', function(e){
 
 });
 
-/* ═══════════════════════════════════════════════════════════════════
-   APPROVAL VIEW — canvas pannable/zoomable (estilo Figma) com todos os
-   e-mails abertos lado a lado, nome do país acima de cada frame,
-   comentários ancorados por clique com threads e @menção, painel
-   lateral com tudo, e "Mark as done" que avisa o dono do projeto.
-═══════════════════════════════════════════════════════════════════ */
-
-// Sanitiza um lang code (ex: 'es-ES') para um id de elemento HTML válido.
-function cssSafeLang(lang) {
-  return String(lang).replace(/[^a-zA-Z0-9_-]/g, '_');
-}
-
-// Origin primeiro, depois os demais idiomas na ordem fixa global (sortLangsForDisplay).
-function approvalLangs() {
-  const origLang = S.allC.find(c => c.code === S.origin)?.lang || null;
-  const langs = [];
-  if(origLang) langs.push(origLang);
-  sortLangsForDisplay(S.csv.langs || []).forEach(l => { if(l !== origLang) langs.push(l); });
-  return { origLang, langs };
-}
-
-// Entra direto na Approval View de um projeto compartilhado, sem passar pelo editor —
-// usado pelo botão "Approve copies" do Dashboard quando a pessoa é só approver.
-// Não usa projOpen(): aquele fluxo reivindica o lock de edição de 3min e regrava o CSV,
-// o que não faz sentido pra quem só está revisando/comentando as copies.
-function approverOpenProject(id) {
-  const p = projGetAll().find(x => x.id === id);
-  if(!p) return;
-  if(!(p.data && p.data.html && p.data.csv)) { alert('This project has no content yet.'); return; }
-  // Enquanto o dono/editor estiver com o projeto aberto pra edição, ninguém aprova —
-  // os approvers podem coexistir livremente entre si, só não com quem está editando.
-  if(projIsLocked(p)) {
-    alert(`This project is currently being edited by ${authorName(p.lockedBy)}. Please try again once editing is done.`);
-    return;
-  }
-  currentProjectId = id;
-  _lockTakeoverShown = false;
-  claimApprovingPresence(id);
-  document.getElementById('dashboardScreen').style.display = 'none';
-  document.getElementById('appBody').style.display = '';
-  document.getElementById('hdrBar').style.display = '';
-  document.getElementById('dashBtn').classList.remove('active');
-  restoreProjectContent(p.data, true);
-  if(S.rawHtml) openApprovalView();
-}
-
-function openApprovalView() {
-  if(!S.rawHtml && !_campaignPushPreview) { alert('Upload an HTML first.'); return; }
-  document.getElementById('approvalView').classList.add('show');
-  const sub = document.getElementById('avSubtitle');
-  if(sub) sub.textContent = S.csv.name || '';
-  renderApprovalGrid();
-  // renderApprovalSidebar() já chama renderApprovalDoneBanner() internamente no fim.
-  renderApprovalSidebar();
-  renderApprovalActivityFeed();
-  avPresenceJoin();
-}
-
-function closeApprovalView() {
-  document.getElementById('approvalView').classList.remove('show');
-  closeNewPinBox();
-  releaseMyApprovingPresence(); // libera a exclusão mútua com edição assim que eu saio da revisão
-  avPresenceLeave();
-  // Approver entra com o appBody visível de propósito (pra montar o editor por trás do overlay),
-  // mas ele nunca deveria acabar OLHANDO essa tabela — isso é só pra quem está de fato editando.
-  // Por isso sempre volta pro Dashboard nesse caso, mesmo com o appBody tecnicamente visível.
-  // Se vier do editor normal (dono/editor usando "Approve copies" por dentro), só fecha o
-  // overlay e volta pra tabela do CSV, como sempre.
-  if(_campaign) {
-    commitCampaignItemApprovalState();
-    saveCampaignProject();
-    renderCampaignMain(); // volta pra galeria (ou edit, se era daí que "Approve copies" foi aberto)
-    return;
-  }
-  if(_approverMode || !document.getElementById('appBody') || document.getElementById('appBody').style.display === 'none') {
-    goToDashboard();
-  }
-}
-
-/* ── Presença ao vivo (estilo Figma): avatares de quem está online + cursores em
-   tempo real dos outros aprovadores navegando no canvas ──
-   Usa um canal de Realtime "broadcast + presence" do Supabase, por projeto — não
-   grava nada no banco, é só um pub/sub efêmero enquanto a Approval View está aberta.
-   As posições trafegadas são em coordenadas do CONTEÚDO do canvas (antes do
-   pan/zoom de cada um), como o Figma faz: cada viewer aplica a SUA PRÓPRIA câmera
-   (_avView) por cima da mesma posição de documento, então o cursor aparece no
-   lugar certo pra cada pessoa mesmo com zooms/pans diferentes. */
-const AV_CURSOR_COLORS = ['#f2496b','#3b82f6','#0891b2','#8b5cf6','#f59e0b','#059669','#d8385e','#6366f1'];
-function avColorForEmail(email) {
-  let h = 0;
-  for(let i = 0; i < email.length; i++) h = (h * 31 + email.charCodeAt(i)) >>> 0;
-  return AV_CURSOR_COLORS[h % AV_CURSOR_COLORS.length];
-}
-
-let _avPresenceChannel = null;
-let _avRemoteCursors = {};      // email -> {x, y, color, name, at}
-let _avCursorPruneTimer = null;
-let _avCursorSendThrottle = null;
-
-function avPresenceJoin() {
-  const sb = sbClient();
-  const me = authCurrentUser();
-  if(!sb || !me || !currentProjectId) return;
-  avPresenceLeave(); // por segurança, nunca deixa dois canais abertos ao mesmo tempo
-  _avRemoteCursors = {};
-  const channel = sb.channel('mlt-av-presence-' + currentProjectId, { config: { presence: { key: me.email } } });
-  channel.on('presence', { event: 'sync' }, () => renderAvOnlineStack(channel.presenceState()));
-  channel.on('broadcast', { event: 'cursor' }, ({ payload }) => {
-    if(!payload || payload.email === me.email) return;
-    _avRemoteCursors[payload.email] = { ...payload, at: Date.now() };
-    renderAvRemoteCursors();
-  });
-  channel.on('broadcast', { event: 'leave' }, ({ payload }) => {
-    if(!payload) return;
-    delete _avRemoteCursors[payload.email];
-    renderAvRemoteCursors();
-  });
-  channel.subscribe(status => {
-    if(status === 'SUBSCRIBED') channel.track({ email: me.email, at: Date.now() });
-  });
-  _avPresenceChannel = channel;
-
-  document.getElementById('avCanvasViewport')?.addEventListener('mousemove', avSendCursorPosition);
-  _avCursorPruneTimer = setInterval(avPruneStaleCursors, 3000);
-}
-
-function avPresenceLeave() {
-  document.getElementById('avCanvasViewport')?.removeEventListener('mousemove', avSendCursorPosition);
-  clearInterval(_avCursorPruneTimer);
-  _avCursorPruneTimer = null;
-  if(_avPresenceChannel) {
-    const me = authCurrentUser();
-    if(me) { try { _avPresenceChannel.send({ type: 'broadcast', event: 'leave', payload: { email: me.email } }); } catch(e){} }
-    _avPresenceChannel.unsubscribe();
-    _avPresenceChannel = null;
-  }
-  _avRemoteCursors = {};
-  const layer = document.getElementById('avCursorLayer');
-  if(layer) layer.innerHTML = '';
-  const stack = document.getElementById('avOnlineStack');
-  if(stack) stack.innerHTML = '';
-}
-
-// Manda no máximo ~20x/s — suficiente pra parecer ao vivo sem inundar o canal.
-function avSendCursorPosition(e) {
-  if(_avCursorSendThrottle) return;
-  _avCursorSendThrottle = setTimeout(() => { _avCursorSendThrottle = null; }, 50);
-  if(!_avPresenceChannel) return;
-  const me = authCurrentUser();
-  if(!me) return;
-  const vp = document.getElementById('avCanvasViewport');
-  const rect = vp.getBoundingClientRect();
-  // Desfaz o pan/zoom DESTA sessão pra chegar na posição em coordenadas do documento
-  // (o mesmo espaço em que os frames são posicionados em renderApprovalGrid).
-  const docX = (e.clientX - rect.left - _avView.tx) / _avView.scale;
-  const docY = (e.clientY - rect.top - _avView.ty) / _avView.scale;
-  _avPresenceChannel.send({
-    type: 'broadcast', event: 'cursor',
-    payload: { email: me.email, name: authorName(me.email), color: avColorForEmail(me.email), x: docX, y: docY }
-  });
-}
-
-function avPruneStaleCursors() {
-  const now = Date.now();
-  let changed = false;
-  Object.keys(_avRemoteCursors).forEach(email => {
-    if(now - _avRemoteCursors[email].at > 8000) { delete _avRemoteCursors[email]; changed = true; }
-  });
-  if(changed) renderAvRemoteCursors();
-}
-
-// Só atualiza a posição/escala da camada (transform é composto pela GPU, não gera
-// reflow) — chamada a cada tick de pan/zoom/scroll. NÃO reconstrói o innerHTML: os
-// cursores filhos já têm seu próprio translate() em coordenadas de documento, então
-// mover/escalar só o wrapper já reprojeta todos eles corretamente pra câmera atual.
-function updateAvCursorLayerTransform() {
-  const layer = document.getElementById('avCursorLayer');
-  if(layer) layer.style.transform = `translate(${_avView.tx}px, ${_avView.ty}px) scale(${_avView.scale})`;
-}
-
-// Reconstrói o conteúdo (quem está e onde) — só precisa rodar quando os DADOS dos
-// cursores mudam (chegou uma posição nova, alguém saiu, expirou por inatividade),
-// nunca a cada tick de scroll/zoom — isso é o que deixava o scroll pesado.
-function renderAvRemoteCursors() {
-  updateAvCursorLayerTransform();
-  const layer = document.getElementById('avCursorLayer');
-  if(!layer) return;
-  const emails = Object.keys(_avRemoteCursors);
-  layer.innerHTML = emails.map(email => {
-    const c = _avRemoteCursors[email];
-    const esc = s => String(s || '').replace(/</g, '&lt;');
-    return `<div class="av-remote-cursor" style="transform:translate(${c.x}px,${c.y}px)">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="${c.color}" stroke="#fff" stroke-width="1.5"><path d="M5 3l14 8-6.5 1.5L10 20z"/></svg>
-      <span class="av-remote-cursor-label" style="background:${c.color}">${esc(c.name)}</span>
-    </div>`;
-  }).join('');
-}
-
-function renderAvOnlineStack(presenceState) {
-  const stack = document.getElementById('avOnlineStack');
-  if(!stack) return;
-  const emails = Object.keys(presenceState || {});
-  stack.innerHTML = emails.map(email => {
-    const name = authorName(email);
-    const initials = name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
-    return `<div class="av-online-avatar" style="background:${avColorForEmail(email)}" title="${name} · online now">${initials}</div>`;
-  }).join('');
-}
-
-/* ── Canvas pannable/zoomable ── */
-// 680px (não 600) de propósito: o breakpoint mobile mais comum nesses templates é
-// "@media (max-width:620px)" — um frame de exatamente 600px cairia dentro dele e
-// renderizaria empilhado feito celular, mesmo essa vitrine querendo mostrar o desktop.
-const AV_FRAME_W = 680, AV_FRAME_GAP = 90, AV_FRAME_TOP = 50;
-const AV_INAPP_FRAME_W = 320, AV_INAPP_FRAME_H = 640; // in-app é overlay fixed em tela cheia — vira uma "tela de celular" de tamanho fixo, não uma altura auto tipo e-mail
-function avFrameW() { return _campaignInappPreview ? AV_INAPP_FRAME_W : AV_FRAME_W; }
-let _avView = { scale: 1, tx: 40, ty: 60 };
-let _avPan = { active: false, moved: false, startX: 0, startY: 0, startTx: 0, startTy: 0 };
-let _avSuppressNextClick = false;
-
-function applyAvTransform() {
-  const canvas = document.getElementById('avCanvas');
-  if(canvas) canvas.style.transform = `translate(${_avView.tx}px, ${_avView.ty}px) scale(${_avView.scale})`;
-  const pct = document.getElementById('avZoomPct');
-  if(pct) pct.textContent = Math.round(_avView.scale * 100) + '%';
-  updateAvCursorLayerTransform(); // só reprojeta (transform), sem reconstruir o HTML a cada tick
-  updateAvHScrollbar();
-}
-
-// Largura total do conteúdo do canvas, em unidades do próprio canvas (antes do scale) —
-// mesma conta usada em avFitToFrames pra caber tudo na tela.
-function avContentWidth() {
-  const { langs } = approvalLangs();
-  return langs.length ? langs.length * (avFrameW() + AV_FRAME_GAP) : 0;
-}
-
-// Barra de rolagem horizontal "de verdade" pro canvas com pan/zoom via transform —
-// não existe scrollbar nativa aqui, então isso é o único jeito da pessoa perceber
-// (e usar) que dá pra arrastar o conteúdo pros lados depois de dar zoom.
-let _avHDrag = null; // {startX, startThumbLeft, trackWidth, thumbWidth, contentScreenW, scrollableScreenW}
-
-// Espaço confortável (em pixels de TELA, não de canvas — fica igual em qualquer zoom) que
-// sobra nas duas pontas do arrasto. Sem isso, o pan parava exatamente na borda do e-mail —
-// dava a sensação de "esbarrar na parede" em vez de ter uma folga respirável dos lados.
-const AV_HPAD = 64;
-
-// arrastar rápido (o canvas OU a própria barra) disparava isso a cada mousemove — muitos
-// por segundo — e cada chamada lia clientWidth/getBoundingClientRect (força layout).
-// Ler e escrever layout intercalado a essa taxa é o clássico "layout thrashing" e trava a
-// UI num arrasto rápido. Agora no máximo 1 recálculo por frame de animação (rAF).
-let _avHScrollRaf = null;
-function updateAvHScrollbar() {
-  if(_avHScrollRaf) return;
-  _avHScrollRaf = requestAnimationFrame(() => { _avHScrollRaf = null; _updateAvHScrollbarNow(); });
-}
-
-function _updateAvHScrollbarNow() {
-  const bar = document.getElementById('avHScroll');
-  const thumb = document.getElementById('avHScrollThumb');
-  const vp = document.getElementById('avCanvasViewport');
-  if(!bar || !thumb || !vp) return;
-  const contentW = avContentWidth();
-  if(!contentW) { bar.classList.remove('show'); return; }
-  const contentScreenW = contentW * _avView.scale + AV_HPAD * 2;
-  const trackWidth = bar.clientWidth;
-  const thumbRatio = Math.min(1, vp.clientWidth / contentScreenW);
-  if(thumbRatio >= 1) { bar.classList.remove('show'); return; } // conteúdo (+ folga) cabe todo — nada pra rolar
-  bar.classList.add('show');
-  const thumbWidth = Math.max(32, trackWidth * thumbRatio);
-  const scrollableScreenW = contentScreenW - vp.clientWidth;
-  const scrollRatio = scrollableScreenW > 0 ? Math.min(1, Math.max(0, (AV_HPAD - _avView.tx) / scrollableScreenW)) : 0;
-  const thumbLeft = scrollRatio * (trackWidth - thumbWidth);
-  thumb.style.width = thumbWidth + 'px';
-  thumb.style.left = thumbLeft + 'px';
-}
-
-function avHScrollThumbDown(e) {
-  e.stopPropagation();
-  e.preventDefault();
-  const bar = document.getElementById('avHScroll');
-  const thumb = document.getElementById('avHScrollThumb');
-  const vp = document.getElementById('avCanvasViewport');
-  if(!bar || !thumb || !vp) return;
-  const contentScreenW = avContentWidth() * _avView.scale + AV_HPAD * 2;
-  _avHDrag = {
-    startX: e.clientX,
-    startThumbLeft: parseFloat(thumb.style.left) || 0,
-    trackWidth: bar.clientWidth,
-    thumbWidth: thumb.getBoundingClientRect().width,
-    scrollableScreenW: contentScreenW - vp.clientWidth
-  };
-  thumb.classList.add('dragging');
-}
-
-function avHScrollMouseMove(e) {
-  if(!_avHDrag) return;
-  const dx = e.clientX - _avHDrag.startX;
-  const maxThumbLeft = _avHDrag.trackWidth - _avHDrag.thumbWidth;
-  const newThumbLeft = Math.min(maxThumbLeft, Math.max(0, _avHDrag.startThumbLeft + dx));
-  const scrollRatio = maxThumbLeft > 0 ? newThumbLeft / maxThumbLeft : 0;
-  _avView.tx = AV_HPAD - scrollRatio * _avHDrag.scrollableScreenW;
-  applyAvTransform();
-}
-
-function avHScrollMouseUp() {
-  if(!_avHDrag) return;
-  _avHDrag = null;
-  document.getElementById('avHScrollThumb')?.classList.remove('dragging');
-}
-
-document.addEventListener('mousemove', avHScrollMouseMove);
-document.addEventListener('mouseup', avHScrollMouseUp);
-window.addEventListener('resize', () => { if(document.getElementById('approvalView')?.classList.contains('show')) updateAvHScrollbar(); });
-
-// Clicar direto na trilha (fora do thumb) pula a rolagem pra ali, igual scrollbar nativa.
-function avHScrollTrackClick(e) {
-  if(e.target.id === 'avHScrollThumb') return;
-  const bar = document.getElementById('avHScroll');
-  const thumb = document.getElementById('avHScrollThumb');
-  const vp = document.getElementById('avCanvasViewport');
-  if(!bar || !thumb || !vp) return;
-  const rect = bar.getBoundingClientRect();
-  const thumbWidth = thumb.getBoundingClientRect().width;
-  const contentScreenW = avContentWidth() * _avView.scale + AV_HPAD * 2;
-  const scrollableScreenW = contentScreenW - vp.clientWidth;
-  const clickX = e.clientX - rect.left - thumbWidth / 2;
-  const maxThumbLeft = rect.width - thumbWidth;
-  const scrollRatio = maxThumbLeft > 0 ? Math.min(1, Math.max(0, clickX / maxThumbLeft)) : 0;
-  _avView.tx = AV_HPAD - scrollRatio * scrollableScreenW;
-  applyAvTransform();
-}
-
-function avFitToFrames() {
-  const { langs } = approvalLangs();
-  const vp = document.getElementById('avCanvasViewport');
-  if(!vp || !langs.length) return;
-  const totalW = langs.length * (avFrameW() + AV_FRAME_GAP);
-  const availW = vp.clientWidth - 80;
-  _avView.scale = Math.max(0.15, Math.min(1, availW / totalW));
-  _avView.tx = 40;
-  _avView.ty = 60;
-  applyAvTransform();
-}
-
-function avZoomBy(factor, cx, cy) {
-  const vp = document.getElementById('avCanvasViewport');
-  const rect = vp ? vp.getBoundingClientRect() : { width: 800, height: 600, left: 0, top: 0 };
-  const px = cx !== undefined ? cx - rect.left : rect.width / 2;
-  const py = cy !== undefined ? cy - rect.top : rect.height / 2;
-  const oldScale = _avView.scale;
-  const newScale = Math.min(2.5, Math.max(0.12, oldScale * factor));
-  _avView.tx = px - (px - _avView.tx) * (newScale / oldScale);
-  _avView.ty = py - (py - _avView.ty) * (newScale / oldScale);
-  _avView.scale = newScale;
-  applyAvTransform();
-}
-
-function avZoomIn() { avZoomBy(1.2); }
-function avZoomOut() { avZoomBy(1 / 1.2); }
-
-function avViewportWheel(e) {
-  e.preventDefault();
-  if(e.ctrlKey || e.metaKey) {
-    avZoomBy(1 - e.deltaY * 0.0015, e.clientX, e.clientY);
-  } else {
-    _avView.tx -= e.deltaX;
-    _avView.ty -= e.deltaY;
-    applyAvTransform();
-  }
-}
-
-// Distingue "clique" (abre um comentário novo) de "arrastar" (só navega o canvas) —
-// mesma lógica de qualquer ferramenta de whiteboard: só é clique se o cursor mal se moveu.
-function avViewportMouseDown(e) {
-  // #mentionDropdown mora fora da .av-newpin-box/.reply-input-box (ver comentário no HTML
-  // dele) — sem essa checagem separada, clicar numa sugestão de @menção não batia em nenhum
-  // dos dois closest() acima, e o pan da tela iniciava sozinho a cada menção escolhida.
-  if(e.target.closest('.av-pin') || e.target.closest('.av-newpin-box') || e.target.closest('#mentionDropdown')) return;
-  _avPan.active = true;
-  _avPan.moved = false;
-  _avPan.startX = e.clientX;
-  _avPan.startY = e.clientY;
-  _avPan.startTx = _avView.tx;
-  _avPan.startTy = _avView.ty;
-  document.getElementById('avCanvasViewport')?.classList.add('panning');
-}
-
-function avViewportMouseMove(e) {
-  if(!_avPan.active) return;
-  const dx = e.clientX - _avPan.startX, dy = e.clientY - _avPan.startY;
-  if(Math.abs(dx) > 4 || Math.abs(dy) > 4) _avPan.moved = true;
-  if(_avPan.moved) {
-    _avView.tx = _avPan.startTx + dx;
-    _avView.ty = _avPan.startTy + dy;
-    applyAvTransform();
-  }
-}
-
-function avViewportMouseUp() {
-  if(_avPan.active && _avPan.moved) _avSuppressNextClick = true;
-  _avPan.active = false;
-  document.getElementById('avCanvasViewport')?.classList.remove('panning');
-}
-
-document.addEventListener('mousemove', avViewportMouseMove);
-document.addEventListener('mouseup', avViewportMouseUp);
-
-function renderApprovalGrid() {
-  const { origLang, langs } = approvalLangs();
-  const canvas = document.getElementById('avCanvas');
-  if(!canvas) return;
-  if(!langs.length) {
-    canvas.style.width = '400px';
-    canvas.innerHTML = `<div class="empty-state" style="width:360px;"><p>No languages configured yet.</p></div>`;
-    return;
-  }
-  const frameW = avFrameW();
-  canvas.style.width = (langs.length * (frameW + AV_FRAME_GAP)) + 'px';
-  canvas.innerHTML = langs.map((lang, i) => {
-    const isOrig = lang === origLang;
-    const country = S.allC.find(c => c.lang === lang);
-    const x = i * (frameW + AV_FRAME_GAP);
-    return `
-      <div class="av-canvas-frame" style="left:${x}px;top:${AV_FRAME_TOP}px;width:${frameW}px;">
-        <div class="av-canvas-frame-title">
-          <span>${country?.flag || '🌐'}</span>
-          <span>${country?.name || lang}</span>
-          <span class="av-frame-lang">${toBrazeLang(lang)}</span>
-          ${isOrig ? '<span class="av-frame-origin-badge">origin</span>' : ''}
-          <span class="av-frame-count" style="display:none;">0</span>
-          <span class="av-cb-toggle" title="Só teste de visualização — não afeta o HTML/CSV"${maxCondBranchCount(S.rawHtml)<=1?' style="display:none;"':''}>
-            ${Array.from({length:maxCondBranchCount(S.rawHtml)}, (_,i) =>
-              `<button class="av-cb-btn ${(S.condBranch|0)===i?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch(${i})">${condBranchLabel(i,maxCondBranchCount(S.rawHtml))}</button>`
-            ).join('')}
-          </span>
-          <button class="av-cb-btn" title="Download this preview as a PNG image" style="border:1px solid var(--border-s);" onclick="event.stopPropagation();downloadApprovalFramePng('${escJsAttr(lang)}')">⬇ PNG</button>
-          <span class="av-frame-approve-slot" id="avApproveSlot-${cssSafeLang(lang)}"></span>
-        </div>
-        <div class="av-frame-viewport${(_campaignPushPreview || _campaignInappPreview) ? ' av-frame-viewport-bare' : ''}" id="avVp-${cssSafeLang(lang)}" style="width:${frameW}px;"></div>
-      </div>
-    `;
-  }).join('');
-  langs.forEach(lang => { loadApprovalFrame(lang); renderFrameApproveSlot(lang); });
-  avFitToFrames();
-}
-
-// Toggle SÓ de teste/visualização (mesmo S.condBranch do preview principal — ver
-// resolveConditionalBranch) — mostrado em CIMA de cada e-mail na Approval View, mas é um
-// estado ÚNICO compartilhado entre todos os idiomas (clicar em qualquer frame atualiza
-// todos), pra comparar o mesmo branch lado a lado em vários idiomas de uma vez. Nunca
-// muda o HTML/CSV real, só recarrega os iframes de preview já abertos.
-function setApprovalCondBranch(idx) {
-  S.condBranch = idx|0;
-  S.condRevealRow = null;
-  document.querySelectorAll('.av-cb-btn').forEach(b => {
-    const oc = b.getAttribute('onclick') || '';
-    const mm = oc.match(/setApprovalCondBranch\((\d+)\)/);
-    if(mm) b.classList.toggle('active', (+mm[1]) === (S.condBranch|0));
-  });
-  const { langs } = approvalLangs();
-  langs.forEach(lang => loadApprovalFrame(lang));
-}
-
-// Botão de aprovação POR IDIOMA, acima de cada frame — aprovar/desaprovar um idioma não afeta
-// os outros, e trava/destrava comentários só naquele idioma específico.
-function renderFrameApproveSlot(lang) {
-  const el = document.getElementById('avApproveSlot-' + cssSafeLang(lang));
-  if(!el) return;
-  const done = isLangApproved(S.approvalDoneByLang, lang);
-  el.innerHTML = done
-    ? `<button class="av-frame-approved-btn" disabled>
-         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
-         Approved
-       </button>
-       <button class="av-frame-undo-btn" onclick="undoLangApproval('${lang}')">Undo</button>`
-    : `<button class="av-frame-approve-btn" onclick="markLangApproved('${lang}')">
-         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
-         Approve
-       </button>`;
-}
-
-// Injeta um reporter de altura (mesmo padrão de 'braze-height' já usado no viewer principal)
-// pra que o frame cresça até a altura real do e-mail renderizado — sem scroll interno,
-// já que navegar pelo conteúdo agora é feito dando zoom/pan no canvas, como no Figma.
-// Push não tem rawHtml (não é upload de HTML, são 2 campos de texto puro) — monta um
-// documento sintético com data-tid="id1"/"id2" pra que o mecanismo de comentar-por-seleção
-// (que depende de achar o data-tid mais próximo) continue funcionando sem alteração.
-function buildPushFrameHtml(lang) {
-  const item = _campaign.items[_campaignItemIndex];
-  const titleRow = item.rows.find(r => r.id === 'id1');
-  const bodyRow = item.rows.find(r => r.id === 'id2');
-  const origLang = S.allC.find(c => c.code === S.origin)?.lang;
-  const isOrig = !lang || lang === origLang;
-  const title = isOrig ? (titleRow?.src || '') : (titleRow?.translations?.[lang] || '');
-  const body = isOrig ? (bodyRow?.src || '') : (bodyRow?.translations?.[lang] || '');
-  return `<html><body style="margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;background:transparent;padding:20px 12px;">
-    <div style="max-width:360px;background:#fff;border-radius:16px;padding:16px;box-shadow:0 2px 16px rgba(0,0,0,.12);display:flex;gap:12px;">
-      <div style="width:44px;height:44px;border-radius:12px;background:#d8385e;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;">🔔</div>
-      <div style="min-width:0;">
-        <div data-tid="id1" style="font-weight:700;font-size:14px;color:#000;margin-bottom:2px;">${escHtml(title)}</div>
-        <div data-tid="id2" style="font-size:13px;color:#333;line-height:1.4;">${escHtml(body)}</div>
-      </div>
-    </div>
-  </body></html>`;
-}
-
-function buildApprovalFrameHtml(lang) {
-  let html = _campaignPushPreview ? buildPushFrameHtml(lang) : buildPreviewHtml(lang);
-  const sc = '<scr' + 'ipt>';
-  const scEnd = '</scr' + 'ipt>';
-  const script = sc + `(function(){
-    function rh(){
-      var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, 400);
-      window.parent.postMessage({type:'av-height', lang:${JSON.stringify(lang)}, height:h}, '*');
-    }
-    window.addEventListener('load', function(){ setTimeout(rh, 80); });
-
-    // Comentar exige SELECIONAR um trecho de texto (igual Google Docs/Figma), não só clicar —
-    // ao soltar o mouse com uma seleção não-vazia, acha a linha (data-tid) mais próxima pra
-    // saber a qual id/idioma o comentário (e o botão de editar) devem se referir, e avisa o pai.
-    function onMouseUp(){
-      setTimeout(function(){
-        var sel = window.getSelection();
-        var text = sel ? sel.toString().trim() : '';
-        if(!text || !sel.rangeCount) return;
-        var range = sel.getRangeAt(0);
-        var rect = range.getBoundingClientRect();
-        var docW = document.documentElement.scrollWidth || document.body.scrollWidth || window.innerWidth;
-        var docH = document.documentElement.scrollHeight || document.body.scrollHeight || window.innerHeight;
-        if(!docW || !docH) return;
-        var xPct = ((rect.left + rect.width / 2) / docW) * 100;
-        var yPct = (rect.bottom / docH) * 100;
-        var node = range.startContainer;
-        var el = node.nodeType === 1 ? node : node.parentElement;
-        // Footer é só um retrato de exemplo, nunca traduzido — selecionar texto ali
-        // dentro não deve abrir caixinha de comentário (mesmo bloqueio do seletor de imagens).
-        if(el && el.closest('.mlt-footer-block')) return;
-        var tidEl = el ? el.closest('[data-tid]') : null;
-        window.parent.postMessage({
-          type: 'av-selection',
-          lang: ${JSON.stringify(lang)},
-          text: text.length > 300 ? text.slice(0, 300) + '…' : text,
-          rowId: tidEl ? tidEl.getAttribute('data-tid') : null,
-          xPct: Math.min(100, Math.max(0, xPct)),
-          yPct: Math.min(100, Math.max(0, yPct))
-        }, '*');
-      }, 0);
-    }
-    document.addEventListener('mouseup', onMouseUp);
-
-    // O iframe agora recebe eventos de mouse (pra seleção de texto funcionar), o que significa
-    // que rolar o scroll do mouse EM CIMA do e-mail nunca chega ao listener de pan/zoom do
-    // canvas no pai — eventos de wheel não atravessam a fronteira do iframe. Encaminha manualmente.
-    document.addEventListener('wheel', function(ev){
-      window.parent.postMessage({
-        type: 'av-wheel', lang: ${JSON.stringify(lang)},
-        deltaX: ev.deltaX, deltaY: ev.deltaY,
-        ctrlKey: ev.ctrlKey, metaKey: ev.metaKey,
-        x: ev.clientX, y: ev.clientY
-      }, '*');
-      ev.preventDefault();
-    }, { passive: false });
-  })()` + scEnd;
-  if(html.includes('</body>')) html = html.replace('</body>', script + '</body>');
-  else html += script;
-  return html;
-}
-
-function loadApprovalFrame(lang) {
-  const vp = document.getElementById('avVp-' + cssSafeLang(lang));
-  if(!vp) return;
-  const initH = _campaignPushPreview ? 130 : _campaignInappPreview ? AV_INAPP_FRAME_H : 900;
-  vp.innerHTML = `<iframe style="width:100%;height:${initH}px;"></iframe>`;
-  const iframe = vp.querySelector('iframe');
-  iframe.src = URL.createObjectURL(new Blob([buildApprovalFrameHtml(lang)], { type: 'text/html' }));
-  renderApprovalPins(lang);
-}
-
-let _pendingPin = null;
-
-// Chamado pelo listener global de 'message' quando o iframe reporta uma seleção de texto válida
-// (ver buildApprovalFrameHtml). Abre a caixinha de comentário ancorada onde o texto foi selecionado,
-// já com a citação do trecho e (se identificado) um botão pra editar a tradução na hora.
-function onFrameSelection(data) {
-  const origLang = S.allC.find(c => c.code === S.origin)?.lang;
-  if(data.lang === origLang) return; // origem é só referência — não dá pra comentar nem editar nela
-  if(isLangApproved(S.approvalDoneByLang, data.lang)) return; // comentários ficam travados enquanto ESSE idioma estiver aprovado
-  if(approvalBlockedByEdit()) { warnApprovalBlockedByEdit(); return; }
-  const vp = document.getElementById('avVp-' + cssSafeLang(data.lang));
-  if(!vp) return;
-  const rect = vp.getBoundingClientRect();
-  // Coordenadas de TELA de verdade (getBoundingClientRect já reflete o zoom/transform atual do
-  // canvas) — não mais coordenadas locais de vp. A caixa agora é position:fixed (ver
-  // openNewPinBox), então precisa da posição real na tela, somando rect.left/top.
-  const screenX = rect.left + rect.width * (data.xPct / 100);
-  const screenY = rect.top + rect.height * (data.yPct / 100);
-  // Selecionar só precisa apontar QUAL linha — a citação mostrada e o botão de editar sempre
-  // trabalham com a linha INTEIRA, não só o pedacinho de texto que a pessoa arrastou o mouse por cima.
-  const quote = data.rowId ? currentRowText(data.rowId, data.lang) : data.text;
-  openNewPinBox(vp, screenX, screenY, data.xPct, data.yPct, data.lang, quote, data.rowId);
-}
-
-// Texto atual de uma linha, num idioma: a tradução se já existir, senão o texto de origem
-// como valor padrão pronto pra edição (a pessoa só ajusta o que precisa, não parte do zero).
-function currentRowText(rowId, lang) {
-  const row = S.csv.rows.find(r => r.id === rowId);
-  if(!row) return '';
-  const origLang = S.allC.find(c => c.code === S.origin)?.lang;
-  const isOrig = lang === origLang;
-  return isOrig ? row.src : (row.translations[lang] || row.src || '');
-}
-
-function openNewPinBox(vp, screenX, screenY, xPct, yPct, lang, quote, rowId) {
-  closeNewPinBox();
-  _pendingPin = { lang, xPct, yPct, quote: quote || '', rowId: rowId || null };
-  const box = document.createElement('div');
-  box.className = 'av-newpin-box';
-  box.id = 'avNewPinBox';
-  // position:fixed com coordenadas de TELA (ver CSS .av-newpin-box) — não mais position:
-  // absolute relativo a vp. vp vive dentro de #avCanvas, que tem transform:scale() aplicado
-  // pro zoom (ver applyAvTransform) — um left/top em px num descendente de um ancestral com
-  // scale() é resolvido no espaço de coordenadas LOCAL (pré-transform) daquele ancestral, mas
-  // screenX/screenY vêm de getBoundingClientRect() (espaço de TELA, pós-transform). Em zoom
-  // 100% os dois espaços coincidem por acaso, mas quanto mais zoom, maior o descompasso — a
-  // caixa abria cada vez mais longe do ponto clicado de verdade, na proporção do zoom (esse
-  // era o bug: "quando o zoom tá muito próximo, o box abre meio distante da seleção").
-  // position:fixed + coordenadas de tela elimina esse descompasso — a caixa sempre abre bem
-  // ao lado de onde a pessoa selecionou, em qualquer nível de zoom.
-  box.style.left = Math.max(4, screenX) + 'px';
-  box.style.top = (screenY + 12) + 'px';
-  const esc = s => String(s || '').replace(/</g, '&lt;');
-  // Mesma estrutura dos outros comentários do app (thread do CSV builder e sidebar da Approval
-  // View): linha textarea+botão lado a lado (.av-reply-input-box), não textarea com uma linha
-  // de botões EMBAIXO. Aquele layout antigo colocava o botão "Cancel" bem onde o dropdown de
-  // @menção aparece (logo abaixo do textarea) — como a caixa é estreita (240px), o dropdown
-  // cobria a largura quase toda, e ao MARCAR alguém (mousedown fecha o dropdown antes do
-  // mouseup/click completar o gesto), esse clique vazava pro botão que ficava exposto embaixo,
-  // fechando a caixa inteira. Com o botão ao LADO do textarea (não embaixo), não sobra nada
-  // clicável na área onde o dropdown se posiciona.
-  const editBtn = (rowId && isCurrentProjectOwner())
-    ? `<button class="av-edit-btn" style="margin-bottom:6px;" onclick="event.stopPropagation();openAvEditModal('${rowId}','${lang}')">✎ Edit text</button>`
-    : '';
-  box.innerHTML = `
-    <div style="display:flex;justify-content:flex-end;margin-bottom:2px;">
-      <button class="comment-del-btn" title="Cancel" onclick="event.stopPropagation();closeNewPinBox()">×</button>
-    </div>
-    ${quote ? `<div class="av-newpin-quote">${esc(quote)}</div>` : ''}
-    ${editBtn}
-    <div class="av-reply-input-box">
-      <textarea id="avNewPinText" placeholder="Leave a comment… type @ to mention someone" oninput="handleMentionInput(event)" onkeydown="handleMentionKeydown(event)"></textarea>
-      <button class="btn-go" style="padding:6px 10px;font-size:11px;" onclick="event.stopPropagation();submitNewPin()">Post</button>
-    </div>
-  `;
-  box.onclick = e2 => e2.stopPropagation();
-  // Body-level de propósito (mesmo padrão do #mentionDropdown) — não é mais filho de vp, que
-  // vive dentro do container transformado (#avCanvas). Isso também é o que elimina o próprio
-  // risco de scroll indesejado ao focar (#avCanvasViewport, com overflow:hidden, não é mais
-  // ancestral deste elemento), mas preventScroll:true continua aqui por segurança/consistência.
-  document.body.appendChild(box);
-  setTimeout(() => document.getElementById('avNewPinText')?.focus({preventScroll:true}), 0);
-}
-
-function closeNewPinBox() {
-  closeMentionDropdown();
-  document.getElementById('avNewPinBox')?.remove();
-  _pendingPin = null;
-}
-
-function submitNewPin() {
-  // Nos dois bloqueios abaixo, NÃO fecha a caixa (closeNewPinBox apaga o <textarea> e,
-  // com ele, qualquer texto ainda não enviado, sem chance de recuperação). Só avisa e
-  // mantém a caixa aberta com o texto intacto — se o bloqueio for temporário (dono para
-  // de editar), a pessoa ainda consegue clicar "Post" de novo depois, sem ter perdido nada.
-  if(_pendingPin && isLangApproved(S.approvalDoneByLang, _pendingPin.lang)) { return; }
-  if(approvalBlockedByEdit()) { warnApprovalBlockedByEdit(); return; }
-  const ta = document.getElementById('avNewPinText');
-  const text = ta ? ta.value.trim() : '';
-  if(!text || !_pendingPin) { closeNewPinBox(); return; }
-  const { lang, xPct, yPct, quote, rowId } = _pendingPin;
-  const comment = addApprovalComment(lang, xPct, yPct, text, null);
-  if(!comment) return;
-  comment.quote = quote || '';
-  comment.rowId = rowId || null;
-  closeNewPinBox();
-  renderApprovalPins(lang);
-  renderApprovalSidebar();
-  scheduleApprovalAutosave();
-}
-
-// Cria um comentário (topo de thread, se parentId for null, ou uma resposta) e dispara as
-// notificações certas: quem foi @mencionado, e o dono do projeto (se ele não for quem comentou
-// nem já tiver sido @mencionado, pra não duplicar o aviso).
-function addApprovalComment(lang, xPct, yPct, text, parentId) {
-  const me = authCurrentUser();
-  if(!me) return null;
-  const mentions = extractMentions(text);
-  const comment = {
-    id: 'ac_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-    lang, xPct: xPct ?? null, yPct: yPct ?? null, text,
-    author: me.email, createdAt: Date.now(),
-    parentId: parentId || null,
-    mentions, resolvedBy: []
-  };
-  S.approvalComments.push(comment);
-  scheduleApprovalAutosave();
-
-  const p = projGetAll().find(x => x.id === currentProjectId);
-  const projectName = (p && p.name) || S.csv.name || 'this project';
-  const preview = text.length > 80 ? text.slice(0, 77) + '…' : text;
-
-  mentions.forEach(email => {
-    if(email.toLowerCase() === me.email.toLowerCase()) return;
-    notifAdd(email, me.email,
-      `${me.email} mentioned you in an approval comment on "${projectName}" (${langDisplayName(lang)})`,
-      { projectId: currentProjectId, kind: 'approval', commentId: comment.id, preview }
-    );
-  });
-  if(p && p.owner && p.owner.toLowerCase() !== me.email.toLowerCase() && !mentions.some(e => e.toLowerCase() === p.owner.toLowerCase())) {
-    notifAdd(p.owner, me.email,
-      `${me.email} left an approval comment on "${projectName}" (${langDisplayName(lang)})`,
-      { projectId: currentProjectId, kind: 'approval', commentId: comment.id, preview }
-    );
-  }
-  return comment;
-}
-
-function renderApprovalPins(lang) {
-  const vp = document.getElementById('avVp-' + cssSafeLang(lang));
-  if(!vp) return;
-  vp.querySelectorAll('.av-pin').forEach(p => p.remove());
-  // Só comentários de topo (sem parentId) viram pin — respostas ficam na mesma marcação da thread.
-  const topLevel = S.approvalComments.filter(c => c.lang === lang && !c.parentId);
-  topLevel.forEach((c, i) => {
-    const pin = document.createElement('div');
-    pin.className = 'av-pin' + (c.resolvedBy.length ? ' resolved' : '');
-    pin.style.left = c.xPct + '%';
-    pin.style.top = c.yPct + '%';
-    pin.title = c.text;
-    pin.innerHTML = `<span>${i + 1}</span>`;
-    pin.onclick = e => { e.stopPropagation(); highlightApprovalComment(c.id); };
-    vp.appendChild(pin);
-  });
-  const card = vp.closest('.av-canvas-frame');
-  const countEl = card ? card.querySelector('.av-frame-count') : null;
-  if(countEl) {
-    countEl.textContent = String(topLevel.length);
-    countEl.style.display = topLevel.length ? 'inline-flex' : 'none';
-  }
-}
-
-function renderApprovalSidebar() {
-  const countEl = document.getElementById('avCommentCount');
-  const list = document.getElementById('avSidebarList');
-  if(!list) return;
-  // Fecha qualquer dropdown de menção aberto antes de reconstruir a lista — #mentionDropdown
-  // mora fora daqui (ver HTML), então não é destruído por este innerHTML, mas continuar
-  // "aberto" apontando pra uma caixa de resposta que está prestes a sumir ficaria estranho.
-  closeMentionDropdown();
-
-  // Preserva uma caixa de RESPOSTA aberta (com texto em digitação) através do rebuild do
-  // innerHTML abaixo. Sem isso: autosaveApprovalState()/autosaveCampaignApprovalState()
-  // chamam esta função ~600ms depois de QUALQUER ação de aprovação (ex: clicar "Verify" num
-  // comentário) — mesmo vindo da MESMA pessoa que, nesse meio-tempo, abriu a caixa de
-  // resposta de OUTRO comentário e começou a digitar. O rebuild reseta toda caixa de resposta
-  // pro estado inicial (display:none, textarea vazio), apagando silenciosamente o texto ainda
-  // não enviado. Achado real de QA de concorrência.
-  let openReplyBox = null;
-  list.querySelectorAll('.av-reply-input-box').forEach(box => {
-    if(box.style.display === 'flex') {
-      openReplyBox = { id: box.id, text: box.querySelector('textarea')?.value || '' };
-    }
-  });
-
-  const all = S.approvalComments;
-  const topLevel = all.filter(c => !c.parentId).sort((a, b) => b.createdAt - a.createdAt);
-  // Agrupa as respostas por parentId numa única passada por `all` — antes, renderApprovalThreadCard
-  // fazia um all.filter() (varredura completa de TODOS os comentários) pra CADA comentário de
-  // topo, um O(topLevel × all) que cresce em dobro com o total de comentários acumulados no
-  // projeto. Mesmo resultado (mesmo agrupamento, mesma ordenação por createdAt logo abaixo),
-  // só monta o agrupamento uma vez em vez de refazer a varredura por card.
-  const repliesByParent = new Map();
-  all.forEach(r => {
-    if(!r.parentId) return;
-    if(!repliesByParent.has(r.parentId)) repliesByParent.set(r.parentId, []);
-    repliesByParent.get(r.parentId).push(r);
-  });
-  if(countEl) countEl.textContent = all.length ? String(all.length) : '';
-  list.innerHTML = topLevel.length
-    ? topLevel.map(c => renderApprovalThreadCard(c, repliesByParent.get(c.id) || [])).join('')
-    : `<div class="empty-state" style="margin:6px;padding:24px 16px;"><p>No comments yet. Select any text in a preview to leave one.</p></div>`;
-  renderApprovalDoneBanner();
-
-  if(openReplyBox) {
-    const restored = document.getElementById(openReplyBox.id);
-    if(restored) {
-      restored.style.display = 'flex';
-      const ta = restored.querySelector('textarea');
-      if(ta) { ta.value = openReplyBox.text; ta.focus({preventScroll:true}); }
-    }
-  }
-}
-
-// `replies` chega pré-agrupado por parentId (ver repliesByParent em renderApprovalSidebar) —
-// só falta ordenar (mesmo critério de sempre: mais antiga primeiro).
-function renderApprovalThreadCard(c, replies) {
-  const me = authCurrentUser();
-  const isAuthor = !!(me && c.author.toLowerCase() === me.email.toLowerCase());
-  const isOwner = isCurrentProjectOwner();
-  const resolved = c.resolvedBy && c.resolvedBy.length > 0;
-  const iVerified = !!(me && c.resolvedBy.includes(me.email.toLowerCase()));
-  replies = replies.slice().sort((a, b) => a.createdAt - b.createdAt);
-  const verifyBtn = !isAuthor
-    ? `<button class="av-verify-btn ${iVerified ? 'checked' : ''}" onclick="event.stopPropagation();toggleApprovalVerify('${c.id}')">✓ ${iVerified ? 'Verified' : 'Verify'}</button>`
-    : '';
-  const verifiedLine = resolved ? `<div class="av-verified-line">✓ Verified by ${c.resolvedBy.map(authorName).join(', ')}</div>` : '';
-  const quoteHtml = c.quote ? `<div class="av-comment-quote">${String(c.quote).replace(/</g, '&lt;')}</div>` : '';
-  const editBtn = (c.rowId && isOwner) ? `<button class="av-edit-btn" onclick="event.stopPropagation();openAvEditModal('${c.rowId}','${c.lang}')">✎ Edit text</button>` : '';
-  // Só pode apagar o comentário-raiz quando a thread não tem mais nenhuma resposta —
-  // apagar com respostas dependuradas deixaria elas órfãs, sem contexto.
-  const deleteBtn = (isAuthor || isOwner) && replies.length === 0
-    ? `<button class="av-delete-btn" title="Delete comment" onclick="event.stopPropagation();deleteApprovalComment('${c.id}')">🗑</button>`
-    : '';
-  return `
-    <div class="av-thread-card ${resolved ? 'resolved' : ''}" id="avSideItem-${c.id}" onclick="highlightApprovalComment('${c.id}')">
-      <div class="av-comment-top">
-        <span class="av-comment-lang">${toBrazeLang(c.lang)}</span>
-        <span class="av-comment-author">${authorName(c.author)}</span>
-        <span class="av-comment-time">${new Date(c.createdAt).toLocaleString('en-US')}</span>
-        ${deleteBtn}
-      </div>
-      ${quoteHtml}
-      <div class="av-comment-text">${formatCommentText(c.text)}</div>
-      <div class="av-comment-actions">
-        ${!isLangApproved(S.approvalDoneByLang, c.lang) ? `<button class="av-reply-btn" onclick="event.stopPropagation();toggleApprovalReplyBox('${c.id}')">Reply</button>` : ''}
-        ${editBtn}
-        ${verifyBtn}
-      </div>
-      ${verifiedLine}
-      ${replies.map(r => renderApprovalReplyCard(r)).join('')}
-      ${!isLangApproved(S.approvalDoneByLang, c.lang) ? `
-      <div id="avReplyBox-${c.id}" class="av-reply-input-box" style="display:none;" onclick="event.stopPropagation()">
-        <textarea placeholder="Reply… type @ to mention someone" oninput="handleMentionInput(event)" onkeydown="handleMentionKeydown(event)"></textarea>
-        <button class="btn-go" style="padding:6px 10px;font-size:11px;" onclick="event.stopPropagation();postApprovalReply('${c.id}', this)">Send</button>
-      </div>` : ''}
-    </div>
-  `;
-}
-
-function renderApprovalReplyCard(r) {
-  const me = authCurrentUser();
-  const isAuthor = !!(me && r.author.toLowerCase() === me.email.toLowerCase());
-  const isOwner = isCurrentProjectOwner();
-  const resolved = r.resolvedBy && r.resolvedBy.length > 0;
-  const iVerified = !!(me && r.resolvedBy.includes(me.email.toLowerCase()));
-  const verifyBtn = !isAuthor
-    ? `<button class="av-verify-btn ${iVerified ? 'checked' : ''}" onclick="event.stopPropagation();toggleApprovalVerify('${r.id}')">✓ ${iVerified ? 'Verified' : 'Verify'}</button>`
-    : '';
-  // Respostas nunca deixam nada órfão — sempre podem ser apagadas pelo autor ou pelo dono.
-  const deleteBtn = (isAuthor || isOwner)
-    ? `<button class="av-delete-btn" title="Delete reply" onclick="event.stopPropagation();deleteApprovalComment('${r.id}')">🗑</button>`
-    : '';
-  return `
-    <div class="av-reply-card" onclick="event.stopPropagation()">
-      <div class="av-comment-top">
-        <span class="av-comment-author">${authorName(r.author)}</span>
-        <span class="av-comment-time">${new Date(r.createdAt).toLocaleString('en-US')}</span>
-        ${deleteBtn}
-      </div>
-      <div class="av-comment-text">${formatCommentText(r.text)}</div>
-      <div class="av-comment-actions">${verifyBtn}</div>
-      ${resolved ? `<div class="av-verified-line">✓ Verified by ${r.resolvedBy.map(authorName).join(', ')}</div>` : ''}
-    </div>
-  `;
-}
-
-// Apaga um comentário/resposta. Uma resposta pode sempre ser apagada (não deixa nada
-// órfão); um comentário-raiz só pode ser apagado quando a thread já não tem mais
-// nenhuma resposta — senão as respostas ficariam sem o comentário original pra dar contexto.
-function deleteApprovalComment(id) {
-  const c = S.approvalComments.find(x => x.id === id);
-  if(!c) return;
-  const me = authCurrentUser();
-  if(!me) return;
-  const isAuthor = c.author.toLowerCase() === me.email.toLowerCase();
-  if(!isAuthor && !isCurrentProjectOwner()) return;
-  const isTopLevel = !c.parentId;
-  if(isTopLevel && S.approvalComments.some(x => x.parentId === id)) return; // ainda tem respostas
-  if(!confirm('Delete this comment? This cannot be undone.')) return;
-  S.approvalComments = S.approvalComments.filter(x => x.id !== id);
-  S.approvalDeletedIds.push(id); // tombstone — sem isso o merge com outra aba ressuscitaria o comentário
-  if(isTopLevel) renderApprovalPins(c.lang);
-  renderApprovalSidebar();
-  scheduleApprovalAutosave();
-}
-
-function toggleApprovalReplyBox(id) {
-  const c = S.approvalComments.find(x => x.id === id);
-  if(c && isLangApproved(S.approvalDoneByLang, c.lang)) return; // comentários ficam travados enquanto ESSE idioma estiver aprovado
-  document.querySelectorAll('.av-reply-input-box').forEach(b => { if(b.id !== 'avReplyBox-' + id) b.style.display = 'none'; });
-  const box = document.getElementById('avReplyBox-' + id);
-  if(!box) return;
-  const open = box.style.display === 'flex';
-  box.style.display = open ? 'none' : 'flex';
-  // preventScroll — ver comentário em openNewPinBox (mesmo #avCanvasViewport com overflow:
-  // hidden + pan via transform, mesmo risco do foco puxar um scroll nativo indesejado).
-  if(!open) setTimeout(() => box.querySelector('textarea')?.focus({preventScroll:true}), 0);
-}
-
-function postApprovalReply(parentId, btn) {
-  if(approvalBlockedByEdit()) { warnApprovalBlockedByEdit(); return; }
-  const box = btn.closest('.av-reply-input-box');
-  const ta = box ? box.querySelector('textarea') : null;
-  const text = ta ? ta.value.trim() : '';
-  if(!text) return;
-  const parent = S.approvalComments.find(c => c.id === parentId);
-  if(!parent || isLangApproved(S.approvalDoneByLang, parent.lang)) return;
-  if(!addApprovalComment(parent.lang, null, null, text, parentId)) return;
-  renderApprovalSidebar();
-}
-
-function toggleApprovalVerify(id) {
-  const me = authCurrentUser();
-  if(!me) return;
-  if(approvalBlockedByEdit()) { warnApprovalBlockedByEdit(); return; }
-  const c = S.approvalComments.find(x => x.id === id);
-  if(!c || c.author.toLowerCase() === me.email.toLowerCase()) return;
-  const email = me.email.toLowerCase();
-  const idx = c.resolvedBy.indexOf(email);
-  idx === -1 ? c.resolvedBy.push(email) : c.resolvedBy.splice(idx, 1);
-  if(!c.parentId) renderApprovalPins(c.lang);
-  renderApprovalSidebar();
-  scheduleApprovalAutosave();
-}
-
-// Clicar num pin ou num item do painel lateral: dá zoom/pan até o frame do pin, faz um "pulse"
-// nele, e destaca o item correspondente na lista — a mesma navegação de um arquivo do Figma.
-function highlightApprovalComment(id) {
-  const c = S.approvalComments.find(x => x.id === id);
-  if(!c) return;
-  const topId = c.parentId || c.id; // uma resposta aponta pro pin do comentário pai
-  const top = S.approvalComments.find(x => x.id === topId);
-  if(top) {
-    const vp = document.getElementById('avVp-' + cssSafeLang(top.lang));
-    const canvasFrame = vp ? vp.closest('.av-canvas-frame') : null;
-    if(vp && canvasFrame) {
-      // Centraliza o pin na viewport, em coordenadas de tela: pega onde o pin cai na tela
-      // (getBoundingClientRect já é tela-final, mesmo com o canvas pai escalado/deslocado)
-      // e recentra o pan pra levá-lo ao meio.
-      const rect = vp.getBoundingClientRect();
-      const pinScreenX = rect.left + (rect.width * top.xPct / 100);
-      const pinScreenY = rect.top + (rect.height * top.yPct / 100);
-      const viewportEl = document.getElementById('avCanvasViewport');
-      const vpRect = viewportEl.getBoundingClientRect();
-      _avView.tx += (vpRect.left + vpRect.width / 2) - pinScreenX;
-      _avView.ty += (vpRect.top + vpRect.height / 2) - pinScreenY;
-      applyAvTransform();
-      const topLevel = S.approvalComments.filter(x => x.lang === top.lang && !x.parentId);
-      const idx = topLevel.findIndex(x => x.id === top.id);
-      const pinEl = vp.querySelectorAll('.av-pin')[idx];
-      if(pinEl) { pinEl.classList.add('hl'); setTimeout(() => pinEl.classList.remove('hl'), 1600); }
-    }
-  }
-  document.querySelectorAll('.av-thread-card').forEach(el => el.style.outline = '');
-  const item = document.getElementById('avSideItem-' + topId);
-  if(item) { item.style.outline = '2px solid #3b82f6'; item.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-}
-
-// Resumo agregado no topo da sidebar: quantos idiomas já foram aprovados, do total.
-function renderApprovalDoneBanner() {
-  const el = document.getElementById('avDoneBanner');
-  if(!el) return;
-  const { langs } = approvalLangs();
-  const approved = langs.filter(l => isLangApproved(S.approvalDoneByLang, l));
-  if(!approved.length) { el.innerHTML = ''; return; }
-  const allDone = approved.length === langs.length;
-  el.innerHTML = `<div class="av-done-banner">✓ ${approved.length} of ${langs.length} language${langs.length===1?'':'s'} approved${allDone ? ' — all done!' : ''}</div>`;
-}
-
-// Registra um evento no feed de atividade da sidebar (quem aprovou, quem desfez, quem editou).
-function logApprovalActivity(type, lang, rowId) {
-  const me = authCurrentUser();
-  if(!me) return;
-  S.approvalActivity.unshift({
-    id: 'aa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-    type, lang, rowId: rowId || null,
-    by: me.email, at: Date.now()
-  });
-}
-
-// Aprova UM idioma específico — não afeta os outros frames. Uma vez aprovado, novos
-// comentários/respostas naquele idioma ficam bloqueados até alguém desfazer.
-function markLangApproved(lang) {
-  const me = authCurrentUser();
-  if(!me) return;
-  if(approvalBlockedByEdit()) { warnApprovalBlockedByEdit(); return; }
-  const p = projGetAll().find(x => x.id === currentProjectId);
-  const projectName = (p && p.name) || S.csv.name || 'this project';
-  S.approvalDoneByLang[lang] = { by: me.email, at: Date.now() };
-  logApprovalActivity('approved', lang, null);
-  renderFrameApproveSlot(lang);
-  renderApprovalActivityFeed();
-  renderApprovalSidebar(); // já chama renderApprovalDoneBanner() internamente no fim
-  closeNewPinBox();
-  scheduleApprovalAutosave();
-  if(p && p.owner && p.owner.toLowerCase() !== me.email.toLowerCase()) {
-    notifAdd(p.owner, me.email, `${me.email} approved ${langDisplayName(lang)} on "${projectName}".`, { projectId: currentProjectId });
-  }
-}
-
-// "Undo" — reabre a possibilidade de comentar NAQUELE idioma, caso alguém perceba que
-// precisa ajustar algo depois de já ter aprovado.
-function undoLangApproval(lang) {
-  const me = authCurrentUser();
-  if(!me) return;
-  if(approvalBlockedByEdit()) { warnApprovalBlockedByEdit(); return; }
-  const p = projGetAll().find(x => x.id === currentProjectId);
-  const projectName = (p && p.name) || S.csv.name || 'this project';
-  // NÃO usa delete aqui — ver comentário em isLangApproved. Apagar a chave faria o merge
-  // concorrente (mergeApprovalState) ressuscitar esta aprovação no autosave seguinte, porque
-  // uma chave ausente é indistinguível de "nunca aprovado".
-  S.approvalDoneByLang[lang] = { by: me.email, at: Date.now(), undone: true };
-  logApprovalActivity('undone', lang, null);
-  renderFrameApproveSlot(lang);
-  renderApprovalActivityFeed();
-  renderApprovalSidebar(); // já chama renderApprovalDoneBanner() internamente no fim
-  scheduleApprovalAutosave();
-  if(p && p.owner && p.owner.toLowerCase() !== me.email.toLowerCase()) {
-    notifAdd(p.owner, me.email, `${me.email} undid the approval on ${langDisplayName(lang)} on "${projectName}" — it needs another look.`, { projectId: currentProjectId });
-  }
-}
-
-// Feed de atividade no topo da sidebar: "Fulano approved en-US", "Ciclana edited row id5 (es-ES)"...
-function renderApprovalActivityFeed() {
-  const el = document.getElementById('avActivityList');
-  if(!el) return;
-  if(!S.approvalActivity.length) { el.innerHTML = ''; return; }
-  el.innerHTML = S.approvalActivity.slice(0, 25).map(a => {
-    let text;
-    if(a.type === 'approved') text = `<strong>${authorName(a.by)}</strong> approved ${langDisplayName(a.lang)}`;
-    else if(a.type === 'undone') text = `<strong>${authorName(a.by)}</strong> undid the approval on ${langDisplayName(a.lang)}`;
-    else if(a.type === 'edited') text = `<strong>${authorName(a.by)}</strong> edited row ${a.rowId || '?'} (${langDisplayName(a.lang)})`;
-    else if(a.type === 'manual_html_edit') text = `<strong>${authorName(a.by)}</strong> manually edited the tagged HTML (approval unchanged)`;
-    else if(a.type === 'manual_html_edit_reverted') text = `<strong>${authorName(a.by)}</strong> reverted a manual HTML edit`;
-    else text = `<strong>${authorName(a.by)}</strong> did something`;
-    return `<div class="av-activity-item">
-      <span class="av-activity-icon ${a.type}">${a.type === 'edited' || a.type === 'manual_html_edit' ? '✎' : a.type === 'undone' || a.type === 'manual_html_edit_reverted' ? '↺' : '✓'}</span>
-      <span class="av-activity-text">${text}</span>
-      <span class="av-activity-time">${relativeTime(a.at)}</span>
-    </div>`;
-  }).join('');
-}
-
-/* ── Edit translation directly from the Approval View ──
-   Lets an approver fix a copy right where they spotted the issue, instead of having to
-   close the preview and hunt for the row in the CSV editor table. */
-let _avEditTarget = null; // { rowId, lang, isOrig }
-
-function openAvEditModal(rowId, lang) {
-  if(!isCurrentProjectOwner()) return; // só o dono do projeto edita o texto — approvers só comentam
-  const row = S.csv.rows.find(r => r.id === rowId);
-  if(!row) return;
-  const origLang = S.allC.find(c => c.code === S.origin)?.lang;
-  const isOrig = lang === origLang;
-  _avEditTarget = { rowId, lang, isOrig };
-  const meta = document.getElementById('avEditModalMeta');
-  if(meta) meta.textContent = `${langDisplayName(lang)}${isOrig ? ' — origin' : ''} · row ${row.id}`;
-  const ta = document.getElementById('avEditModalText');
-  // Se ainda não existe tradução pra esse idioma, começa com o texto de origem como
-  // ponto de partida — a pessoa só ajusta o que precisa, em vez de partir de um campo vazio.
-  if(ta) ta.value = currentRowText(rowId, lang);
-  const modal = document.getElementById('avEditModal');
-  if(modal) modal.style.display = 'flex';
-  setTimeout(() => ta?.focus(), 0);
-}
-
-function closeAvEditModal() {
-  const modal = document.getElementById('avEditModal');
-  if(modal) modal.style.display = 'none';
-  _avEditTarget = null;
-}
-
-function saveAvEditModal() {
-  if(!_avEditTarget || !isCurrentProjectOwner()) { closeAvEditModal(); return; }
-  const { rowId, lang, isOrig } = _avEditTarget;
-  const row = S.csv.rows.find(r => r.id === rowId);
-  const val = document.getElementById('avEditModalText')?.value ?? '';
-  closeAvEditModal();
-  closeNewPinBox();
-  if(!row) return;
-  if(isOrig) row.src = val; else row.translations[lang] = val;
-  logApprovalActivity('edited', lang, rowId);
-  renderApprovalActivityFeed();
-  buildTable();           // mantém a tabela do editor sincronizada, mesmo estando por trás da Approval View
-  loadApprovalFrame(lang); // recarrega o preview desse idioma já com o texto novo
-  scheduleAutosave();
-}
+/* ── APPROVAL VIEW canvas: extraído para modules/approval-canvas.js (carregado após este script,
+   antes de folders.js). As funções seguem globais; o listener de 'message' acima chama-as. ── */
 </script>
+<!-- APPROVAL VIEW canvas — SEPARADO só pra organização (ver modules/approval-canvas.js). Código de
+     escopo global (classic script, sem IIFE): as funções seguem globais e leem os globais do app
+     em runtime. Carregado DEPOIS do script inline (referências só acontecem em runtime). -->
+<script src="modules/approval-canvas.js"></script>
+<!-- Módulo "Pasta/Folder" — ISOLADO (ver modules/folders.js). Carregado DEPOIS do script inline
+     pra poder chamar os globais do app (projGetAll, parseSavedProjectHtml, etc.) em runtime. -->
+<script src="modules/folders.js"></script>
 </body>
 </html>

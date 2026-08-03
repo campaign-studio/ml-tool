@@ -1,0 +1,12 @@
+{
+  "name": "multilanguage-tool",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Braze Multilanguage Tool — Campaign Studio",
+  "scripts": {
+    "dev": "serve ."
+  },
+  "devDependencies": {
+    "serve": "^14.2.1"
+  }
+}
