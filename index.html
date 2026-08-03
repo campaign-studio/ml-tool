@@ -1576,7 +1576,14 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 
 <!-- ═══════════ DELETAR PASTA — escopo (só a pasta / tudo) + código de confirmação aleatório ═══════════ -->
 <div id="deleteFolderModal" class="modal-ov" style="display:none;">
-  <div class="card modal-card" style="width:100%;max-width:470px;">
+  <div class="card modal-card" style="width:100%;max-width:470px;position:relative;">
+    <!-- Overlay de espera enquanto a exclusão roda no banco (mesmo visual dos outros overlays).
+         Removido SEMPRE no finally de confirmDeleteFolder — nunca trava. -->
+    <div id="deleteFolderBusyOverlay" style="display:none;position:absolute;inset:0;background:var(--surface);border-radius:inherit;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:5;">
+      <div class="move-spinner"></div>
+      <div id="deleteFolderBusyText" style="font-size:13.5px;font-weight:600;color:var(--text);">Deleting folder…</div>
+      <div style="font-size:11.5px;color:var(--text3);">Removing from the database</div>
+    </div>
     <div class="ci" style="padding:28px;">
       <h1 style="margin:0 0 6px;">Delete folder</h1>
       <p class="sub" style="margin-bottom:16px;">Delete <strong id="deleteFolderName"></strong>. <span style="color:#dc2626;font-weight:700;">This action cannot be undone.</span></p>
@@ -5145,15 +5152,25 @@ async function dashAddUser() {
 }
 
 async function dashRemoveUser(email) {
-  await dashPullUsersIfPossible();
-  const users = authGetUsers();
-  const idx = users.findIndex(x => x.email.toLowerCase() === email.toLowerCase());
-  if(idx === -1) return;
-  const removed = users[idx];
-  users.splice(idx, 1);
-  authSaveUsers(users);
-  sbDeleteUser(removed.email); // upsert do array não remove linha sozinho
-  renderDashUserList();
+  if(_roleBusy) return; // reaproveita o overlay da modal de Membros
+  setRoleBusy(true, 'Removing member…');
+  try {
+    await dashPullUsersIfPossible();
+    const users = authGetUsers();
+    const idx = users.findIndex(x => x.email.toLowerCase() === email.toLowerCase());
+    if(idx === -1) return;
+    const removed = users[idx];
+    users.splice(idx, 1);
+    // AGUARDA a confirmação do banco (era fire-and-forget): grava o array novo E remove a linha.
+    await withTimeout(authSaveUsers(users), 8000, 'authSaveUsers (remove member)');
+    await withTimeout(sbDeleteUser(removed.email), 8000, 'sbDeleteUser'); // upsert do array não remove linha sozinho
+  } catch(e) {
+    console.warn('Remove member failed:', e);
+    showNotif('Could not remove the member — please try again.', 'warn', 4000);
+  } finally {
+    setRoleBusy(false);
+    renderDashUserList();
+  }
 }
 
 function emailToName(email) {
@@ -6156,44 +6173,66 @@ function closeDeleteFolderModal() {
   const m = document.getElementById('deleteFolderModal'); if(m) m.style.display = 'none';
   _deleteFolderId = null; _deleteFolderCode = '';
 }
+// Aviso genérico ao tentar fechar a aba com uma ação de banco em andamento.
+function _genericDbBeforeUnload(e){ e.preventDefault(); e.returnValue = ''; return ''; }
+function setDeleteFolderBusy(on, text){
+  const ov = document.getElementById('deleteFolderBusyOverlay');
+  if(!ov) return;
+  if(on && text){ const t = document.getElementById('deleteFolderBusyText'); if(t) t.textContent = text; }
+  ov.style.display = on ? 'flex' : 'none';
+  if(on) window.addEventListener('beforeunload', _genericDbBeforeUnload);
+  else window.removeEventListener('beforeunload', _genericDbBeforeUnload);
+}
+let _deleteFolderBusy = false;
 async function confirmDeleteFolder() {
+  if(_deleteFolderBusy) return; // já em andamento — ignora clique repetido
   const folderId = _deleteFolderId, scope = _deleteFolderScope;
   if(!folderId) return;
   // Guard duplo (o botão já fica desabilitado): o código digitado precisa bater.
   const typed = (document.getElementById('deleteFolderCodeInput').value || '').trim().toUpperCase();
   if(typed !== _deleteFolderCode) { showNotif('Incorrect confirmation code.', 'warn'); return; }
   const me = authCurrentUser(); if(!me) return;
-  if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
-  const projects = projGetAll();
-  const folder = projects.find(p => p.id === folderId && p.kind === 'campaign');
-  if(!folder) { closeDeleteFolderModal(); renderDashboard(); return; }
+  _deleteFolderBusy = true;
+  setDeleteFolderBusy(true, scope === 'folderonly' ? 'Deleting folder…' : 'Deleting folder and content…');
+  try {
+    if(ghConfigured()) { try { await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); } catch(e){} }
+    const projects = projGetAll();
+    const folder = projects.find(p => p.id === folderId && p.kind === 'campaign');
+    if(!folder) { closeDeleteFolderModal(); renderDashboard(); return; }
 
-  if(scope === 'folderonly') {
-    // Preserva os e-mails como avulsos (in-app/push somem com a pasta). Trava anti-perda:
-    // recria TODOS os e-mails + verifica que entraram ANTES de apagar a pasta.
-    const now = Date.now();
-    const restored = (folder.items || []).filter(it => it.type === 'email').map((it, i) => {
-      const lp = window.Folders.folderItemToProject(it, folder.owner);
-      lp.id = 'p_' + now + '_' + i;   // id novo (dodgeia tombstone de move anterior)
-      lp.createdAt = now; lp.updatedAt = now;
-      return lp;
-    });
-    if(restored.length){
-      await withTimeout(projSaveAll(projects.concat(restored)), 8000, 'projSaveAll (restaura avulsos)');
-      const after1 = projGetAll();
-      const allLanded = restored.every(r => after1.some(p => p.id === r.id && p.data && typeof p.data.html === 'string'));
-      if(!allLanded){ showNotif('Failed to recreate the standalone emails — the folder was KEPT intact.', 'warn'); return; }
+    if(scope === 'folderonly') {
+      // Preserva os e-mails como avulsos (in-app/push somem com a pasta). Trava anti-perda:
+      // recria TODOS os e-mails + verifica que entraram ANTES de apagar a pasta.
+      const now = Date.now();
+      const restored = (folder.items || []).filter(it => it.type === 'email').map((it, i) => {
+        const lp = window.Folders.folderItemToProject(it, folder.owner);
+        lp.id = 'p_' + now + '_' + i;   // id novo (dodgeia tombstone de move anterior)
+        lp.createdAt = now; lp.updatedAt = now;
+        return lp;
+      });
+      if(restored.length){
+        await withTimeout(projSaveAll(projects.concat(restored)), 8000, 'projSaveAll (restaura avulsos)');
+        const after1 = projGetAll();
+        const allLanded = restored.every(r => after1.some(p => p.id === r.id && p.data && typeof p.data.html === 'string'));
+        if(!allLanded){ showNotif('Failed to recreate the standalone emails — the folder was KEPT intact.', 'warn'); return; }
+      }
     }
+    // Tombstone da pasta (tanto no 'contents' quanto DEPOIS do restore no 'folderonly').
+    await withTimeout(markProjectDeleted(folderId), 8000, 'markProjectDeleted');
+    await withTimeout(deleteNotifsForProject(folderId), 8000, 'deleteNotifsForProject');
+    const finalList = projGetAll().filter(p => p.id !== folderId);
+    await withTimeout(projSaveAll(finalList), 8000, 'projSaveAll (remove pasta)');
+    if(currentProjectId === folderId) currentProjectId = null;
+    closeDeleteFolderModal();
+    showNotif(scope === 'folderonly' ? 'Folder deleted — the emails went back to the standalone list.' : 'Folder and all its content deleted.', 'ok', 3000);
+    renderDashboard();
+  } catch(e) {
+    console.warn('Delete folder failed:', e);
+    showNotif('Could not delete the folder — please try again. Nothing was lost.', 'warn', 4500);
+  } finally {
+    _deleteFolderBusy = false;
+    setDeleteFolderBusy(false);
   }
-  // Tombstone da pasta (tanto no 'contents' quanto DEPOIS do restore no 'folderonly').
-  await withTimeout(markProjectDeleted(folderId), 8000, 'markProjectDeleted');
-  await withTimeout(deleteNotifsForProject(folderId), 8000, 'deleteNotifsForProject');
-  const finalList = projGetAll().filter(p => p.id !== folderId);
-  await withTimeout(projSaveAll(finalList), 8000, 'projSaveAll (remove pasta)');
-  if(currentProjectId === folderId) currentProjectId = null;
-  closeDeleteFolderModal();
-  showNotif(scope === 'folderonly' ? 'Folder deleted — the emails went back to the standalone list.' : 'Folder and all its content deleted.', 'ok', 3000);
-  renderDashboard();
 }
 
 // ── APPROVE BY LOCALE (dentro da pasta) ──────────────────────────────────────────────────────

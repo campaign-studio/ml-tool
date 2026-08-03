@@ -1,0 +1,41 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-03
+Tema: Estado de espera ("Deleting…/Removing…") nas ações de banco que faltavam — deletar pasta e
+      remover membro. Complementa o princípio: toda ação que aguarda o banco mostra o "removendo".
+
+===============================================================================
+O QUE FALTAVA
+===============================================================================
+confirmDeleteFolder aguardava 5 operações no banco (pull, projSaveAll de restauração,
+markProjectDeleted, deleteNotifsForProject, projSaveAll de remoção) SEM nenhum indicador — a modal
+ficava parada por segundos e depois fechava. dashRemoveUser removia o membro com o delete do banco
+em fire-and-forget, sem esperar nem avisar.
+
+===============================================================================
+O QUE ENTROU (index.html)
+===============================================================================
+- Overlay #deleteFolderBusyOverlay na modal de deletar pasta (mesmo visual dos outros:
+  .move-spinner + texto). setDeleteFolderBusy(on,text) + guard de reentrância (_deleteFolderBusy) +
+  beforeunload (via _genericDbBeforeUnload).
+- confirmDeleteFolder: envolto em try/catch/FINALLY. Mostra "Deleting folder…" (ou "Deleting
+  folder and content…" no escopo com conteúdo) durante toda a cadeia de awaits; SEMPRE remove o
+  overlay no finally (erro → mantém a modal aberta pra retry + aviso; nunca trava). Clique repetido
+  durante a operação = no-op.
+- dashRemoveUser: reaproveita o overlay da modal de Membros (setRoleBusy 'Removing member…'),
+  AGUARDA a confirmação real do banco (authSaveUsers + sbDeleteUser, antes fire-and-forget),
+  try/catch/finally. Guard de reentrância via _roleBusy.
+- _genericDbBeforeUnload: aviso genérico ao fechar a aba com ação de banco em andamento.
+
+Cobertura das ações de delete/remove que aguardam o banco (todas com indicador agora):
+- deletar pasta → overlay (novo)
+- remover membro → overlay (novo)
+- deletar projeto/campanha/conteúdo → spinner no botão "Deleting…" (já existia, confirmGenericDelete)
+- tirar item da pasta / mover pra pasta / trocar papel → overlays (já existiam)
+
+===============================================================================
+COMO FOI VERIFICADO (navegador real, mocks, sem escrever no banco)
+===============================================================================
+- Deletar pasta: overlay = flex durante (texto "Deleting folder and content…"), _deleteFolderBusy
+  true; 2º clique = no-op; ao resolver → overlay none, modal fechada. Erro → overlay some (finally),
+  modal SEGUE aberta pra retry. Sem erros de console.
+- Remover membro: overlay da modal de Membros = flex ("Removing member…") durante; some ao resolver.
