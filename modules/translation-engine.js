@@ -197,8 +197,22 @@ function parseBrazeCsv(text) {
 
   // Detect separator from first data row (line 2), not header.
   // Header line 1 starts with ',' for CSV or ';' for semicolon — unreliable.
+  // Conta os separadores SÓ FORA de aspas — entidades HTML (&amp; &nbsp; &lt; &gt;) terminam em
+  // ";" e vivem DENTRO das células (campos entre aspas). Contar ";" cru fazia um CSV nosso (sempre
+  // vírgula, campos aspados) com ~3 entidades na 1ª linha virar "modo semicolon" por engano — o
+  // parser então dividia tudo pelo ";", não reconhecia os idiomas e devolvia 0 langs/0 linhas,
+  // PERDENDO todas as traduções na releitura. Contando só o que está fora de aspas, entidade não
+  // conta como separador. (Bug achado pelo translation-fuzzer.)
+  const countUnquoted = (line, ch) => {
+    let n = 0, q = false;
+    for(let i = 0; i < line.length; i++){
+      if(line[i] === '"'){ if(q && line[i+1] === '"'){ i++; continue; } q = !q; }
+      else if(line[i] === ch && !q) n++;
+    }
+    return n;
+  };
   const sepLine = lines[2] || lines[1];
-  const sep = (sepLine.split(';').length > sepLine.split(',').length) ? ';' : ',';
+  const sep = (countUnquoted(sepLine, ';') > countUnquoted(sepLine, ',')) ? ';' : ',';
 
   const parseLine = line => {
     if(sep === ';') return line.split(';').map((x,i) => i===0 ? x.trim() : x);
