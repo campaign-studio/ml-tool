@@ -3323,6 +3323,84 @@ function mergeApprovalIntoFields(winner, other) {
   };
 }
 
+// ── Merge de PROJETO AVULSO (conteúdo do CSV) — a mesma garantia das pastas, agora pros soltos ──
+// Junta o CSV de duas versões do MESMO projeto avulso célula a célula (linha × idioma):
+//  - união de LINHAS por id (linha nova de uma aba nunca é derrubada pela outra);
+//  - por célula: preenchido vence vazio; conflito real (os dois preencheram) → versão do projeto de
+//    updatedAt mais novo.
+// GUARDA ESTRITA: se QUALQUER célula que era preenchida em algum lado ficaria VAZIA no resultado,
+// devolve null e o chamador cai no comportamento atual (projeto inteiro por updatedAt). Ou seja,
+// este merge só PODE preservar dado — nunca corromper nem perder.
+function _rowsFromSaveCsv(csvStr) {
+  const parsed = parseBrazeCsv(csvStr);
+  if(!parsed || !parsed.langs || !parsed.langs.length) return null;
+  const rowsById = new Map(), order = [];
+  parsed.langs.forEach(lang => (parsed.byLang[lang] || []).forEach(r => {
+    if(!rowsById.has(r.id)) { rowsById.set(r.id, { id: r.id, src: r.src || '', tls: {} }); order.push(r.id); }
+    rowsById.get(r.id).tls[lang] = r.tl || '';
+  }));
+  return { name: parsed.templateName || '', langs: parsed.langs.slice(), rowsById, order };
+}
+// Reconstrói a string no MESMO formato de buildCsvStringForSave (valores já vêm transformados do
+// parse — não re-aplica csvSourceText/curlify, senão duplicaria a transformação).
+function _buildSaveCsvFrom(name, langsInternal, rowsById, order) {
+  const langs = sortLangsForDisplay(langsInternal);
+  if(!langs.length) return '';
+  const esc = v => `"${String(v || '').replace(/"/g, '""')}"`;
+  const lines = [
+    esc(name) + ',' + langs.map(() => '').join(','),
+    ',' + esc('Translation tags') + ',' + langs.map(l => toBrazeLang(l)).join(','),
+    ...order.map(id => { const r = rowsById.get(id); return id + ',' + esc(r.src) + ',' + langs.map(l => esc(r.tls[l] || '')).join(','); })
+  ];
+  return '﻿' + lines.join('\n');
+}
+function mergeLooseData(a, b) {
+  try {
+    const ad = a.data, bd = b.data;
+    if(!ad || !bd || !ad.csv || !bd.csv) return null;
+    if(ad.csv === bd.csv) return null; // idêntico → nada a fundir (deixa o caminho normal seguir)
+    const A = _rowsFromSaveCsv(ad.csv), B = _rowsFromSaveCsv(bd.csv);
+    if(!A || !B) return null;
+    const aNewer = (a.updatedAt || 0) >= (b.updatedAt || 0);
+    const newer = aNewer ? A : B, older = aNewer ? B : A;
+    const langs = [...new Set([...A.langs, ...B.langs])];
+    const order = [...newer.order];
+    older.order.forEach(id => { if(!newer.rowsById.has(id)) order.push(id); });
+    const rowsById = new Map();
+    order.forEach(id => {
+      const na = newer.rowsById.get(id), ol = older.rowsById.get(id);
+      const src = (na && na.src) || (ol && ol.src) || '';
+      const tls = {};
+      langs.forEach(l => {
+        const nv = na ? (na.tls[l] || '') : '', ov = ol ? (ol.tls[l] || '') : '';
+        tls[l] = nv.trim() ? nv : (ov.trim() ? ov : (nv || ov || '')); // preenchido vence vazio; conflito → novo
+      });
+      rowsById.set(id, { id, src, tls });
+    });
+    const mergedCsv = _buildSaveCsvFrom(aNewer ? A.name : B.name, langs, rowsById, order);
+    // GUARDA: nenhuma célula preenchida em A OU B pode ficar vazia no resultado.
+    const M = _rowsFromSaveCsv(mergedCsv);
+    if(!M) return null;
+    const noLoss = side => [...side.rowsById.keys()].every(id =>
+      side.langs.every(l => {
+        const v = (side.rowsById.get(id).tls[l] || '');
+        if(!v.trim()) return true;
+        const mr = M.rowsById.get(id);
+        return mr && (mr.tls[l] || '').trim().length > 0;
+      }));
+    if(!noLoss(A) || !noLoss(B)) return null;
+    const base = aNewer ? ad : bd;
+    return {
+      ...base,
+      csv: mergedCsv,
+      langs: sortLangsForDisplay(langs),
+      html: aNewer ? ad.html : bd.html,
+      comments: { ...(bd.comments || {}), ...(ad.comments || {}) },
+      maxIdIssued: Math.max(ad.maxIdIssued || 0, bd.maxIdIssued || 0),
+    };
+  } catch(e) { console.warn('mergeLooseData → fallback (comportamento atual):', e); return null; }
+}
+
 function mergeProjectsForSave(projects) {
   // Filtra qualquer id tageado como deletado ANTES de tudo — sem isso, se o array
   // "projects" (o que está sendo salvo AGORA, vindo de qualquer chamador) já contiver
@@ -3346,6 +3424,13 @@ function mergeProjectsForSave(projects) {
     // lista antiga). Conteúdo de item compartilhado fica com a versão do lado de updatedAt mais novo.
     if(base.kind === 'campaign' || p.kind === 'campaign' || (other && other.kind === 'campaign')){
       return { ...base, items: mergeCampaignItems(p, other), deletedItemIds: unionDeletedItemIds(p, other) };
+    }
+    // AVULSO: tenta fundir o CONTEÚDO do CSV célula a célula (linha nova preservada, tradução de um
+    // lado nunca apagada pela versão vazia do outro). GUARDA ESTRITA dentro de mergeLooseData —
+    // qualquer dúvida devolve null e cai no comportamento atual (projeto inteiro por updatedAt).
+    if(p.data && other.data && p.data.csv && other.data.csv){
+      const md = mergeLooseData(p, other);
+      if(md) return { ...base, data: md };
     }
     return base;
   });
