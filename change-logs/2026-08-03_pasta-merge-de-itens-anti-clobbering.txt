@@ -1,0 +1,43 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-03
+Tema: CORREÇÃO CRÍTICA — save de pasta (kind:'campaign') agora MESCLA os itens (união por id, menos
+      os tombstoned) em vez de sobrescrever a lista inteira. Evita perda de item por cópia velha.
+
+===============================================================================
+O BUG (incidente real)
+===============================================================================
+Usuário moveu um e-mail traduzido pra dentro de uma pasta compartilhada. O move funcionou (trava
+anti-perda: item entrou + verificado antes de apagar o avulso). Minutos depois, a pasta foi
+RE-SALVA por uma cópia DESATUALIZADA (outra aba/pessoa com a pasta aberta antes do move) com um
+updatedAt mais novo. O mergeProjectsForSave escolhe o projeto de updatedAt mais novo INTEIRO — então
+a lista de itens antiga (sem o e-mail) sobrescreveu a nova, DERRUBANDO o item. O e-mail (com 6
+idiomas traduzidos) sumiu do servidor; o avulso original já tinha sido apagado pelo move.
+
+===============================================================================
+A CORREÇÃO (index.html)
+===============================================================================
+- mergeProjectsForSave: pra projeto kind:'campaign', não devolve mais o objeto "vencedor" inteiro —
+  devolve { ...vencedor, items: mergeCampaignItems(incoming, stored), deletedItemIds: união }.
+- mergeCampaignItems(a,b): UNIÃO dos itens das duas versões da mesma pasta — preserva todo item
+  presente em QUALQUER lado (menos os tombstoned); pra id nos dois lados, fica a versão do lado de
+  updatedAt mais novo (conteúdo do último editor). => uma cópia velha nunca mais derruba item que a
+  outra adicionou.
+- unionDeletedItemIds(a,b): une os tombstones de item (dedup por id, mantém "at" mais novo).
+- Exclusão de item vira EXPLÍCITA (senão a união ressuscitaria item apagado):
+  * confirmContentItemDelete → registra {id,at} em _campaign.deletedItemIds antes do splice.
+  * removeItemFromFolder → registra o tombstone tanto no objeto persistido (after) quanto no
+    _campaign em memória.
+- Escopo: só o DROP de item (add clobbering) — corrige o bug reportado. Corrida de CONTEÚDO de item
+  compartilhado segue "último a salvar vence" (igual antes; melhoria separada).
+
+===============================================================================
+COMO FOI VERIFICADO (navegador real, localStorage como store, sem escrever no banco)
+===============================================================================
+- S1 (o bug): stored tem itemX; incoming velho (ts mais novo, sem X, sem tombstone) → MANTÉM X. ✅
+- S2 (delete funciona): incoming com tombstone de Y → Y REMOVIDO (não ressuscita). ✅
+- S3 (add): incoming adiciona Z (ts mais antigo) → Z preservado pela união. ✅
+- S4 (conteúdo): item compartilhado, updatedAt mais novo → conteúdo mais novo vence. ✅
+- Sem erros de console.
+
+NOTA: isto protege daqui pra frente. O e-mail perdido no incidente (traduções) não volta por aqui —
+a recuperação dependia do cache local do navegador do usuário.

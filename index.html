@@ -3219,6 +3219,31 @@ function projSaveAllLocal(projects) {
 // mesmo em projetos que essa outra escrita nem tocou de propósito. Comparando timestamp por
 // projeto, cada um mantém sua versão mais recente de verdade, não a "foto" mais recente da
 // lista toda.
+// Une as listas de item-tombstone de duas versões da MESMA pasta, dedup por id (mantém o "at"
+// mais novo). Um item só some da pasta se estiver aqui — ou seja, exclusão de item é EXPLÍCITA
+// (deleteContentItem / removeItemFromFolder registram o tombstone), nunca por "sumiço" de cópia velha.
+function unionDeletedItemIds(a, b) {
+  const m = new Map();
+  [...((a && a.deletedItemIds) || []), ...((b && b.deletedItemIds) || [])].forEach(t => {
+    const id = t.id || t, at = t.at || 0;
+    if(!m.has(id) || (m.get(id).at || 0) < at) m.set(id, { id, at });
+  });
+  return [...m.values()];
+}
+// União dos itens de duas versões da mesma pasta: preserva todo item presente em QUALQUER lado
+// (menos os tombstoned); pra id que existe nos dois, fica a versão do lado de updatedAt mais novo
+// (conteúdo do último editor). É o que impede o clobbering de "adicionei um item, cópia velha derrubou".
+function mergeCampaignItems(a, b) {
+  const deleted = new Set(unionDeletedItemIds(a, b).map(t => t.id));
+  const aNewer = ((a && a.updatedAt) || 0) >= ((b && b.updatedAt) || 0);
+  const older = aNewer ? b : a, newer = aNewer ? a : b;
+  const byId = new Map();
+  ((older && older.items) || []).forEach(it => byId.set(it.id, it));
+  ((newer && newer.items) || []).forEach(it => byId.set(it.id, it)); // id compartilhado: conteúdo do mais novo vence
+  deleted.forEach(id => byId.delete(id));
+  return [...byId.values()];
+}
+
 function mergeProjectsForSave(projects) {
   // Filtra qualquer id tageado como deletado ANTES de tudo — sem isso, se o array
   // "projects" (o que está sendo salvo AGORA, vindo de qualquer chamador) já contiver
@@ -3235,7 +3260,15 @@ function mergeProjectsForSave(projects) {
     const other = latestById[p.id];
     if(!other) return p; // projeto novo, só existe no lado que está salvando agora
     const mine = p.updatedAt || 0, theirs = other.updatedAt || 0;
-    return theirs > mine ? other : p; // mantém quem editou por último de verdade
+    const base = theirs > mine ? other : p; // corpo do projeto = quem editou por último de verdade
+    // PASTA (kind:'campaign'): a lista de itens NUNCA é sobrescrita inteira — faz UNIÃO por id
+    // (menos os tombstoned), pra uma cópia velha nunca DERRUBAR um item que a outra adicionou
+    // (bug real: mover e-mail pra pasta e ele sumir porque outra aba/pessoa salvou a pasta com a
+    // lista antiga). Conteúdo de item compartilhado fica com a versão do lado de updatedAt mais novo.
+    if(base.kind === 'campaign' || p.kind === 'campaign' || (other && other.kind === 'campaign')){
+      return { ...base, items: mergeCampaignItems(p, other), deletedItemIds: unionDeletedItemIds(p, other) };
+    }
+    return base;
   });
   // Projeto que já existe no armazenamento atual mas não veio no array que estamos salvando
   // (ex: criado por outra aba entre a hora que lemos e a hora que salvamos) — preserva, não
@@ -4429,6 +4462,10 @@ function deleteContentItem(i) {
 function confirmContentItemDelete() {
   const i = _pendingDeleteContentIdx;
   if(!_campaign || i < 0 || !_campaign.items[i]) { closeDeleteConfirmModal(); return; }
+  // Tombstone do item: exclusão é EXPLÍCITA, pra o merge de união (mergeCampaignItems) não
+  // ressuscitar este item a partir de uma cópia velha de outra aba/pessoa.
+  const removed = _campaign.items[i];
+  _campaign.deletedItemIds = (_campaign.deletedItemIds || []).concat([{ id: removed.id, at: Date.now() }]);
   _campaign.items.splice(i, 1);
   if(_campaignItemIndex === i) { _campaignItemIndex = -1; _campaignViewMode = 'gallery'; }
   else if(_campaignItemIndex > i) _campaignItemIndex--;
@@ -5796,15 +5833,18 @@ async function removeItemFromFolder(folderId, itemId) {
   if(!check || !(check.data && typeof check.data.html === 'string')) {
     showNotif('Could not recreate the standalone email — the item was KEPT in the folder.', 'warn'); return;
   }
-  // 3) só ENTÃO tira o item da pasta.
+  // 3) só ENTÃO tira o item da pasta — com TOMBSTONE do item (exclusão explícita), pra o merge
+  // de união não trazer o item de volta a partir de uma cópia velha.
   const after = projGetAll().map(p => p.id === folderId
-    ? { ...p, items: (p.items||[]).filter(it => it.id !== itemId), updatedAt: Date.now() }
+    ? { ...p, items: (p.items||[]).filter(it => it.id !== itemId),
+        deletedItemIds: (p.deletedItemIds||[]).concat([{ id: itemId, at: Date.now() }]), updatedAt: Date.now() }
     : p);
   await withTimeout(projSaveAll(after), 8000, 'projSaveAll (tira item da pasta)');
 
   // Se o editor de campanha está aberto nessa pasta, mantém o objeto vivo em dia.
   if(typeof _campaign !== 'undefined' && _campaign && _campaign.id === folderId) {
     _campaign.items = (_campaign.items||[]).filter(it => it.id !== itemId);
+    _campaign.deletedItemIds = (_campaign.deletedItemIds||[]).concat([{ id: itemId, at: Date.now() }]);
     if(typeof renderCampaignTabs === 'function') renderCampaignTabs();
     if(typeof renderCampaignMain === 'function') renderCampaignMain();
   }
