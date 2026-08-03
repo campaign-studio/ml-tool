@@ -1,0 +1,62 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-03
+Tema: BUG — linha "não muda no previewer" quando o {%translation idN%} caiu DENTRO de um
+      comentário HTML (<!-- -->). Reportado no id 27 do "Post Summer - Wave 2 - Email 1 - Non
+      Paid - EN". Correção no motor (opção A escolhida pelo usuário).
+
+===============================================================================
+CAUSA RAIZ
+===============================================================================
+Muitos e-mails têm um comentário divisor de seção que REPETE, como texto, os títulos das seções:
+  <!-- ===== SECTION: Not a gym person? / Why Wellhub? / Not sure which plan? ===== -->
+O posicionador de tags (buildTaggedHtml) procurava o texto da linha por indexOf e cravava o
+{%translation idN%} na PRIMEIRA ocorrência — que, pra esses títulos, era a de DENTRO do comentário
+(o divisor vem antes da seção real no documento). Como computeProtectedRanges NÃO protegia o
+interior de comentários comuns, nada impedia isso.
+
+Consequência: o preview vira {%translation idN%} em <span data-tid="idN"> — mas esse span fica
+DENTRO de <!-- -->. O navegador não renderiza conteúdo de comentário, e a atualização ao vivo faz
+document.querySelector('[data-tid="idN"]'), que não acha um elemento que vive num nó de comentário.
+Editar a tradução mudava o dado, mas o previewer não tinha o que repintar → "não muda". No id 27
+o texto "Not a gym person?" só estava tagueado no comentário; a seção real ficava sem tag.
+
+===============================================================================
+CORREÇÃO (2 mudanças em index.html)
+===============================================================================
+1) computeProtectedRanges: passa a PROTEGER o range inteiro de comentários HTML comuns (<!-- -->).
+   Assim o posicionador pula a ocorrência dentro do comentário e taguea a de CONTEÚDO real.
+   Condicionais do Outlook (<!--[if ...]>, <![endif]-->) continuam tratadas à parte (VML/mso).
+2) buildTaggedHtml: no começo, LIMPA marcadores {%translation%}/{%endtranslation%} que já estavam
+   GRUDADOS dentro de comentários comuns (resíduo de tageamentos antigos) — senão o id sairia
+   DUPLICADO no export (a tag velha do comentário + a nova, agora no conteúdo). Só comentário
+   comum; <!--[if mso]> (fallback VML do Outlook) fica intacto.
+
+Como buildPreviewHtml usa buildTaggedHtml(true), o preview se auto-corrige na hora (S.rawHtml é a
+fonte e o tageamento é derivado a cada render) — sem precisar reprocessar/reescrever o dado salvo.
+Ao salvar de novo, o HTML gravado já sai limpo.
+
+===============================================================================
+COMO FOI VERIFICADO (leitura-só do banco, sbClient bloqueado, NENHUMA escrita)
+===============================================================================
+Projeto p_1785746541286 (cópia mais nova):
+- ANTES: id27/30/33 (e id9, id36) tagueados dentro do comentário; querySelector não achava; total
+  44 tags com 7 ids duplicados (id9,id22,id27,id30,id33,id36,id45).
+- DEPOIS: id27/30/33/9/36 com 1 tag cada, na posição de CONTEÚDO, querySelector ACHA os três;
+  total 38 tags. Sem duplicata de comentário (o único tag-em-comentário restante é id45 dentro de
+  <!--[if mso]> — imagem de fallback VML do Outlook, correto).
+- Comparação antes/depois feita via git stash (mesmo código, mesmo projeto).
+Regressão: projeto "Eligible - Phase 2 - WH+ Flow - Email 3" → 41 linhas / 41 tags, sem erro.
+Sem erros de console.
+
+===============================================================================
+OBSERVAÇÕES (dados, fora do escopo do código)
+===============================================================================
+- id37 "That's what free trials are for." só existe DENTRO do comentário (0 no conteúdo). Depois
+  do fix ele vira NÃO-POSICIONÁVEL (como o usuário aceitou na opção A). Se essa frase DEVERIA
+  aparecer no corpo do e-mail, é o HTML de origem que está sem ela (questão de conteúdo, não de
+  código).
+- id22 tem src "or" (2 letras) e casa como substring dentro de atributos (crossORigin, bORder) —
+  bug PRÉ-EXISTENTE de string curta, sem relação com este fix, não tocado aqui.
+- Existem 2 cópias com o mesmo nome no banco: p_1785746541286 (nova, corrigida 100%) e
+  p_1785404592310 (antiga; nela id27/id30 são comentário-only, viram não-posicionáveis). Nada foi
+  escrito no banco.

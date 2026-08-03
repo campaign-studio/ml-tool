@@ -10111,7 +10111,15 @@ function computeProtectedRanges(html) {
       if(msoDepth === 0 && msoStart !== -1){ ranges.push([msoStart, tokStart + tok.length]); msoStart = -1; }
       continue;
     }
-    if(/^<!--/.test(tok)) continue; // comentário HTML comum — já isolado, nada a fazer
+    // Comentário HTML comum (<!-- -->): o CONTEÚDO nunca renderiza nem pode receber uma tag de
+    // tradução. Protege o range inteiro — sem isso, o posicionador de buildTaggedHtml (que busca
+    // o texto da linha por indexOf) cravava o {%translation idN%} numa ocorrência do texto que
+    // vivia DENTRO de um comentário divisor de seção (ex: "<!-- SECTION: Not a gym person? -->"),
+    // em vez da ocorrência de conteúdo real. Resultado: a linha "não mudava no previewer" (um
+    // <span data-tid> dentro de <!-- --> não é elemento de verdade, querySelector não acha) e o
+    // id saía duplicado no export. Protegendo o comentário, o texto de conteúdo real é o próximo
+    // alvo válido. (Condicionais mso/VML já foram tratadas acima — aqui só cai comentário comum.)
+    if(/^<!--/.test(tok)){ ranges.push([tokStart, tokStart + tok.length]); continue; }
     if(msoDepth > 0) continue;
 
     const nameM = tok.match(/^<\/?([a-zA-Z][a-zA-Z0-9-]*)/);
@@ -10171,6 +10179,19 @@ function buildTaggedHtml(silent) {
   // uma unidade só, com a merge tag dentro. O <code> some do HTML tagueado exportado — aceitável:
   // ele só dava monospace a um snippet de Liquid que renderiza como valor simples no Braze.
   let tagged = unwrapLiquidOnlyCode(S.rawHtml);
+  // Limpa marcadores de tradução que ficaram GRUDADOS dentro de comentários HTML comuns
+  // (<!-- -->) por um tageamento antigo — acontecia quando um comentário divisor de seção
+  // repetia, como texto, o mesmo título de uma seção real (ex: "<!-- SECTION: Not a gym
+  // person? -->") e o posicionador cravava o {%translation idN%} nessa primeira ocorrência
+  // (dentro do comentário) em vez da de conteúdo. Sozinho o comentário nunca renderiza, então a
+  // linha "não mudava no previewer", e sem limpar aqui o id sairia DUPLICADO no export (a tag
+  // velha do comentário + a nova, agora posicionada no conteúdo real via computeProtectedRanges).
+  // Só comentário COMUM — condicionais mso/VML (<!--[if ...]>, <![endif]-->) ficam intactos, que
+  // é onde as traduções de fallback do Outlook legitimamente moram.
+  tagged = tagged.replace(/<!--[\s\S]*?-->/g, c =>
+    (/^<!--\[if/i.test(c) || /^<!--\s*<!\[endif\]/i.test(c) || /^<!--<!\[endif\]/i.test(c))
+      ? c
+      : c.replace(/\{%\s*translation\s+id\d+\s*%\}/gi, '').replace(/\{%\s*endtranslation\s*%\}/gi, ''));
   const allRows = S.csv.rows.filter(r=>r.src||(r.isStyle&&r.outerKey));
   // Linhas que não conseguimos encontrar/tagueiar no HTML final — sem isso, a linha some do
   // export em silêncio e a pessoa acha que a tradução foi aplicada quando não foi.
