@@ -1,0 +1,51 @@
+2026-08-03 — Extração do "motor de tradução" para modules/translation-engine.js
+================================================================================
+
+O QUE MUDOU
+-----------
+Movi 38 definições (functions + consts) do <script> inline do index.html para um
+NOVO arquivo modules/translation-engine.js, seguindo EXATAMENTE o mesmo padrão de
+modules/approval-canvas.js e modules/folders.js: classic script de escopo GLOBAL,
+sem IIFE, sem ES module, sem exports. Todas as funções/consts continuam globais e
+os call sites (bare-name e onclick=) ficaram INTACTOS — nada foi reescrito.
+
+Ordem de carregamento: adicionada a linha
+    <script src="modules/translation-engine.js"></script>
+IMEDIATAMENTE antes de <script src="modules/approval-canvas.js"></script> — ou
+seja, carrega depois do inline e antes dos outros módulos. Como as referências só
+acontecem em runtime, carregar depois do inline é seguro.
+
+DEFINIÇÕES MOVIDAS (cluster CSV + idiomas)
+------------------------------------------
+_rowsFromSaveCsv, _buildSaveCsvFrom, mergeLooseData, LANG_ALIASES, expandLang,
+splitCsvRecords, parseBrazeCsv, curlifyApostrophes, buildCsvStringForSave,
+csvSourceTextRaw, csvSourceText, toBrazeLang, LOCALE_DISPLAY_ORDER,
+_LOCALE_ORDER_INDEX (mantido DEPOIS de LOCALE_DISPLAY_ORDER, pois depende dele),
+sortLangsForDisplay, langDisplayName.
+
+DEFINIÇÕES MOVIDAS (cluster tagging + preview)
+----------------------------------------------
+_lcsLinePairs, diff3MergeLines, stripLiquid, splitLiquid, unwrapLiquidOnlyCode,
+detectVmlWrap, parseSavedProjectHtml, mergeLiquidInline, toLiquidPlaceholder,
+extractStr, renderFooterPlaceholder, resolveConditionalBranch, maxCondBranchCount,
+injectCondStyle, replaceLiquidPlaceholders, buildPreviewHtml, condBranchLabel,
+computeProtectedRanges, isPosProtected, isInsideOpenLiquidTag, buildTaggedHtml,
+repairTaggedHtmlDefaults.
+
+NÃO foi movido nada de UI/persistência/grid (buildTable, renderCampaignGrid,
+projSaveAll, autosaveProject, etc.) — só o motor.
+
+CHECAGENS
+---------
+- node --check modules/translation-engine.js  -> OK
+- Script inline do index.html extraído e node --check  -> OK
+- index.html: 11289 -> 9862 linhas (1427 removidas + 1 linha de <script>).
+
+OBS
+---
+- O bloco do detectVmlWrap trouxe junto, logo acima, um comentário solto/órfão
+  ("Carrega o conteúdo salvo de um projeto direto no app...") que já estava colado
+  (sem linha em branco) à doc do detectVmlWrap no fonte original. É só comentário,
+  sem impacto funcional.
+- buildTaggedHtml trouxe junto o banner "/* HTML EXPORT MODAL */" que estava
+  imediatamente acima dele.
