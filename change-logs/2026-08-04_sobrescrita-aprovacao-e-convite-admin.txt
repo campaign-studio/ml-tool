@@ -1,0 +1,78 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Dois bugs — (1) salvar num editor sobrescrevia a aprovação/comentários do approver;
+      (2) admin convidava membro e não persistia (falha silenciosa).
+
+===============================================================================
+BUG 1 — SOBRESCRITA DE APROVAÇÃO NO SAVE DO EDITOR (projeto avulso)
+===============================================================================
+CAUSA-RAIZ
+No projeto avulso, a aprovação (approvalComments/approvalActivity/approvalDoneByLang/
+approvalDeletedIds) mora em p.data. O merge do avulso (mergeLooseData, translation-engine.js)
+fundia o CSV célula-a-célula, MAS copiava esses 4 campos por "...base" — ou seja, LWW: vinham
+inteiros do lado com updatedAt mais novo. Como TODA edição de tradução carimba updatedAt, o
+editor é sempre o lado "mais novo"; sua cópia (potencialmente defasada desde a abertura) de
+approval* sobrescrevia o que um approver acabou de gravar no remoto. A proteção real
+(mergeApprovalState, união+tombstone) só rodava em autosaveApprovalState, NÃO no save do editor.
+Assimetria: a campanha já era protegida (mergeCampaignItems → mergeApprovalIntoFields por item).
+
+Havia ainda o Risco 2: quando mergeLooseData reprovava na guarda de perda (retorna null) — ou
+quando o CSV era idêntico dos dois lados (approver só comentou, não mexeu no CSV) — o merge caía
+em "projeto inteiro do lado mais novo" (result = base), derrubando a aprovação junto.
+
+CORREÇÃO (paridade avulso ↔ campanha — aprovação NUNCA por LWW)
+- mergeLooseData: no return, aplica ...mergeApprovalIntoFields(base, other) sobre ...base, fundindo
+  comentários/atividade/aprovado-por-idioma/tombstones dos dois lados (união). Guardado por typeof
+  (função vive no index.html; classic scripts, escopo global no runtime do save).
+- mergeTwoProjects (caminho do CAS): no fallback (mergeLooseData==null, inclui CSV idêntico) passou
+  a fundir a aprovação em base.data via mergeApprovalIntoFields em vez de largar base cru.
+- mergeProjectsForSave (caminho local): mesmo fallback endurecido.
+
+===============================================================================
+BUG 2 — ADMIN CONVIDA MEMBRO E NÃO PERSISTE (falha silenciosa)
+===============================================================================
+CAUSA-RAIZ
+As permissões estavam corretas (isAdminOrAbove libera o painel de Membros; nenhum gate exige
+superadmin). O problema era persistência: dashAddUser fazia authSaveUsers(users) FIRE-AND-FORGET,
+sem await e sem tratar erro (ao contrário de dashRemoveUser, que dá await withTimeout + showNotif).
+Se o upsert falhasse, a UI mostrava o membro criado mas nada persistia e nada avisava; no próximo
+sbPullUsers o localStorage era reescrito com o banco e o convite sumia ("sucesso fantasma").
+Gatilho mais provável: re-convidar um e-mail removido antes — isUserRecentlyDeleted só fazia
+hasOwnProperty (SEM TTL, tombstone eterno na sessão), então sbPushUsers filtrava o e-mail do
+upsert pra sempre. Combinado com o fire-and-forget = falha 100% silenciosa.
+
+CORREÇÃO
+- isUserRecentlyDeleted: agora respeita DELETED_PROJ_TTL_MS (idem load/pull, que já podavam) e
+  auto-limpa a entrada expirada. Também normaliza trim+lowercase.
+- + clearUserTombstone(email): convite explícito reabilita um e-mail removido antes — apaga o
+  tombstone local E a linha remota (deleted_user_emails), senão o push filtra o re-convite.
+- dashAddUser: reescrito com o mesmo padrão robusto do dashRemoveUser — guard _roleBusy + overlay
+  (setRoleBusy 'Adding member…'), await dashPullUsersIfPossible, clearUserTombstone(email),
+  await withTimeout(authSaveUsers(...), 8000) e, no catch, showNotif de erro + DESFAZ o otimismo
+  local (remove o membro do localStorage) pra não deixar membro fantasma. Form só limpa no sucesso.
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- modules/translation-engine.js: mergeLooseData funde approval* via mergeApprovalIntoFields.
+- index.html: isUserRecentlyDeleted (TTL) + clearUserTombstone; dashAddUser robusto;
+  fallbacks de mergeTwoProjects e mergeProjectsForSave preservam aprovação.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- node --check translation-engine.js: OK. Load em localhost:3000: ZERO erros de console.
+- Testes no console (sem tocar o banco):
+  BUG 1
+  * caminho primário (CSV diferente): comentário do approver + approvalDoneByLang preservados
+    ao salvar edição do editor; tombstone (approvalDeletedIds) não ressuscita comentário. OK.
+  * fallback (CSV idêntico, approver só comentou): via mergeTwoProjects, comentário + aprovação
+    preservados (antes eram perdidos). OK.
+  * merge de CÉLULA do CSV NÃO foi alterado (só os campos de aprovação e o fallback) — sem
+    regressão na fusão de traduções.
+  BUG 2
+  * isUserRecentlyDeleted: e-mail recém-removido => bloqueado; removido além do TTL => liberado
+    e purgado do mapa; trim/case-insensitive. OK.
+  * clearUserTombstone existe; dashAddUser agora usa withTimeout(authSaveUsers(...)). OK.
+- NENHUMA escrita em produção. Teste real (admin convida + approver/editor simultâneos) fica pro
+  ambiente logado após redeploy.

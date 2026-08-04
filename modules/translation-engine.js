@@ -121,8 +121,16 @@ function mergeLooseData(a, b) {
       return mr && !(mr.tls[c.lang] || '').trim();
     });
     const base = aNewer ? ad : bd;
+    const other = aNewer ? bd : ad;
+    // Aprovação NUNCA pode vir por LWW de `...base`: como toda edição de tradução carimba
+    // updatedAt, o editor é sempre o lado "mais novo" e sua cópia (potencialmente defasada) de
+    // approval* apagava o que um approver acabou de gravar no remoto. Fundimos por união/tombstone
+    // — exatamente o que a campanha já faz via mergeApprovalIntoFields (paridade avulso↔campanha).
+    const mergedApproval = (typeof mergeApprovalIntoFields === 'function')
+      ? mergeApprovalIntoFields(base, other) : null;
     return {
       ...base,
+      ...(mergedApproval || {}),
       csv: mergedCsv,
       langs: sortLangsForDisplay(langs),
       html: aNewer ? ad.html : bd.html,

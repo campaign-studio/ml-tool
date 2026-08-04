@@ -2833,7 +2833,13 @@ function mergeTwoProjects(local, remote){
       result = { ...base, items: mergeCampaignItems(local, remote), deletedItemIds: unionDeletedItemIds(local, remote) };
     } else if(local.data && remote.data && local.data.csv && remote.data.csv){
       const md = mergeLooseData(local, remote);
-      result = md ? { ...base, data: md } : base;
+      if(md){ result = { ...base, data: md }; }
+      else {
+        // Fallback (guarda de perda reprovou): CSV fica com o lado mais novo, MAS aprovação nunca
+        // por LWW — funde comentários/aprovado-por-idioma/tombstones dos dois lados mesmo aqui.
+        const other = base === local ? remote : local;
+        result = { ...base, data: { ...base.data, ...mergeApprovalIntoFields(base.data, other.data) } };
+      }
     } else {
       result = base;
     }
@@ -3392,7 +3398,25 @@ async function pullDeletedUserEmails() {
   } catch(e) { console.warn('Supabase sync (pull tombstones user) error — rode a migration de deleted_user_emails:', e); }
 }
 function isUserRecentlyDeleted(email) {
-  return Object.prototype.hasOwnProperty.call(_deletedUserEmailsMap, (email||'').toLowerCase());
+  email = (email||'').toLowerCase();
+  const ts = _deletedUserEmailsMap[email];
+  if(ts == null) return false;
+  // TTL: idem load/pull (que já podam por DELETED_PROJ_TTL_MS). Sem isto o tombstone era ETERNO na
+  // sessão e re-convites de e-mails removidos há tempos eram filtrados do push pra sempre.
+  if(Date.now() - ts >= DELETED_PROJ_TTL_MS) { delete _deletedUserEmailsMap[email]; _saveDeletedUserEmailsLocal(); return false; }
+  return true;
+}
+// Convite explícito supera uma exclusão anterior: limpa o tombstone local E a linha remota, senão
+// sbPushUsers filtra o e-mail re-convidado e o membro nunca chega ao banco (falha silenciosa).
+async function clearUserTombstone(email) {
+  email = (email||'').toLowerCase();
+  if(_deletedUserEmailsMap[email] != null) { delete _deletedUserEmailsMap[email]; _saveDeletedUserEmailsLocal(); }
+  const sb = sbClient();
+  if(!sb) return;
+  try {
+    const { error } = await sb.from('deleted_user_emails').delete().eq('email', email);
+    if(error) throw error;
+  } catch(e) { console.warn('clearUserTombstone (delete remote row) error:', e); }
 }
 
 // Baseline por e-mail: canônico do que esta aba SABE estar no banco. Serve pra dois fins no push
@@ -3902,6 +3926,9 @@ function mergeProjectsForSave(projects) {
     if(p.data && other.data && p.data.csv && other.data.csv){
       const md = mergeLooseData(p, other);
       if(md) return { ...base, data: md };
+      // Fallback: CSV do lado mais novo, aprovação SEMPRE fundida (nunca LWW).
+      const oth = base === p ? other : p;
+      return { ...base, data: { ...base.data, ...mergeApprovalIntoFields(base.data, oth.data) } };
     }
     return base;
   });
@@ -6235,23 +6262,39 @@ async function dashAddUser() {
     errEl.classList.add('show');
     return;
   }
-  await dashPullUsersIfPossible();
-  const me = authCurrentUser();
-  // Guard: só superadmin cria alguém já como superadmin (defesa além de esconder a opção).
-  const safeRole = (role === 'superadmin' && !isSuperadmin(me && me.role)) ? 'member' : role;
-  const users = authGetUsers();
-  if(users.some(u => u.email.toLowerCase() === email)) {
-    errEl.textContent = 'A member with this email already exists.';
-    errEl.classList.add('show');
-    return;
+  if(_roleBusy) return; // reaproveita o overlay da modal de Membros
+  setRoleBusy(true, 'Adding member…');
+  const newUser = { email, pass, role, name: name || '', department };
+  try {
+    await dashPullUsersIfPossible();
+    const me = authCurrentUser();
+    // Guard: só superadmin cria alguém já como superadmin (defesa além de esconder a opção).
+    newUser.role = (role === 'superadmin' && !isSuperadmin(me && me.role)) ? 'member' : role;
+    const users = authGetUsers();
+    if(users.some(u => u.email.toLowerCase() === email)) {
+      errEl.textContent = 'A member with this email already exists.';
+      errEl.classList.add('show');
+      return; // cai no finally (setRoleBusy(false))
+    }
+    // Convite explícito reabilita um e-mail removido antes (senão o push o filtra e some no pull).
+    await clearUserTombstone(email);
+    users.push(newUser);
+    // AGUARDA a confirmação do banco (era fire-and-forget): sem isto, uma falha do upsert produzia
+    // um "membro fantasma" — aparecia na lista mas nunca persistia e sumia no próximo pull.
+    await withTimeout(authSaveUsers(users), 8000, 'authSaveUsers (add member)');
+    document.getElementById('dashNewUserName').value = '';
+    document.getElementById('dashNewUserEmail').value = '';
+    document.getElementById('dashNewUserPass').value = '';
+    document.getElementById('dashNewUserDept').value = '';
+  } catch(e) {
+    console.warn('Add member failed:', e);
+    // Desfaz o otimismo local pra não deixar o membro fantasma que some no próximo pull.
+    try { localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(authGetUsers().filter(u => u.email.toLowerCase() !== email))); } catch(_){}
+    showNotif('Could not add the member — please try again. Nothing was saved.', 'warn', 4500);
+  } finally {
+    setRoleBusy(false);
+    renderDashUserList();
   }
-  users.push({ email, pass, role: safeRole, name: name || '', department });
-  authSaveUsers(users);
-  document.getElementById('dashNewUserName').value = '';
-  document.getElementById('dashNewUserEmail').value = '';
-  document.getElementById('dashNewUserPass').value = '';
-  document.getElementById('dashNewUserDept').value = '';
-  renderDashUserList();
 }
 
 async function dashRemoveUser(email) {
