@@ -67,7 +67,7 @@ function unionClearedCells(a, b){
   return [...m.values()];
 }
 
-function mergeLooseData(a, b) {
+function mergeLooseData(a, b, anc) {
   try {
     const ad = a.data, bd = b.data;
     if(!ad || !bd || !ad.csv || !bd.csv) return null;
@@ -128,6 +128,13 @@ function mergeLooseData(a, b) {
     // — exatamente o que a campanha já faz via mergeApprovalIntoFields (paridade avulso↔campanha).
     const mergedApproval = (typeof mergeApprovalIntoFields === 'function')
       ? mergeApprovalIntoFields(base, other) : null;
+    // pendingRowIds (imagens pós-aprovação pendentes) e parkedLangs (traduções de idiomas removidos,
+    // guardadas) viviam por LWW de `...base`. Com o ancestral, funde: lista por conjunto 3-way,
+    // objeto por chave 3-way — dois usuários mexendo em ids/idiomas diferentes não se sobrescrevem.
+    const mergedPending = (anc && typeof _mergeSetList === 'function')
+      ? _mergeSetList(anc.pendingRowIds, ad.pendingRowIds || [], bd.pendingRowIds || []) : undefined;
+    const mergedParked = (anc && typeof _merge3wayObj === 'function')
+      ? _merge3wayObj(anc.parkedLangs, ad.parkedLangs, bd.parkedLangs) : undefined;
     return {
       ...base,
       ...(mergedApproval || {}),
@@ -137,6 +144,8 @@ function mergeLooseData(a, b) {
       comments: { ...(bd.comments || {}), ...(ad.comments || {}) },
       maxIdIssued: Math.max(ad.maxIdIssued || 0, bd.maxIdIssued || 0),
       clearedCells: outCleared,
+      ...(mergedPending !== undefined ? { pendingRowIds: mergedPending } : {}),
+      ...(mergedParked !== undefined ? { parkedLangs: mergedParked } : {}),
     };
   } catch(e) { console.warn('mergeLooseData → fallback (comportamento atual):', e); return null; }
 }

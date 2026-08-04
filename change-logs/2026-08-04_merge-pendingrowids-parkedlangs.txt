@@ -1,0 +1,49 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Varredura de campos de lista no corpo (após corrigir approvers/sharedWith) — data.pendingRowIds
+      e data.parkedLangs fundidos 3-way; comentário enganoso corrigido.
+
+===============================================================================
+RESULTADO DA VARREDURA
+===============================================================================
+Após corrigir approvers/sharedWith (fusão por conjunto), varri TODOS os campos de lista do corpo
+do projeto. Conclusão:
+- CORPO: os únicos arrays top-level que são conjuntos de e-mail são approvers e sharedWith — JÁ
+  cobertos. Os demais arrays de corpo (items, deletedItemIds, approvingUsers) são estruturais/
+  efêmeros e já têm tratamento próprio (mergeCampaignItems / unionDeletedItemIds / presença) via
+  _BODY_MERGE_SKIP. NENHUM campo de corpo adicional precisa entrar em _BODY_MERGE_SET_LIST.
+- DENTRO DE data (fora do _reconcileBodyScalars, resolvido no mergeLooseData): dois campos ainda
+  vinham por LWW de `...base`:
+  * data.pendingRowIds (array) — imagens adicionadas pós-aprovação, pendentes.
+  * data.parkedLangs (objeto {lang: traduções guardadas}) — NÃO é flag: guarda DADO DE TRADUÇÃO de
+    idiomas removidos. Perder = perder tradução.
+  (data.langs já era unido no mergeLooseData; sem risco.)
+
+===============================================================================
+CORREÇÃO — merge 3-way no mergeLooseData (com ancestral)
+===============================================================================
+- mergeLooseData ganhou 3º parâmetro `anc` (o data do ANCESTRAL, _syncedPayloadJson). Threaded nos
+  dois call sites: mergeTwoProjects (ancestor já calculado) e mergeProjectsForSave (calcula anc de
+  _syncedPayloadJson[p.id]). Sem ancestral → comportamento atual (…base), fallback seguro.
+- pendingRowIds: fundido por _mergeSetList (conjunto 3-way — add ganha, remoção respeitada).
+- parkedLangs: novo _merge3wayObj (merge de OBJETO por chave 3-way — cada idioma estacionado por um
+  lado sobrevive; remoção por um lado, sem toque do outro, vale). Dois usuários estacionando idiomas
+  diferentes não se sobrescrevem; o dado guardado (traduções) fica intacto.
+- Comentário de _reconcileBodyScalars corrigido: parkedLangs/pendingRowIds/langs NÃO são campos de
+  corpo (vivem em project.data), estava induzindo a erro.
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- modules/translation-engine.js: mergeLooseData(a,b,anc) funde pendingRowIds e parkedLangs.
+- index.html: + _merge3wayObj; mergeTwoProjects e mergeProjectsForSave passam o ancestral;
+  comentário de _reconcileBodyScalars corrigido.
+
+===============================================================================
+VERIFICAÇÃO (console, sem tocar o banco)
+===============================================================================
+- node --check translation-engine.js: OK. Load em localhost:3000: ZERO erros de console.
+- pendingRowIds: A add id9 + B add id8 concorrentes → [id8, id9] (antes perdia um). OK.
+- parkedLangs: A parka de-DE + B parka fr-FR → as duas chaves + dado intacto ('Hallo'). OK.
+- remoção respeitada: A remove x-X (B não mexe) → x-X sai; B add pending new2 → entra. OK.
+- NENHUMA escrita em produção. Teste multi-cliente real fica pro ambiente logado após redeploy.

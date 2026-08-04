@@ -2799,8 +2799,9 @@ function _isDupKey(e){
 // updatedAt/rev que são carimbos de controle).
 const _BODY_MERGE_SKIP = new Set(['items','deletedItemIds','data','clearedCells','lockedBy','lockedAt','lockSessionId','approvingUsers','updatedAt','rev']);
 
-// Reconciliação 3-WAY POR CAMPO dos escalares do corpo (name, sharedWith, approvers, folder,
-// parkedLangs, pendingRowIds, ...). Sem isso, base=lado mais novo levava TODOS os campos, e uma
+// Reconciliação 3-WAY POR CAMPO dos escalares do corpo (name, sharedWith, approvers, folder, ...).
+// OBS: parkedLangs/pendingRowIds/langs NÃO são campos de corpo — vivem em project.data e são
+// fundidos no mergeLooseData (data está em _BODY_MERGE_SKIP). Sem isso, base=lado mais novo levava TODOS os campos, e uma
 // edição independente de um campo no lado mais velho se perdia. Com o ancestral (o último payload
 // que esta aba sincronizou, _syncedPayloadJson), aplicamos só as mudanças que exatamente UM lado
 // fez vs o ancestral — respeitando também remoções. Sem ancestral confiável → devolve base (LWW,
@@ -2818,6 +2819,23 @@ function _mergeSetList(anc, a, b){
     if(seen.has(e)) return; seen.add(e);
     const keep = A.has(e) ? (X.has(e) && Y.has(e)) : (X.has(e) || Y.has(e));
     if(keep) out.push(e);
+  });
+  return out;
+}
+// Merge 3-way POR CHAVE de um objeto-mapa (ex: data.parkedLangs = {lang: traduções guardadas}).
+// Cada chave: se exatamente um lado mudou vs o ancestral, vale a mudança dele (inclui remoção);
+// se os dois mudaram (ou nenhum), prefere quem tem valor (determinístico, lado `a`). Assim dois
+// usuários "estacionando" idiomas diferentes concorrentemente não se sobrescrevem.
+function _merge3wayObj(anc, a, b){
+  anc = anc || {}; a = a || {}; b = b || {};
+  const out = {}, keys = new Set([...Object.keys(anc), ...Object.keys(a), ...Object.keys(b)]);
+  keys.forEach(k => {
+    const inA = k in a, inB = k in b;
+    const aChanged = _canonJson(a[k]) !== _canonJson(anc[k]);
+    const bChanged = _canonJson(b[k]) !== _canonJson(anc[k]);
+    if(aChanged && !bChanged){ if(inA) out[k] = a[k]; }        // só A mexeu (removeu → some)
+    else if(bChanged && !aChanged){ if(inB) out[k] = b[k]; }   // só B mexeu
+    else { if(inA) out[k] = a[k]; else if(inB) out[k] = b[k]; } // ambos/nenhum → quem tiver valor
   });
   return out;
 }
@@ -2853,7 +2871,7 @@ function mergeTwoProjects(local, remote){
     if(base.kind === 'campaign' || local.kind === 'campaign' || remote.kind === 'campaign'){
       result = { ...base, items: mergeCampaignItems(local, remote), deletedItemIds: unionDeletedItemIds(local, remote) };
     } else if(local.data && remote.data && local.data.csv && remote.data.csv){
-      const md = mergeLooseData(local, remote);
+      const md = mergeLooseData(local, remote, ancestor && ancestor.data);
       if(md){ result = { ...base, data: md }; }
       else {
         // Fallback (guarda de perda reprovou): CSV fica com o lado mais novo, MAS aprovação nunca
@@ -3966,7 +3984,9 @@ function mergeProjectsForSave(projects) {
     // lado nunca apagada pela versão vazia do outro). GUARDA ESTRITA dentro de mergeLooseData —
     // qualquer dúvida devolve null e cai no comportamento atual (projeto inteiro por updatedAt).
     if(p.data && other.data && p.data.csv && other.data.csv){
-      const md = mergeLooseData(p, other);
+      let anc = null;
+      try{ if(p.id && _syncedPayloadJson[p.id]) anc = JSON.parse(_syncedPayloadJson[p.id]); }catch(e){}
+      const md = mergeLooseData(p, other, anc && anc.data);
       if(md) return { ...base, data: md };
       // Fallback: CSV do lado mais novo, aprovação SEMPRE fundida (nunca LWW).
       const oth = base === p ? other : p;
