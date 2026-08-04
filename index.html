@@ -1278,6 +1278,10 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
               Edit Tagged HTML
             </button>
+            <button class="tbtn" onclick="openVersionHistory()" title="Histórico de versões — restaurar um ponto anterior ou salvar um backup">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+              Histórico
+            </button>
           </div>
         </div>
         <div class="tscroll" style="flex:1;">
@@ -1354,6 +1358,34 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ═══════════ HISTÓRICO DE VERSÕES MODAL ═══════════ -->
+<style>
+  #vhList .vh-item{display:flex;align-items:center;gap:10px;padding:10px 10px;border-bottom:1px solid var(--border);}
+  #vhList .vh-item:last-child{border-bottom:none;}
+  #vhList .vh-item-main{flex:1;min-width:0;}
+  #vhList .vh-item-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  #vhList .vh-time{font-size:12px;font-weight:600;color:var(--text);}
+  #vhList .vh-label{font-size:12px;color:var(--text2);}
+  #vhList .vh-author{font-size:11px;color:var(--text3);margin-top:2px;}
+  #vhList .vh-tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 6px;border-radius:4px;}
+  #vhList .vh-tag-backup{background:#ecfdf5;color:#047857;}
+  #vhList .vh-tag-auto{background:#eef2ff;color:#4338ca;}
+  #vhList .vh-empty{padding:24px 16px;font-size:12px;color:var(--text3);text-align:center;line-height:1.5;}
+</style>
+<div id="versionHistoryModal" class="modal-ov" style="display:none;">
+  <div class="card modal-card" style="width:100%;max-width:560px;max-height:82vh;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border);">
+      <div style="flex:1;">
+        <div style="font-size:14px;font-weight:700;">Histórico de versões</div>
+        <div id="vhProjName" style="font-size:11px;color:var(--text3);margin-top:2px;"></div>
+      </div>
+      <button class="tbtn" onclick="saveManualBackup()">Salvar backup</button>
+      <button class="hm-close" onclick="closeVersionHistory()" style="position:static;">&times;</button>
+    </div>
+    <div id="vhList" style="flex:1;overflow:auto;padding:8px 12px;"></div>
   </div>
 </div>
 
@@ -1905,6 +1937,10 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
             <button class="tbtn" onclick="openTaggedHtmlEditorForCurrentProject()" title="Manually fix a specific error in the already-tagged HTML — for emergency corrections, does not re-run extraction and does not affect approval">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
               Edit Tagged HTML
+            </button>
+            <button class="tbtn" onclick="openVersionHistory()" title="Histórico de versões — restaurar um ponto anterior ou salvar um backup">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+              Histórico
             </button>
             <div class="dl-dropdown-wrap">
               <button class="tbtn csv" onclick="event.stopPropagation();toggleDlDropdown()">
@@ -2654,6 +2690,9 @@ async function ghMergeAndPushProjects(localProjects) {
       }
       _saveIssuedProjectDeletesLocal();
       setSyncDot('saved'); // banco confirmou → "Saved" (persiste até o próximo save virar "Saving…")
+      // Auto-snapshot do projeto EM EDIÇÃO (coalescido) — histórico de versões. Só o projeto
+      // aberto, pra não gerar volume de snapshots de projetos que só passaram no merge.
+      try{ const cur = currentProjectId && (localProjects||[]).find(p => p.id === currentProjectId); if(cur) maybeAutoSnapshot(cur); }catch(e){}
     } catch(e) {
       console.warn('Supabase sync (push projects) error:', e);
       setSyncDot('error');
@@ -3416,6 +3455,187 @@ function projSaveAll(projects) {
   const merged = mergeProjectsForSave(projects);
   projSaveAllLocal(merged); // salva local imediatamente — não trava esperando o GitHub
   return ghMergeAndPushProjects(merged); // sincroniza com o GitHub em segundo plano, com merge
+}
+
+/* ═══════════════════════ HISTÓRICO DE VERSÕES (tabela project_versions) ═══════════════════════
+   Snapshots do payload INTEIRO do projeto. kind='auto' é coalescido no save (no máx 1 por
+   projeto a cada AUTO_SNAPSHOT_WINDOW_MS); kind='backup' é manual e sempre grava. Degrada de
+   forma graciosa: se a tabela ainda não existir (42P01) ou der erro, a feature some sem quebrar
+   nada do resto. Restaurar reusa o MESMO merge de save (não sobrescreve trabalho concorrente:
+   traz de volta o que a versão tinha, sem apagar célula preenchida mais nova de outra pessoa). */
+const AUTO_SNAPSHOT_WINDOW_MS = 5 * 60 * 1000; // coalescência do auto-snapshot por projeto
+const AUTO_SNAPSHOT_KEEP = 30;                 // qtd de autos mantidos por projeto (além do TTL)
+const AUTO_SNAPSHOT_TTL_DAYS = 30;             // autos mais velhos que isso são podados
+let _versionsTableMissing = false;             // trava após o 1º 42P01 pra não martelar o banco
+const _lastAutoSnapAt = {};                    // projectId -> ms do último auto-snapshot desta aba
+
+function _isMissingVersionsTable(e){
+  const m = ((e && (e.code || e.message)) || '') + '';
+  return m.includes('42P01') || /project_versions.*does not exist/i.test(m);
+}
+
+async function snapshotProjectVersion(project, kind, label){
+  const sb = sbClient();
+  if(!sb || !project || !project.id || _versionsTableMissing) return false;
+  try{
+    const me = (typeof authCurrentUser === 'function' && authCurrentUser()) || null;
+    const row = {
+      project_id: project.id,
+      payload: project,
+      kind: kind === 'backup' ? 'backup' : 'auto',
+      label: label || null,
+      author: (me && me.email) || null
+    };
+    const { error } = await withTimeout(sb.from('project_versions').insert(row), 8000, 'insert version');
+    if(error){ if(_isMissingVersionsTable(error)) _versionsTableMissing = true; else console.warn('snapshot version error', error); return false; }
+    if(row.kind === 'auto') _lastAutoSnapAt[project.id] = Date.now();
+    pruneProjectVersions(project.id); // fire-and-forget
+    return true;
+  }catch(e){ if(_isMissingVersionsTable(e)) _versionsTableMissing = true; return false; }
+}
+
+// Chamado após um push bem-sucedido. Coalesce: só grava auto se o último desta aba pro projeto
+// foi há mais de AUTO_SNAPSHOT_WINDOW_MS (evita 1 snapshot por tecla).
+async function maybeAutoSnapshot(project){
+  if(!project || !project.id || _versionsTableMissing) return;
+  const last = _lastAutoSnapAt[project.id] || 0;
+  if(Date.now() - last < AUTO_SNAPSHOT_WINDOW_MS) return;
+  _lastAutoSnapAt[project.id] = Date.now(); // marca já, pra corridas concorrentes não duplicarem
+  await snapshotProjectVersion(project, 'auto', null);
+}
+
+async function pruneProjectVersions(projectId){
+  const sb = sbClient();
+  if(!sb || _versionsTableMissing) return;
+  try{
+    const cutoff = new Date(Date.now() - AUTO_SNAPSHOT_TTL_DAYS*86400000).toISOString();
+    await withTimeout(sb.from('project_versions').delete().eq('project_id', projectId).eq('kind','auto').lt('created_at', cutoff), 8000, 'prune ttl');
+    const { data } = await withTimeout(sb.from('project_versions').select('id').eq('project_id', projectId).eq('kind','auto').order('created_at',{ascending:false}), 8000, 'prune list');
+    if(data && data.length > AUTO_SNAPSHOT_KEEP){
+      const extra = data.slice(AUTO_SNAPSHOT_KEEP).map(r => r.id);
+      if(extra.length) await withTimeout(sb.from('project_versions').delete().in('id', extra), 8000, 'prune extra');
+    }
+  }catch(e){ if(_isMissingVersionsTable(e)) _versionsTableMissing = true; }
+}
+
+async function listProjectVersions(projectId){
+  const sb = sbClient();
+  if(!sb) return [];
+  try{
+    const { data, error } = await withTimeout(sb.from('project_versions').select('id,kind,label,author,created_at').eq('project_id', projectId).order('created_at',{ascending:false}).limit(200), 8000, 'list versions');
+    if(error){ if(_isMissingVersionsTable(error)) _versionsTableMissing = true; return []; }
+    return data || [];
+  }catch(e){ if(_isMissingVersionsTable(e)) _versionsTableMissing = true; return []; }
+}
+
+async function fetchProjectVersionPayload(versionId){
+  const sb = sbClient();
+  if(!sb) return null;
+  try{
+    const { data, error } = await withTimeout(sb.from('project_versions').select('payload').eq('id', versionId).single(), 8000, 'fetch version');
+    if(error) return null;
+    return data ? data.payload : null;
+  }catch(e){ return null; }
+}
+
+// Resolve o projeto ATUALMENTE aberto (funciona pro editor avulso e pro de campanha — ambos
+// setam currentProjectId ao abrir).
+function _currentOpenProject(){
+  if(!currentProjectId) return null;
+  return projGetAll().find(p => p.id === currentProjectId) || null;
+}
+
+// Restaura uma versão. NÃO sobrescreve à força: reusa o mesmo mergeProjectsForSave do save
+// normal (a versão restaurada entra com updatedAt novo pra vencer o merge, mas células
+// preenchidas mais novas de outra pessoa não são apagadas). Antes de restaurar, grava um
+// backup do estado atual ("Antes de restaurar"), então dá sempre pra voltar.
+async function restoreProjectVersion(versionId){
+  const payload = await fetchProjectVersionPayload(versionId);
+  if(!payload || !payload.id){ alert('Não foi possível carregar essa versão.'); return false; }
+  const projects = projGetAll();
+  const idx = projects.findIndex(p => p.id === payload.id);
+  if(idx < 0){ alert('Projeto não encontrado localmente.'); return false; }
+  await snapshotProjectVersion(projects[idx], 'backup', 'Antes de restaurar');
+  // Preserva a trava/aprovação atuais e força updatedAt novo pra vencer o merge por projeto.
+  const cur = projects[idx];
+  projects[idx] = { ...payload, id: payload.id, updatedAt: Date.now(),
+                    lockedBy: cur.lockedBy, lockedAt: cur.lockedAt, approvingUsers: cur.approvingUsers };
+  await projSaveAll(projects);
+  return true;
+}
+
+/* ─── UI do modal de Histórico ─── */
+let _versionModalProjectId = null;
+
+async function openVersionHistory(){
+  const p = _currentOpenProject();
+  if(!p){ alert('Abra um projeto para ver o histórico.'); return; }
+  _versionModalProjectId = p.id;
+  const ov = document.getElementById('versionHistoryModal');
+  const list = document.getElementById('vhList');
+  document.getElementById('vhProjName').textContent = p.name || p.id;
+  list.innerHTML = '<div class="vh-empty">Carregando…</div>';
+  ov.style.display = 'flex';
+  if(_versionsTableMissing){ list.innerHTML = '<div class="vh-empty">Histórico indisponível (tabela project_versions ainda não criada no banco).</div>'; return; }
+  const versions = await listProjectVersions(p.id);
+  renderVersionList(versions);
+}
+
+function closeVersionHistory(){ document.getElementById('versionHistoryModal').style.display = 'none'; }
+
+function _vhFmtTime(iso){
+  try{ const d = new Date(iso); return d.toLocaleString(); }catch(e){ return iso || ''; }
+}
+
+function renderVersionList(versions){
+  const list = document.getElementById('vhList');
+  if(!versions || !versions.length){ list.innerHTML = '<div class="vh-empty">Nenhuma versão salva ainda. Toda vez que você salva, uma versão automática é guardada (no máximo uma a cada 5 min); use "Salvar backup" para marcar um ponto importante.</div>'; return; }
+  list.innerHTML = versions.map(v => {
+    const isBackup = v.kind === 'backup';
+    const tag = isBackup ? '<span class="vh-tag vh-tag-backup">Backup</span>' : '<span class="vh-tag vh-tag-auto">Auto</span>';
+    const label = v.label ? ' · ' + escHtml(v.label) : '';
+    const author = v.author ? escHtml(v.author) : '—';
+    return '<div class="vh-item">'
+      + '<div class="vh-item-main">'
+      +   '<div class="vh-item-top">' + tag + '<span class="vh-time">' + escHtml(_vhFmtTime(v.created_at)) + '</span>' + '<span class="vh-label">' + label + '</span></div>'
+      +   '<div class="vh-author">' + author + '</div>'
+      + '</div>'
+      + '<button class="tbtn" onclick="onRestoreVersion(\'' + v.id + '\')">Restaurar</button>'
+      + '</div>';
+  }).join('');
+}
+
+async function onRestoreVersion(versionId){
+  if(!confirm('Restaurar esta versão? O estado atual será guardado como backup antes, então dá para voltar. Conteúdo mais novo de outras pessoas não é apagado.')) return;
+  const btns = document.querySelectorAll('#vhList .tbtn'); btns.forEach(b => b.disabled = true);
+  const ok = await restoreProjectVersion(versionId);
+  if(ok){
+    closeVersionHistory();
+    // Reabre o projeto pra refletir o estado restaurado no editor.
+    const id = _versionModalProjectId;
+    if(id && typeof projOpen === 'function' && !_campaign) { try{ await projOpen(id); }catch(e){} }
+    else { alert('Versão restaurada. Reabra o item para ver o resultado.'); }
+  } else {
+    btns.forEach(b => b.disabled = false);
+  }
+}
+
+async function saveManualBackup(){
+  const p = _currentOpenProject();
+  if(!p){ alert('Abra um projeto para salvar um backup.'); return; }
+  if(_versionsTableMissing){ alert('Backup indisponível: a tabela project_versions ainda não foi criada no banco.'); return; }
+  const label = prompt('Nome do backup (opcional):', '');
+  if(label === null) return; // cancelou
+  const ok = await snapshotProjectVersion(p, 'backup', label.trim() || 'Backup manual');
+  if(ok){
+    if(document.getElementById('versionHistoryModal').style.display === 'flex'){
+      renderVersionList(await listProjectVersions(p.id));
+    } else {
+      alert('Backup salvo.');
+    }
+  } else {
+    alert('Não foi possível salvar o backup.');
+  }
 }
 
 function projIsLocked(p) {

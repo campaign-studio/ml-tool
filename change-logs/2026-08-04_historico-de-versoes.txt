@@ -1,0 +1,60 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Reconstrução da camada de salvamento — FASE 1: Histórico de versões (auto-snapshot +
+      backup manual + restaurar). Aditivo, não altera o caminho de merge já provado.
+
+===============================================================================
+O QUE FOI FEITO
+===============================================================================
+Nova tabela project_versions guarda snapshots do payload INTEIRO de cada projeto.
+  - kind='auto'   : gravado automaticamente após cada save bem-sucedido, COALESCIDO — no
+                    máximo 1 por projeto a cada 5 min (AUTO_SNAPSHOT_WINDOW_MS). Só o projeto
+                    ABERTO (currentProjectId) é snapshotado, não todo projeto que passou no merge.
+  - kind='backup' : backup manual do usuário (botão "Salvar backup", com nome opcional). Nunca
+                    é podado automaticamente.
+
+Poda automática (pruneProjectVersions), só de autos:
+  - TTL: autos com mais de 30 dias (AUTO_SNAPSHOT_TTL_DAYS) são apagados.
+  - Retenção: mantém os 30 autos mais recentes por projeto (AUTO_SNAPSHOT_KEEP); o excedente é apagado.
+  - Backups manuais NUNCA são podados.
+
+Restaurar (restoreProjectVersion):
+  - Antes de restaurar, grava um backup do estado ATUAL ("Antes de restaurar") — sempre dá pra voltar.
+  - A restauração REUSA o mergeProjectsForSave do save normal: a versão entra com updatedAt novo
+    (vence o merge por projeto), mas NÃO apaga conteúdo mais novo de outra pessoa (célula preenchida
+    concorrente é preservada). Isso é intencional: prioriza não perder trabalho de colaboração.
+    Trava/aprovação atuais são preservadas.
+  - No editor avulso, reabre o projeto (projOpen) pra refletir o estado restaurado.
+
+Degradação graciosa: se a tabela project_versions ainda não existir (42P01) ou der erro, a feature
+some silenciosamente (_versionsTableMissing trava após o 1º erro) e nada mais quebra.
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- index.html:
+  * Camada de snapshot (após projSaveAll): snapshotProjectVersion, maybeAutoSnapshot,
+    pruneProjectVersions, listProjectVersions, fetchProjectVersionPayload, restoreProjectVersion,
+    _isMissingVersionsTable, constantes AUTO_SNAPSHOT_*.
+  * UI: openVersionHistory/closeVersionHistory/renderVersionList/onRestoreVersion/saveManualBackup,
+    _currentOpenProject; modal #versionHistoryModal + <style> .vh-*.
+  * Hook: ghMergeAndPushProjects chama maybeAutoSnapshot(projeto aberto) após setSyncDot('saved').
+  * Botão "Histórico" nas duas barras (editor avulso #edToolbar e editor de campanha).
+- migrations/2026-08-04_project_versions.sql (RODAR MANUALMENTE no Supabase): cria a tabela +
+  índices + RLS permissiva (ALINHAR com a policy das outras tabelas).
+
+===============================================================================
+AÇÃO NECESSÁRIA DO USUÁRIO
+===============================================================================
+Rodar migrations/2026-08-04_project_versions.sql no Supabase (SQL Editor). Enquanto não rodar,
+o botão Histórico abre e informa que o histórico está indisponível — sem quebrar nada.
+IMPORTANTE: a policy RLS do arquivo é permissiva (using true) — conferir se bate com a policy que
+as tabelas projects/users já usam com a publishable key.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Load em localhost sem erros de console; todas as funções definidas; 2 botões "Histórico"; modal
+  e #vhList presentes; renderVersionList renderiza itens auto/backup com hora/autor/Restaurar.
+- NENHUMA escrita em produção nesta verificação (logado-out; render testado com dados fictícios).
+- Verificação visual plena sobre o editor + fluxo real de snapshot/restaurar: teste logado do usuário.
