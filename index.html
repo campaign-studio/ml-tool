@@ -1280,10 +1280,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
               Edit Tagged HTML
             </button>
-            <button class="tbtn" onclick="openVersionHistory()" title="Histórico de versões — restaurar um ponto anterior ou salvar um backup">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
-              Histórico
-            </button>
+            <button class="tbtn" onclick="openVersionHistory()" data-i18n-title="versionHistory.historyBtnTitle" title="Version history — restore an earlier point or save a backup"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg><span data-i18n="versionHistory.historyBtn">History</span></button>
           </div>
         </div>
         <div class="tscroll" style="flex:1;">
@@ -1387,10 +1384,10 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
   <div class="card modal-card" style="width:100%;max-width:560px;max-height:82vh;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border);">
       <div style="flex:1;">
-        <div style="font-size:14px;font-weight:700;">Histórico de versões</div>
+        <div style="font-size:14px;font-weight:700;" data-i18n="versionHistory.modalTitle">Version history</div>
         <div id="vhProjName" style="font-size:11px;color:var(--text3);margin-top:2px;"></div>
       </div>
-      <button class="tbtn" onclick="saveManualBackup()">Salvar backup</button>
+      <button class="tbtn" onclick="saveManualBackup()" data-i18n="versionHistory.saveBackupBtn">Save backup</button>
       <button class="hm-close" onclick="closeVersionHistory()" style="position:static;">&times;</button>
     </div>
     <div id="vhList" style="flex:1;overflow:auto;padding:8px 12px;"></div>
@@ -1948,10 +1945,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
               Edit Tagged HTML
             </button>
-            <button class="tbtn" onclick="openVersionHistory()" title="Histórico de versões — restaurar um ponto anterior ou salvar um backup">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
-              Histórico
-            </button>
+            <button class="tbtn" onclick="openVersionHistory()" data-i18n-title="versionHistory.historyBtnTitle" title="Version history — restore an earlier point or save a backup"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg><span data-i18n="versionHistory.historyBtn">History</span></button>
             <div class="dl-dropdown-wrap">
               <button class="tbtn csv" onclick="event.stopPropagation();toggleDlDropdown()">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
@@ -2558,7 +2552,7 @@ let _mergeToastTimer = null;
 function showMergeNotice(msg) {
   const toast = document.getElementById('mergeNoticeToast');
   if(!toast) return;
-  toast.textContent = msg || '✓ Synced — a teammate was editing at the same time, so their changes were merged in.';
+  toast.textContent = msg || t('sync.mergeNotice');
   toast.classList.add('show');
   clearTimeout(_mergeToastTimer);
   _mergeToastTimer = setTimeout(() => toast.classList.remove('show'), 6000);
@@ -3014,12 +3008,12 @@ function _presenceBadgeHtml(others){
   const avatars = others.slice(0,5).map(u => {
     const nm = (u.name || u.email || '?') + '';
     const init = (nm.trim()[0] || '?').toUpperCase();
-    return `<span class="presence-av" title="${escHtml(nm)} está aqui agora">${escHtml(init)}</span>`;
+    return `<span class="presence-av" title="${escHtml(t('presence.hereNowTitle', { name: nm }))}">${escHtml(init)}</span>`;
   }).join('');
   const extra = others.length > 5 ? `<span class="presence-more">+${others.length-5}</span>` : '';
   const label = others.length === 1
-    ? `${escHtml(others[0].name || others[0].email)} está aqui`
-    : `${others.length} pessoas aqui agora`;
+    ? escHtml(t('presence.oneHere', { name: others[0].name || others[0].email }))
+    : escHtml(t('presence.manyHere', { n: others.length }));
   return `<span class="presence-avs">${avatars}${extra}</span><span class="presence-lbl">${label}</span>`;
 }
 
@@ -3799,11 +3793,11 @@ function _currentOpenProject(){
 // backup do estado atual ("Antes de restaurar"), então dá sempre pra voltar.
 async function restoreProjectVersion(versionId){
   const payload = await fetchProjectVersionPayload(versionId);
-  if(!payload || !payload.id){ alert('Não foi possível carregar essa versão.'); return false; }
+  if(!payload || !payload.id){ alert(t('versionHistory.cantLoad')); return false; }
   const projects = projGetAll();
   const idx = projects.findIndex(p => p.id === payload.id);
-  if(idx < 0){ alert('Projeto não encontrado localmente.'); return false; }
-  await snapshotProjectVersion(projects[idx], 'backup', 'Antes de restaurar');
+  if(idx < 0){ alert(t('versionHistory.projectNotFound')); return false; }
+  await snapshotProjectVersion(projects[idx], 'backup', t('versionHistory.beforeRestoreLabel'));
   // Preserva a trava/aprovação atuais e força updatedAt novo pra vencer o merge por projeto.
   const cur = projects[idx];
   projects[idx] = { ...payload, id: payload.id, updatedAt: Date.now(),
@@ -3817,14 +3811,14 @@ let _versionModalProjectId = null;
 
 async function openVersionHistory(){
   const p = _currentOpenProject();
-  if(!p){ alert('Abra um projeto para ver o histórico.'); return; }
+  if(!p){ alert(t('versionHistory.openToView')); return; }
   _versionModalProjectId = p.id;
   const ov = document.getElementById('versionHistoryModal');
   const list = document.getElementById('vhList');
   document.getElementById('vhProjName').textContent = p.name || p.id;
-  list.innerHTML = '<div class="vh-empty">Carregando…</div>';
+  list.innerHTML = '<div class="vh-empty">' + escHtml(t('versionHistory.loading')) + '</div>';
   ov.style.display = 'flex';
-  if(_versionsTableMissing){ list.innerHTML = '<div class="vh-empty">Histórico indisponível (tabela project_versions ainda não criada no banco).</div>'; return; }
+  if(_versionsTableMissing){ list.innerHTML = '<div class="vh-empty">' + escHtml(t('versionHistory.unavailable')) + '</div>'; return; }
   const versions = await listProjectVersions(p.id);
   renderVersionList(versions);
 }
@@ -3837,24 +3831,24 @@ function _vhFmtTime(iso){
 
 function renderVersionList(versions){
   const list = document.getElementById('vhList');
-  if(!versions || !versions.length){ list.innerHTML = '<div class="vh-empty">Nenhuma versão salva ainda. Toda vez que você salva, uma versão automática é guardada (no máximo uma a cada 5 min); use "Salvar backup" para marcar um ponto importante.</div>'; return; }
+  if(!versions || !versions.length){ list.innerHTML = '<div class="vh-empty">' + escHtml(t('versionHistory.empty')) + '</div>'; return; }
   list.innerHTML = versions.map(v => {
     const isBackup = v.kind === 'backup';
-    const tag = isBackup ? '<span class="vh-tag vh-tag-backup">Backup</span>' : '<span class="vh-tag vh-tag-auto">Auto</span>';
-    const label = v.label ? ' · ' + escHtml(v.label) : '';
+    const tag = isBackup ? '<span class="vh-tag vh-tag-backup">' + escHtml(t('versionHistory.tagBackup')) + '</span>' : '<span class="vh-tag vh-tag-auto">' + escHtml(t('versionHistory.tagAuto')) + '</span>';
+    const label = v.label ? ' · ' + escHtml(displayVersionLabel(v.label)) : '';
     const author = v.author ? escHtml(v.author) : '—';
     return '<div class="vh-item">'
       + '<div class="vh-item-main">'
       +   '<div class="vh-item-top">' + tag + '<span class="vh-time">' + escHtml(_vhFmtTime(v.created_at)) + '</span>' + '<span class="vh-label">' + label + '</span></div>'
       +   '<div class="vh-author">' + author + '</div>'
       + '</div>'
-      + '<button class="tbtn" onclick="onRestoreVersion(\'' + v.id + '\')">Restaurar</button>'
+      + '<button class="tbtn" onclick="onRestoreVersion(\'' + v.id + '\')">' + escHtml(t('versionHistory.restoreBtn')) + '</button>'
       + '</div>';
   }).join('');
 }
 
 async function onRestoreVersion(versionId){
-  if(!confirm('Restaurar esta versão? O estado atual será guardado como backup antes, então dá para voltar. Conteúdo mais novo de outras pessoas não é apagado.')) return;
+  if(!confirm(t('versionHistory.restoreConfirm'))) return;
   const btns = document.querySelectorAll('#vhList .tbtn'); btns.forEach(b => b.disabled = true);
   const ok = await restoreProjectVersion(versionId);
   if(ok){
@@ -3862,7 +3856,7 @@ async function onRestoreVersion(versionId){
     // Reabre o projeto pra refletir o estado restaurado no editor.
     const id = _versionModalProjectId;
     if(id && typeof projOpen === 'function' && !_campaign) { try{ await projOpen(id); }catch(e){} }
-    else { alert('Versão restaurada. Reabra o item para ver o resultado.'); }
+    else { alert(t('versionHistory.restored')); }
   } else {
     btns.forEach(b => b.disabled = false);
   }
@@ -3870,19 +3864,19 @@ async function onRestoreVersion(versionId){
 
 async function saveManualBackup(){
   const p = _currentOpenProject();
-  if(!p){ alert('Abra um projeto para salvar um backup.'); return; }
-  if(_versionsTableMissing){ alert('Backup indisponível: a tabela project_versions ainda não foi criada no banco.'); return; }
-  const label = prompt('Nome do backup (opcional):', '');
+  if(!p){ alert(t('versionHistory.openToBackup')); return; }
+  if(_versionsTableMissing){ alert(t('versionHistory.backupUnavailable')); return; }
+  const label = prompt(t('versionHistory.backupPrompt'), '');
   if(label === null) return; // cancelou
-  const ok = await snapshotProjectVersion(p, 'backup', label.trim() || 'Backup manual');
+  const ok = await snapshotProjectVersion(p, 'backup', label.trim() || t('versionHistory.defaultBackupLabel'));
   if(ok){
     if(document.getElementById('versionHistoryModal').style.display === 'flex'){
       renderVersionList(await listProjectVersions(p.id));
     } else {
-      alert('Backup salvo.');
+      alert(t('versionHistory.backupSaved'));
     }
   } else {
-    alert('Não foi possível salvar o backup.');
+    alert(t('versionHistory.backupFailed'));
   }
 }
 
@@ -10303,6 +10297,7 @@ window.addEventListener('message', function(e){
 <!-- APPROVAL VIEW canvas — SEPARADO só pra organização (ver modules/approval-canvas.js). Código de
      escopo global (classic script, sem IIFE): as funções seguem globais e leem os globais do app
      em runtime. Carregado DEPOIS do script inline (referências só acontecem em runtime). -->
+<script src="modules/strings.js"></script>
 <script src="modules/translation-engine.js"></script>
 <script src="modules/approval-canvas.js"></script>
 <!-- Módulo "Pasta/Folder" — ISOLADO (ver modules/folders.js). Carregado DEPOIS do script inline

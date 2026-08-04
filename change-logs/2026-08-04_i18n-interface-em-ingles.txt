@@ -1,0 +1,37 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Padronização da interface em INGLÊS + camada de strings centralizada (i18n).
+
+CONTEXTO DO LEVANTAMENTO
+- A plataforma já estava quase 100% em inglês. O PT de UI estava concentrado NO QUE FOI ADICIONADO
+  NESTA SESSÃO (Histórico de versões + Presença). Módulos (translation-engine/approval-canvas/
+  folders) não tinham texto de UI em PT. Overlays de save já estavam em inglês.
+
+O QUE FOI FEITO
+1) Nova camada centralizada: modules/strings.js (carregado ANTES dos outros módulos).
+   - window.STR.en.{versionHistory,presence,sync}: fonte única dos textos.
+   - t('chave', params): lookup + interpolação ({name},{n}). Fallback = a própria chave.
+   - applyI18n(): preenche textos/tooltips estáticos marcados com data-i18n / data-i18n-title
+     (o inglês fica no HTML como default, sem flash; permite trocar idioma no futuro).
+   - displayVersionLabel()/LEGACY_LABEL_MAP: traduz na EXIBIÇÃO os 2 labels-padrão em PT já
+     gravados no banco antes da padronização ("Antes de restaurar"/"Backup manual"), sem reescrever
+     linhas antigas. Labels custom do usuário passam intactos.
+2) index.html:
+   - Botões/tooltip "Histórico" (x2) e "Salvar backup", título do modal → inglês via data-i18n.
+   - Todas as strings JS do Histórico (alerts, confirm, prompt, empty/loading/unavailable, tags,
+     Restore, restored) → t(...).
+   - Presença ("está aqui"/"pessoas aqui agora"/tooltip) → t('presence.*', {params}).
+   - Toast de merge (Fase 4) → t('sync.mergeNotice').
+
+EDGE CASES (do levantamento)
+- Erros do backend/Supabase: continuam em inglês técnico e só vão pro console — não são mostrados
+  crus ao usuário; o texto visível é o nosso wrapper.
+- Strings fixo+dado: só a parte fixa é traduzida; nome/label/nome de projeto entram como param.
+- Data/hora na lista de versões: segue toLocaleString() (não padronizei locale — se quiser fixar
+  en-US depois, é um ponto único em _vhFmtTime).
+
+VERIFICAÇÃO
+- Load sem erros de console. t() retorna inglês; interpolação "4 people here now"; legacy map
+  "Antes de restaurar"->"Before restoring" e passthrough de label custom. Estáticos preenchidos
+  (History / tooltip / Version history / Save backup). Lista renderiza tag "Auto" e botão "Restore".
+- Sem escrita em produção.
