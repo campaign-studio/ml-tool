@@ -3973,26 +3973,30 @@ function mergeProjectsForSave(projects) {
     if(!other) return p; // projeto novo, só existe no lado que está salvando agora
     const mine = p.updatedAt || 0, theirs = other.updatedAt || 0;
     const base = theirs > mine ? other : p; // corpo do projeto = quem editou por último de verdade
+    let anc = null;
+    try{ if(p.id && _syncedPayloadJson[p.id]) anc = JSON.parse(_syncedPayloadJson[p.id]); }catch(e){}
+    // Reconcilia os ESCALARES do corpo (approvers/sharedWith por conjunto, name/folder 3-way) — mesma
+    // paridade do caminho CAS (mergeTwoProjects). Sem isto, o save local pegava base (mais novo)
+    // inteiro e descartava, ex., um approver que o outro lado concedeu (achado no teste de pipeline).
+    const reconcile = (result) => _reconcileBodyScalars(p, other, result, anc);
     // PASTA (kind:'campaign'): a lista de itens NUNCA é sobrescrita inteira — faz UNIÃO por id
     // (menos os tombstoned), pra uma cópia velha nunca DERRUBAR um item que a outra adicionou
     // (bug real: mover e-mail pra pasta e ele sumir porque outra aba/pessoa salvou a pasta com a
     // lista antiga). Conteúdo de item compartilhado fica com a versão do lado de updatedAt mais novo.
     if(base.kind === 'campaign' || p.kind === 'campaign' || (other && other.kind === 'campaign')){
-      return { ...base, items: mergeCampaignItems(p, other), deletedItemIds: unionDeletedItemIds(p, other) };
+      return reconcile({ ...base, items: mergeCampaignItems(p, other), deletedItemIds: unionDeletedItemIds(p, other) });
     }
     // AVULSO: tenta fundir o CONTEÚDO do CSV célula a célula (linha nova preservada, tradução de um
     // lado nunca apagada pela versão vazia do outro). GUARDA ESTRITA dentro de mergeLooseData —
     // qualquer dúvida devolve null e cai no comportamento atual (projeto inteiro por updatedAt).
     if(p.data && other.data && p.data.csv && other.data.csv){
-      let anc = null;
-      try{ if(p.id && _syncedPayloadJson[p.id]) anc = JSON.parse(_syncedPayloadJson[p.id]); }catch(e){}
       const md = mergeLooseData(p, other, anc && anc.data);
-      if(md) return { ...base, data: md };
+      if(md) return reconcile({ ...base, data: md });
       // Fallback: CSV do lado mais novo, aprovação SEMPRE fundida (nunca LWW).
       const oth = base === p ? other : p;
-      return { ...base, data: { ...base.data, ...mergeApprovalIntoFields(base.data, oth.data) } };
+      return reconcile({ ...base, data: { ...base.data, ...mergeApprovalIntoFields(base.data, oth.data) } });
     }
-    return base;
+    return reconcile(base);
   });
   // Projeto que já existe no armazenamento atual mas não veio no array que estamos salvando
   // (ex: criado por outra aba entre a hora que lemos e a hora que salvamos) — preserva, não

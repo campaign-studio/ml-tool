@@ -1,0 +1,48 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Assimetria achada em teste de PIPELINE REAL (local, sbClient neutralizado) — o save LOCAL
+      (mergeProjectsForSave) não reconciliava escalares do corpo; approver do outro lado sumia.
+
+===============================================================================
+COMO FOI ACHADO
+===============================================================================
+Teste de integração no pipeline real (não só nos helpers): sbClient neutralizado (ZERO produção),
+sessão local, projeto no store, um "cliente remoto" concedendo approver bob + comentário + parked +
+pending, e este cliente concedendo approver ana + editando tradução. Passando pelo mergeProjectsForSave
+REAL: TUDO era preservado (tradução, comentário, aprovação, parkedLangs, pendingRowIds) MENOS os
+approvers — ficava só [orig, ana], o bob do remoto SUMIA. sharedWith idem.
+
+===============================================================================
+CAUSA-RAIZ
+===============================================================================
+A fusão de conjunto de approvers/sharedWith (e a reconciliação 3-way de name/folder) vivia só no
+_reconcileBodyScalars, chamado apenas no caminho do CAS (mergeTwoProjects). O mergeProjectsForSave
+(caminho de save LOCAL, usado por projSaveAll antes do push) montava o resultado como { ...base, ... }
+— base = lado de updatedAt mais novo — e NUNCA reconciliava os escalares do corpo. Então o approver
+concedido pelo outro lado era descartado no cache local. (O CAS depois recuperaria ao gravar no
+banco, mas o cache local ficava inconsistente — e se o CAS fosse contornado, a perda persistia.)
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+- mergeProjectsForSave calcula o ancestral (anc) uma vez por projeto e passa CADA resultado
+  (campanha, avulso, avulso-fallback e o caso base) por _reconcileBodyScalars(p, other, result, anc).
+  Paridade total com o caminho CAS: approvers/sharedWith por conjunto, name/folder 3-way.
+- (O anc já era calculado no ramo avulso pro mergeLooseData; agora é único no topo do callback.)
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- mergeProjectsForSave: + anc no topo do map; helper reconcile(result)=_reconcileBodyScalars(...);
+  todos os returns do map passam por reconcile.
+
+===============================================================================
+VERIFICAÇÃO (browser local, sbClient NEUTRALIZADO — ZERO produção)
+===============================================================================
+- Load em localhost:3000: ZERO erros de console. Store e usuários snapshotados e RESTAURADOS.
+- Pipeline real (mergeProjectsForSave) com remoto+meu concorrentes: approvers [ana, bob, orig],
+  sharedWith [mine, remote], tradução 'Olá', comentário preservado, parked de-DE+fr-FR, pending
+  id8+id9 — TUDO preservado. (Antes: bob e sh_remote sumiam.)
+- dashAddUser ponta-a-ponta (função real, DOM): convite normal persiste como admin; re-convite de
+  e-mail com tombstone persiste + tombstone limpo; duplicado barrado com erro. OK.
+- NENHUMA escrita em produção (sbClient()===null verificado antes de cada teste).
