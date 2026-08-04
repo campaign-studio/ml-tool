@@ -1379,9 +1379,35 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
   .presence-badge .presence-av:first-child{margin-left:0;}
   .presence-badge .presence-more{font-size:10px;font-weight:700;color:var(--text3);margin-left:2px;align-self:center;}
   .presence-badge .presence-lbl{font-size:11px;color:var(--text3);white-space:nowrap;}
+  #vhList .tbtn-primary{background:#6d28d9;color:#fff;border-color:#6d28d9;}
+  #vhList .df-top{display:flex;justify-content:space-between;gap:8px;padding:4px 4px 10px;position:sticky;top:0;background:var(--bg,#fff);}
+  #vhList .df-intro{font-size:11px;color:var(--text3);padding:0 4px 6px;}
+  #vhList .df-summary{font-size:12px;font-weight:600;color:var(--text2);padding:0 4px 10px;}
+  #vhList .df-item-note{font-size:11px;color:var(--text2);padding:3px 6px;background:#f5f3ff;border-radius:5px;margin:0 4px 4px;}
+  #vhList .df-sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:12px 4px 6px;}
+  #vhList .df-cell{border-left:3px solid var(--border);padding:5px 8px;margin:0 4px 4px;border-radius:0 5px 5px 0;background:#fafafa;}
+  #vhList .df-cell.df-add{border-left-color:#10b981;background:#ecfdf5;}
+  #vhList .df-cell.df-del{border-left-color:#ef4444;background:#fef2f2;}
+  #vhList .df-cell.df-chg{border-left-color:#f59e0b;background:#fffbeb;}
+  #vhList .df-cell-hdr{font-size:10px;color:var(--text3);margin-bottom:2px;}
+  #vhList .df-rowid{font-weight:700;color:var(--text2);}
+  #vhList .df-cell-body{font-size:12px;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;}
+  #vhList .df-from{color:#b91c1c;text-decoration:line-through;opacity:.75;}
+  #vhList .df-to{color:#047857;font-weight:600;}
+  #vhList .df-arrow{color:var(--text3);}
+  #vhList .df-empty{font-style:italic;color:var(--text3);text-decoration:none;}
+  #vhList .df-html{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;background:#0d1117;border-radius:6px;padding:8px;margin:0 4px;overflow-x:auto;}
+  #vhList .df-line{white-space:pre;}
+  #vhList .df-line.df-add{color:#4ade80;}
+  #vhList .df-line.df-del{color:#f87171;}
+  #vhList .df-more{font-size:11px;color:var(--text3);text-align:center;padding:8px;}
 </style>
 <div id="versionHistoryModal" class="modal-ov" style="display:none;">
-  <div class="card modal-card" style="width:100%;max-width:560px;max-height:82vh;display:flex;flex-direction:column;">
+  <div class="card modal-card" style="width:100%;max-width:560px;max-height:82vh;display:flex;flex-direction:column;position:relative;">
+    <div id="vhBusyOverlay" style="display:none;position:absolute;inset:0;background:rgba(255,255,255,.88);z-index:5;flex-direction:column;align-items:center;justify-content:center;gap:10px;border-radius:inherit;">
+      <div class="move-spinner"></div>
+      <div id="vhBusyLabel" style="font-size:12px;font-weight:600;color:var(--text2);"></div>
+    </div>
     <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border);">
       <div style="flex:1;">
         <div style="font-size:14px;font-weight:700;" data-i18n="versionHistory.modalTitle">Version history</div>
@@ -3787,6 +3813,84 @@ function _currentOpenProject(){
   return projGetAll().find(p => p.id === currentProjectId) || null;
 }
 
+/* ─── DIFF DE VERSÃO (estrutural: célula a célula nas traduções + linha a linha no HTML) ───
+   Comparação = do estado ATUAL para a VERSÃO selecionada = "o que restaurar faria". */
+// Extrai um mapa "chave -> célula" do payload (funciona pra avulso e campanha).
+function _cellsFromPayload(payload){
+  const map = {};
+  if(!payload) return map;
+  if(payload.kind === 'campaign' && Array.isArray(payload.items)){
+    payload.items.forEach(it => {
+      (it.rows || []).forEach(row => {
+        const tr = row.translations || {};
+        const langs = new Set([...(it.langs || []), ...Object.keys(tr)]);
+        langs.forEach(l => {
+          map[it.id + '|' + row.id + '|' + l] = { scopeName: it.name || it.id, rowId: row.id, src: row.src || '', lang: l, val: tr[l] || '' };
+        });
+      });
+    });
+  } else if(payload.data && payload.data.csv){
+    const parsed = (typeof parseBrazeCsv === 'function') ? parseBrazeCsv(payload.data.csv) : null;
+    if(parsed && parsed.byLang){
+      Object.keys(parsed.byLang).forEach(l => {
+        parsed.byLang[l].forEach(r => {
+          map['|' + r.id + '|' + l] = { scopeName: '', rowId: r.id, src: r.src || '', lang: l, val: r.tl || '' };
+        });
+      });
+    }
+  }
+  return map;
+}
+
+// Diff unificado por linha entre dois textos (a=atual, b=versão), via LCS já existente no engine.
+function _lineDiff(aStr, bStr){
+  const a = String(aStr || '').split('\n'), b = String(bStr || '').split('\n');
+  const pairs = _lcsLinePairs(a, b);
+  const out = []; let i = 0, j = 0;
+  for(const [ai, bj] of pairs){
+    while(i < ai){ out.push({ type:'del', text:a[i] }); i++; }
+    while(j < bj){ out.push({ type:'add', text:b[j] }); j++; }
+    out.push({ type:'ctx', text:a[ai] }); i = ai + 1; j = bj + 1;
+  }
+  while(i < a.length){ out.push({ type:'del', text:a[i] }); i++; }
+  while(j < b.length){ out.push({ type:'add', text:b[j] }); j++; }
+  return out;
+}
+
+function computeProjectDiff(current, version){
+  const curMap = _cellsFromPayload(current);
+  const verMap = _cellsFromPayload(version);
+  const keys = new Set([...Object.keys(curMap), ...Object.keys(verMap)]);
+  const cells = []; let added = 0, removed = 0, changed = 0;
+  keys.forEach(k => {
+    const c = curMap[k], v = verMap[k];
+    const from = c ? (c.val || '') : '';
+    const to   = v ? (v.val || '') : '';
+    if(from === to) return;
+    const meta = v || c;
+    let type;
+    if(!from.trim() && to.trim()){ type = 'added'; added++; }
+    else if(from.trim() && !to.trim()){ type = 'removed'; removed++; }
+    else { type = 'changed'; changed++; }
+    cells.push({ scopeName: meta.scopeName, rowId: meta.rowId, src: meta.src, lang: meta.lang, from, to, type });
+  });
+  const items = [];
+  if((current && current.kind === 'campaign') || (version && version.kind === 'campaign')){
+    const curIds = new Map(((current && current.items) || []).map(i => [i.id, i]));
+    const verIds = new Map(((version && version.items) || []).map(i => [i.id, i]));
+    verIds.forEach((it, id) => { if(!curIds.has(id)) items.push({ type:'added', name: it.name || id }); });
+    curIds.forEach((it, id) => { if(!verIds.has(id)) items.push({ type:'removed', name: it.name || id }); });
+  }
+  let htmlDiff = null, htmlLines = 0;
+  const curHtml = (current && current.data) ? (current.data.html || '') : '';
+  const verHtml = (version && version.data) ? (version.data.html || '') : '';
+  if(curHtml !== verHtml && (curHtml || verHtml)){
+    htmlDiff = _lineDiff(curHtml, verHtml);
+    htmlLines = htmlDiff.filter(l => l.type !== 'ctx').length;
+  }
+  return { cells, items, htmlDiff, summary: { added, removed, changed, htmlLines } };
+}
+
 // Restaura uma versão. NÃO sobrescreve à força: reusa o mesmo mergeProjectsForSave do save
 // normal (a versão restaurada entra com updatedAt novo pra vencer o merge, mas células
 // preenchidas mais novas de outra pessoa não são apagadas). Antes de restaurar, grava um
@@ -3826,7 +3930,7 @@ async function openVersionHistory(){
 function closeVersionHistory(){ document.getElementById('versionHistoryModal').style.display = 'none'; }
 
 function _vhFmtTime(iso){
-  try{ const d = new Date(iso); return d.toLocaleString(); }catch(e){ return iso || ''; }
+  try{ const d = new Date(iso); return d.toLocaleString('en-US', { dateStyle:'medium', timeStyle:'short' }); }catch(e){ return iso || ''; }
 }
 
 function renderVersionList(versions){
@@ -3842,23 +3946,110 @@ function renderVersionList(versions){
       +   '<div class="vh-item-top">' + tag + '<span class="vh-time">' + escHtml(_vhFmtTime(v.created_at)) + '</span>' + '<span class="vh-label">' + label + '</span></div>'
       +   '<div class="vh-author">' + author + '</div>'
       + '</div>'
-      + '<button class="tbtn" onclick="onRestoreVersion(\'' + v.id + '\')">' + escHtml(t('versionHistory.restoreBtn')) + '</button>'
+      + '<button class="tbtn" onclick="openVersionDiff(\'' + v.id + '\')">' + escHtml(t('versionHistory.viewChanges')) + '</button>'
       + '</div>';
   }).join('');
 }
 
+let _vhSelectedVersionId = null;
+
+// Abre o DIFF (atual -> versão selecionada) dentro do próprio modal, sem navegar.
+async function openVersionDiff(versionId){
+  const list = document.getElementById('vhList');
+  list.innerHTML = '<div class="vh-empty">' + escHtml(t('versionHistory.diffLoading')) + '</div>';
+  const cur = _currentOpenProject();
+  const payload = await fetchProjectVersionPayload(versionId);
+  if(!payload){ list.innerHTML = '<div class="vh-empty">' + escHtml(t('versionHistory.cantLoad')) + '</div>'; return; }
+  _vhSelectedVersionId = versionId;
+  renderDiffView(computeProjectDiff(cur, payload), versionId);
+}
+
+function backToVersionList(){
+  _vhSelectedVersionId = null;
+  const p = _currentOpenProject();
+  if(p) listProjectVersions(p.id).then(renderVersionList);
+}
+
+function _diffCellRowHtml(c){
+  const cls = c.type === 'added' ? 'df-add' : (c.type === 'removed' ? 'df-del' : 'df-chg');
+  const empt = '<span class="df-empty">' + escHtml(t('versionHistory.emptyValue')) + '</span>';
+  const from = c.from.trim() ? escHtml(c.from) : empt;
+  const to   = c.to.trim() ? escHtml(c.to) : empt;
+  const scope = c.scopeName ? '<span class="df-scope">' + escHtml(c.scopeName) + ' · </span>' : '';
+  return '<div class="df-cell ' + cls + '">'
+    + '<div class="df-cell-hdr">' + scope + '<span class="df-rowid">' + escHtml(c.rowId) + '</span> · <span class="df-lang">' + escHtml(c.lang) + '</span>'
+    + (c.src ? ' <span class="df-src" title="' + escHtml(c.src) + '">— ' + escHtml(c.src.length > 60 ? c.src.slice(0,60) + '…' : c.src) + '</span>' : '') + '</div>'
+    + '<div class="df-cell-body"><span class="df-from">' + from + '</span><span class="df-arrow">→</span><span class="df-to">' + to + '</span></div>'
+    + '</div>';
+}
+
+function renderDiffView(diff, versionId){
+  const list = document.getElementById('vhList');
+  const s = diff.summary;
+  const total = s.added + s.removed + s.changed;
+  const nothing = total === 0 && (!diff.items || !diff.items.length) && !diff.htmlDiff;
+  let html = '<div class="df-top">'
+    + '<button class="tbtn" onclick="backToVersionList()">' + escHtml(t('versionHistory.back')) + '</button>'
+    + (nothing ? '' : '<button class="tbtn tbtn-primary" onclick="onRestoreVersion(\'' + versionId + '\')">' + escHtml(t('versionHistory.restoreThisVersion')) + '</button>')
+    + '</div>';
+  if(nothing){
+    html += '<div class="vh-empty">' + escHtml(t('versionHistory.noChanges')) + '</div>';
+    list.innerHTML = html; return;
+  }
+  const htmlPart = s.htmlLines ? t('versionHistory.summaryHtml', { n: s.htmlLines }) : '';
+  html += '<div class="df-intro">' + escHtml(t('versionHistory.diffIntro')) + '</div>';
+  html += '<div class="df-summary">' + escHtml(t('versionHistory.summaryLine', { changed:s.changed, added:s.added, removed:s.removed, html:htmlPart })) + '</div>';
+  (diff.items || []).forEach(it => {
+    html += '<div class="df-item-note">' + escHtml(t(it.type === 'added' ? 'versionHistory.itemAdded' : 'versionHistory.itemRemoved', { name: it.name })) + '</div>';
+  });
+  const CAP = 200;
+  if(diff.cells.length){
+    html += '<div class="df-sec-title">' + escHtml(t('versionHistory.secTranslations')) + '</div>';
+    diff.cells.slice(0, CAP).forEach(c => { html += _diffCellRowHtml(c); });
+    if(diff.cells.length > CAP) html += '<div class="df-more">' + escHtml(t('versionHistory.moreChanges', { n: diff.cells.length - CAP })) + '</div>';
+  }
+  if(diff.htmlDiff){
+    html += '<div class="df-sec-title">' + escHtml(t('versionHistory.secHtml')) + '</div><div class="df-html">';
+    diff.htmlDiff.filter(l => l.type !== 'ctx').slice(0, CAP).forEach(l => {
+      html += '<div class="df-line df-' + (l.type === 'add' ? 'add' : 'del') + '">' + (l.type === 'add' ? '+ ' : '− ') + escHtml(l.text) + '</div>';
+    });
+    html += '</div>';
+  }
+  list.innerHTML = html;
+}
+
+function setVhBusy(on, msg){
+  const ov = document.getElementById('vhBusyOverlay'); if(!ov) return;
+  if(on){ const lb = document.getElementById('vhBusyLabel'); if(lb) lb.textContent = msg || t('versionHistory.restoring'); ov.style.display = 'flex'; }
+  else ov.style.display = 'none';
+}
+
+// Reflete o estado restaurado no editor SEM reabrir/recarregar (in-place).
+function _refreshEditorAfterRestore(proj){
+  if(!proj) return;
+  if(proj.kind === 'campaign'){
+    if(_campaign && _campaign.id === proj.id){
+      _campaign = proj;
+      if(_campaignItemIndex >= ((_campaign.items || []).length)) _campaignItemIndex = -1;
+      if(typeof renderCampaignTabs === 'function') renderCampaignTabs();
+      if(typeof renderCampaignMain === 'function') renderCampaignMain();
+    }
+  } else if(currentProjectId === proj.id && !_campaign && proj.data && typeof restoreProjectContent === 'function'){
+    restoreProjectContent(proj.data);
+  }
+}
+
 async function onRestoreVersion(versionId){
   if(!confirm(t('versionHistory.restoreConfirm'))) return;
-  const btns = document.querySelectorAll('#vhList .tbtn'); btns.forEach(b => b.disabled = true);
-  const ok = await restoreProjectVersion(versionId);
+  setVhBusy(true, t('versionHistory.restoring')); // estado "Restoring…" até o backend confirmar
+  let ok = false;
+  try{ ok = await restoreProjectVersion(versionId); }
+  catch(e){ ok = false; }
+  setVhBusy(false);
   if(ok){
+    const saved = projGetAll().find(p => p.id === _versionModalProjectId);
+    _refreshEditorAfterRestore(saved);       // in-place, sem reload
     closeVersionHistory();
-    // Reabre o projeto pra refletir o estado restaurado no editor.
-    const id = _versionModalProjectId;
-    if(id && typeof projOpen === 'function' && !_campaign) { try{ await projOpen(id); }catch(e){} }
-    else { alert(t('versionHistory.restored')); }
-  } else {
-    btns.forEach(b => b.disabled = false);
   }
 }
 

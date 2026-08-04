@@ -1,0 +1,34 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Histórico de versões — diff visual na restauração + restore in-place com "Restoring…".
+
+O QUE FOI FEITO
+- Ao clicar "View changes" numa versão, abre um DIFF dentro do próprio modal (sem navegar):
+  comparação do estado ATUAL -> versão selecionada = "o que restaurar faria".
+- Diff ESTRUTURAL:
+  * Traduções célula a célula (linha × idioma), avulso e campanha: added (verde) / removed
+    (vermelho) / changed (âmbar, mostrando antigo -> novo). Reusa parseBrazeCsv.
+  * HTML tageado (avulso): diff por LINHA (reusa _lcsLinePairs), estilo terminal +/-.
+  * Campanha: além das células, avisa itens que seriam adicionados/removidos.
+  * Resumo no topo: "N changed · N added · N removed · HTML: N lines". Cap de 200 linhas + "+N more".
+  * "This version is identical…" quando não há diferença (esconde o Restore).
+- Restore acontece na MESMA tela: botão "Restore this version" no diff -> overlay "Restoring…"
+  (bloqueia até o backend confirmar de verdade: await projSaveAll + _pendingProjectsPush) ->
+  refresh IN-PLACE do editor (restoreProjectContent pro avulso, re-render do main pra campanha),
+  sem reabrir o projeto nem recarregar o app.
+- Data/hora do histórico fixada em en-US (dateStyle medium, timeStyle short).
+- Toda a UI em inglês via strings.js (versionHistory.viewChanges/back/restoreThisVersion/restoring/
+  diffIntro/summaryLine/secTranslations/secHtml/... ).
+
+ARQUIVOS
+- modules/strings.js: novas chaves de diff/restore.
+- index.html: _cellsFromPayload, _lineDiff, computeProjectDiff; openVersionDiff, renderDiffView,
+  _diffCellRowHtml, backToVersionList, setVhBusy, _refreshEditorAfterRestore; onRestoreVersion
+  reescrito (overlay + in-place). Linha da lista virou "View changes". Overlay #vhBusyOverlay no
+  modal + CSS .df-*.
+
+VERIFICAÇÃO (mock, sem tocar produção)
+- Campanha: pt changed, en added, item B added -> summary {added:2,removed:0,changed:1}. OK.
+- Avulso: id1 pt changed, id1 en added, HTML diff isola "Title A"(-)/"Title B"(+). OK.
+- "Sem mudanças": mostra "identical" e esconde o Restore. OK.
+- Load sem erros de console.
