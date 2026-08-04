@@ -742,8 +742,23 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .notif-pager{display:none;align-items:center;justify-content:space-between;padding:12px 18px;border-top:1px solid var(--border);background:var(--s2);flex-shrink:0;}
 .notif-pager.show{display:flex;}
 
-.sync-toast{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;font-size:12.5px;font-weight:500;padding:11px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.3);z-index:9999;max-width:90vw;text-align:center;}
-.sync-toast.show{display:block;animation:fadeIn .2s ease;}
+/* ── Pop-up padrão da plataforma (uiAlert/uiConfirm/uiPrompt/uiNotify): ícone + acento por tipo ── */
+.ui-nicon{display:none;width:44px;height:44px;border-radius:50%;align-items:center;justify-content:center;font-size:24px;font-weight:700;line-height:1;margin:0 0 14px;}
+.ui-pop.has-icon .ui-nicon{display:flex;}
+.ui-pop.t-success .ui-nicon{background:#dcfce7;color:#15803d;}
+.ui-pop.t-error   .ui-nicon{background:#fee2e2;color:#b91c1c;}
+.ui-pop.t-warning .ui-nicon{background:#fef3c7;color:#b45309;}
+.ui-pop.t-info    .ui-nicon{background:#dbeafe;color:#1d4ed8;}
+.ui-pop.t-confirm .ui-nicon{background:#ede9fe;color:#6d28d9;}
+.ui-pop{border-top:4px solid transparent;}
+.ui-pop.t-success{border-top-color:#22c55e;}
+.ui-pop.t-error{border-top-color:#ef4444;}
+.ui-pop.t-warning{border-top-color:#f59e0b;}
+.ui-pop.t-info{border-top-color:#3b82f6;}
+.ui-pop.t-confirm{border-top-color:#8b5cf6;}
+/* contador de "mais N pop-ups na fila" (enfileiramento, um de cada vez) */
+.ui-queue-count{display:none;margin-top:12px;font-size:11.5px;color:var(--muted,#8a8a94);text-align:center;}
+.ui-queue-count.show{display:block;}
 
 /* ═══════════ ROW COMMENTS (CSV editor) ═══════════ */
 /* Célula de tradução com botão de comentário embutido */
@@ -1044,6 +1059,10 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
         <h1 class="dash-title">Dashboard</h1>
         <span id="dashSyncStatus" class="dash-sync"></span>
       </div>
+      <button class="tbtn" onclick="openDeletedItems()" title="Recently deleted — restore a deleted project or folder" style="margin-left:auto;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M3 6l1.5 2M21 6l-1.5 2"/></svg>
+        <span data-i18n="deleted.button">Recently deleted</span>
+      </button>
     </div>
 
     <!-- TAB: PROJECTS -->
@@ -1262,6 +1281,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
           </button>
           <span class="ph-t" id="campaignItemLabel">Item</span>
           <div class="ph-a">
+            <span class="presence-badge" style="display:none;"></span>
             <button class="tbtn" style="border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;" onclick="openCampaignApprovalView()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
               Approve copies
@@ -1278,6 +1298,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
               Edit Tagged HTML
             </button>
+            <button class="tbtn" onclick="openVersionHistory()" data-i18n-title="versionHistory.historyBtnTitle" title="Version history — restore an earlier point or save a backup"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg><span data-i18n="versionHistory.historyBtn">History</span></button><button class="tbtn" onclick="saveManualBackup()" data-i18n-title="versionHistory.saveBackupBtnTitle" title="Save a backup — mark a restore point you can always come back to"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><span data-i18n="versionHistory.saveBackupBtn">Save backup</span></button>
           </div>
         </div>
         <div class="tscroll" style="flex:1;">
@@ -1354,6 +1375,81 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ═══════════ HISTÓRICO DE VERSÕES MODAL ═══════════ -->
+<style>
+  #vhList .vh-item{display:flex;align-items:center;gap:10px;padding:10px 10px;border-bottom:1px solid var(--border);}
+  #vhList .vh-item:last-child{border-bottom:none;}
+  #vhList .vh-item-main{flex:1;min-width:0;}
+  #vhList .vh-item-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  #vhList .vh-time{font-size:12px;font-weight:600;color:var(--text);}
+  #vhList .vh-label{font-size:12px;color:var(--text2);}
+  #vhList .vh-author{font-size:11px;color:var(--text3);margin-top:2px;}
+  #vhList .vh-tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 6px;border-radius:4px;}
+  #vhList .vh-tag-backup{background:#ecfdf5;color:#047857;}
+  #vhList .vh-tag-auto{background:#eef2ff;color:#4338ca;}
+  #vhList .vh-empty{padding:24px 16px;font-size:12px;color:var(--text3);text-align:center;line-height:1.5;}
+  .presence-badge{display:inline-flex;align-items:center;gap:6px;margin-right:2px;}
+  .presence-badge .presence-avs{display:inline-flex;}
+  .presence-badge .presence-av{width:22px;height:22px;border-radius:50%;background:#6d28d9;color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;border:2px solid var(--bg,#fff);margin-left:-6px;}
+  .presence-badge .presence-av:first-child{margin-left:0;}
+  .presence-badge .presence-more{font-size:10px;font-weight:700;color:var(--text3);margin-left:2px;align-self:center;}
+  .presence-badge .presence-lbl{font-size:11px;color:var(--text3);white-space:nowrap;}
+  #vhList .tbtn-primary{background:#6d28d9;color:#fff;border-color:#6d28d9;}
+  #vhList .df-top{display:flex;justify-content:space-between;gap:8px;padding:4px 4px 10px;position:sticky;top:0;background:var(--bg,#fff);}
+  #vhList .df-intro{font-size:11px;color:var(--text3);padding:0 4px 6px;}
+  #vhList .df-summary{font-size:12px;font-weight:600;color:var(--text2);padding:0 4px 10px;}
+  #vhList .df-item-note{font-size:11px;color:var(--text2);padding:3px 6px;background:#f5f3ff;border-radius:5px;margin:0 4px 4px;}
+  #vhList .df-sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:12px 4px 6px;}
+  #vhList .df-cell{border-left:3px solid var(--border);padding:5px 8px;margin:0 4px 4px;border-radius:0 5px 5px 0;background:#fafafa;}
+  #vhList .df-cell.df-add{border-left-color:#10b981;background:#ecfdf5;}
+  #vhList .df-cell.df-del{border-left-color:#ef4444;background:#fef2f2;}
+  #vhList .df-cell.df-chg{border-left-color:#f59e0b;background:#fffbeb;}
+  #vhList .df-cell-hdr{font-size:10px;color:var(--text3);margin-bottom:2px;}
+  #vhList .df-rowid{font-weight:700;color:var(--text2);}
+  #vhList .df-cell-body{font-size:12px;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;}
+  #vhList .df-from{color:#b91c1c;text-decoration:line-through;opacity:.75;}
+  #vhList .df-to{color:#047857;font-weight:600;}
+  #vhList .df-arrow{color:var(--text3);}
+  #vhList .df-empty{font-style:italic;color:var(--text3);text-decoration:none;}
+  #vhList .df-html{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;background:#0d1117;border-radius:6px;padding:8px;margin:0 4px;overflow-x:auto;}
+  #vhList .df-line{white-space:pre;}
+  #vhList .df-line.df-add{color:#4ade80;}
+  #vhList .df-line.df-del{color:#f87171;}
+  #vhList .df-more{font-size:11px;color:var(--text3);text-align:center;padding:8px;}
+</style>
+<div id="versionHistoryModal" class="modal-ov" style="display:none;">
+  <div class="card modal-card" style="width:100%;max-width:560px;max-height:82vh;display:flex;flex-direction:column;position:relative;">
+    <div id="vhBusyOverlay" style="display:none;position:absolute;inset:0;background:rgba(255,255,255,.88);z-index:5;flex-direction:column;align-items:center;justify-content:center;gap:10px;border-radius:inherit;">
+      <div class="move-spinner"></div>
+      <div id="vhBusyLabel" style="font-size:12px;font-weight:600;color:var(--text2);"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border);">
+      <div style="flex:1;">
+        <div style="font-size:14px;font-weight:700;" data-i18n="versionHistory.modalTitle">Version history</div>
+        <div id="vhProjName" style="font-size:11px;color:var(--text3);margin-top:2px;"></div>
+      </div>
+      <button class="tbtn" onclick="saveManualBackup()" data-i18n="versionHistory.saveBackupBtn">Save backup</button>
+      <button class="hm-close" onclick="closeVersionHistory()" style="position:static;">&times;</button>
+    </div>
+    <div id="vhList" style="flex:1;overflow:auto;padding:8px 12px;"></div>
+  </div>
+</div>
+
+<!-- ═══════════ RECENTLY DELETED MODAL ═══════════ -->
+<div id="deletedItemsModal" class="modal-ov" style="display:none;">
+  <div class="card modal-card" style="width:100%;max-width:560px;max-height:82vh;display:flex;flex-direction:column;position:relative;">
+    <div id="delBusyOverlay" style="display:none;position:absolute;inset:0;background:rgba(255,255,255,.88);z-index:5;flex-direction:column;align-items:center;justify-content:center;gap:10px;border-radius:inherit;">
+      <div class="move-spinner"></div>
+      <div id="delBusyLabel" style="font-size:12px;font-weight:600;color:var(--text2);"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border);">
+      <div style="flex:1;font-size:14px;font-weight:700;" data-i18n="deleted.title">Recently deleted</div>
+      <button class="hm-close" onclick="closeDeletedItems()" style="position:static;">&times;</button>
+    </div>
+    <div id="delList" style="flex:1;overflow:auto;padding:8px 12px;"></div>
   </div>
 </div>
 
@@ -1618,8 +1714,9 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 <!-- ═══════════ UI MODAL genérico — substitui alert()/confirm()/prompt() do navegador por um
      pop-up da própria plataforma (uiAlert/uiConfirm/uiPrompt, baseados em Promise). ═══════════ -->
 <div id="uiModal" class="modal-ov" style="display:none;">
-  <div class="card modal-card" style="width:100%;max-width:430px;">
+  <div id="uiModalCard" class="card modal-card ui-pop" style="width:100%;max-width:430px;">
     <div class="ci" style="padding:26px;">
+      <div id="uiModalIcon" class="ui-nicon" aria-hidden="true"></div>
       <h1 id="uiModalTitle" style="margin:0 0 8px;font-size:18px;"></h1>
       <p class="sub" id="uiModalMsg" style="margin-bottom:16px;white-space:pre-wrap;"></p>
       <div class="field" id="uiModalField" style="margin-bottom:0;display:none;">
@@ -1629,13 +1726,13 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
         <button class="btn-back" id="uiModalCancel" style="flex:1;" onclick="uiModalResolve(false)">Cancel</button>
         <button class="btn-next" id="uiModalOk" style="flex:1;margin-top:0;" onclick="uiModalResolve(true)">OK</button>
       </div>
+      <div id="uiModalQueueCount" class="ui-queue-count"></div>
     </div>
   </div>
 </div>
 
 <!-- ═══════════ LOCK TAKEOVER WARNING (someone else grabbed the lock after 3min) ═══════════ -->
 <!-- ═══════════ SYNC WARNING TOAST ═══════════ -->
-<div id="syncWarningToast" class="sync-toast"></div>
 
 <div id="lockTakeoverModal" class="modal-ov" style="display:none;">
   <div class="card modal-card" style="width:100%;max-width:420px;">
@@ -1898,6 +1995,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
         <div class="ph">
           <span class="ph-t">Translations CSV</span>
           <div class="ph-a" id="edToolbar">
+            <span class="presence-badge" style="display:none;"></span>
             <button class="tbtn html" id="btnDlHtml" onclick="openHtmlModal()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
               Copy Tagged HTML
@@ -1906,6 +2004,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
               Edit Tagged HTML
             </button>
+            <button class="tbtn" onclick="openVersionHistory()" data-i18n-title="versionHistory.historyBtnTitle" title="Version history — restore an earlier point or save a backup"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg><span data-i18n="versionHistory.historyBtn">History</span></button><button class="tbtn" onclick="saveManualBackup()" data-i18n-title="versionHistory.saveBackupBtnTitle" title="Save a backup — mark a restore point you can always come back to"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><span data-i18n="versionHistory.saveBackupBtn">Save backup</span></button>
             <div class="dl-dropdown-wrap">
               <button class="tbtn csv" onclick="event.stopPropagation();toggleDlDropdown()">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
@@ -2290,7 +2389,7 @@ async function enterApp(user) {
   // NÃO revelar appBody aqui — a primeira .page.active é a page1 (New Project),
   // e ela pisca durante os awaits abaixo. O goToDashboard cuida da UI correta.
   renderProfileAvatar(user);
-  if(ghConfigured()) { setSyncDot('on'); sbStartRealtime(); } else { setSyncDot('off'); }
+  if(ghConfigured()) { setSyncDot('on'); sbStartRealtime(); sbStartPresence(); } else { setSyncDot('off'); }
   await sbPullUsers();          // mantém a lista de logins fresca e semeia a DB no primeiro uso
   await ghPullNotifications();
   renderNotifBell();
@@ -2427,7 +2526,12 @@ async function checkMyLockTakeover() {
   const me = authCurrentUser();
   if(!p || !me || !p.lockedBy) return;
 
-  if(p.lockedBy.toLowerCase() !== me.email.toLowerCase()) {
+  if(!_sameUser(p.lockedBy, me.email)) {
+    // MESMA reconciliação por presença ao vivo do projIsLocked/pill: só é takeover REAL se o novo
+    // dono da trava está de fato presente neste projeto agora. Sem isso, uma trava-fantasma (alguém
+    // que já saiu, cache velho, ou um lockedBy trazido por um merge) disparava "X is editing this
+    // file now" mesmo sem ninguém lá — era o "você editando" se confundindo com outra pessoa.
+    if(_presenceReady && !_isPresentInProject(p.lockedBy, p.id)) return;
     _lockTakeoverShown = true;
     document.getElementById('lockTakeoverName').textContent = authorName(p.lockedBy);
     document.getElementById('lockTakeoverModal').style.display = 'flex';
@@ -2496,14 +2600,18 @@ function setSyncDot(state) {
 }
 
 
-let _syncToastTimer = null;
+// Padronizado: agora sai no MESMO pop-up central da plataforma (antes era um toast discreto no
+// rodapé). Aviso de rede = tipo 'warning' (exige clique). dedupeKey evita empilhar N cópias
+// quando a sincronização falha repetidamente.
 function showSyncWarning(msg) {
-  const toast = document.getElementById('syncWarningToast');
-  if(!toast) return;
-  toast.textContent = msg || '⚠ Could not sync with GitHub — your changes are saved locally only.';
-  toast.classList.add('show');
-  clearTimeout(_syncToastTimer);
-  _syncToastTimer = setTimeout(() => toast.classList.remove('show'), 5000);
+  uiNotify(msg || 'Could not sync with the server — your changes are saved locally only.',
+           { type: 'warning', dedupeKey: 'sync-warning' });
+}
+
+// Aviso de que o save trouxe/mesclou mudanças de outra pessoa (o merge deixou de ser silencioso).
+// Informativo/positivo = tipo 'success' (fecha sozinho), no mesmo pop-up padrão.
+function showMergeNotice(msg) {
+  uiNotify(msg || t('sync.mergeNotice'), { type: 'success', dedupeKey: 'merge-notice' });
 }
 
 // Tombstones — persistidos no Supabase (tabela deleted_project_ids), com uma cópia em
@@ -2583,6 +2691,24 @@ async function markProjectDeleted(id) {
   }
 }
 
+// Remove o tombstone de um projeto (local + remoto) — usado ao RESTAURAR um projeto/pasta
+// deletado. Sem isso, mergeProjectsForSave filtraria o restaurado (isProjectRecentlyDeleted) e
+// o push re-emitiria o DELETE, apagando de novo o que acabou de ser recuperado.
+async function unmarkProjectDeleted(id) {
+  delete _deletedProjectIdsMap[id];
+  _issuedProjectDeletes.delete(id);
+  _saveDeletedProjectIdsLocal();
+  _saveIssuedProjectDeletesLocal();
+  const sb = sbClient();
+  if(!sb) return;
+  try {
+    const { error } = await withTimeout(sb.from('deleted_project_ids').delete().eq('id', id), 8000, 'unmark tombstone');
+    if(error) throw error;
+  } catch(e) {
+    console.warn('Supabase sync (unmark tombstone) error:', e);
+  }
+}
+
 // Busca os tombstones de QUALQUER dispositivo/navegador que já tenha deletado algo,
 // mesclando com os locais (a leitura remota é a fonte da verdade quando disponível).
 async function pullDeletedProjectIds() {
@@ -2618,6 +2744,225 @@ function isProjectRecentlyDeleted(id) {
 // que acabou de ser salva (só reaparecendo se a pessoa editasse de novo).
 let _pendingProjectsPush = null;
 
+/* ═══════════════════════ CAS / OPTIMISTIC LOCKING (coluna projects.rev) ═══════════════════════
+   Cada linha tem um rev (int). Todo save de uma linha é um UPDATE ... WHERE rev = <esperado> —
+   se outra pessoa gravou entre a nossa leitura e a nossa escrita, o rev já não bate, o UPDATE
+   afeta 0 linhas (o WHERE é atômico no Postgres) e a gente RE-LÊ o remoto, RE-MESCLA e tenta de
+   novo. Fecha a janela em que o upsert em massa antigo podia sobrescrever uma escrita concorrente
+   que esta aba ainda não tinha visto. Degrada gracioso: se a coluna rev ainda não existir (42703),
+   _casDisabled liga e volta pro upsert em massa antigo.
+
+   Detecção de "mudou": comparação CANÔNICA (chaves ordenadas) — o jsonb do Postgres reordena as
+   chaves, então comparar JSON.stringify cru marcaria tudo como mudado e geraria ping-pong de
+   rewrites entre abas. _canonJson normaliza a ordem, então só o que MUDOU DE VERDADE é reescrito. */
+let _casDisabled = false;
+const _projectRev = {};          // id -> último rev conhecido do banco
+const _syncedPayloadJson = {};   // id -> _canonJson do que já está confirmado no banco (baseline)
+const _conflictMergedIds = new Set(); // Fase 4: ids que tiveram merge concorrente e precisam avisar
+
+function _canonJson(v){
+  if(v === null || typeof v !== 'object') return JSON.stringify(v);
+  if(Array.isArray(v)) return '[' + v.map(_canonJson).join(',') + ']';
+  const keys = Object.keys(v).sort();
+  return '{' + keys.map(k => JSON.stringify(k) + ':' + _canonJson(v[k])).join(',') + '}';
+}
+
+// Canon do CONTEÚDO real do projeto, IGNORANDO metadados voláteis que a própria pessoa mexe como
+// efeito colateral (trava de edição e presença de aprovação). Sem isso, liberar a trava ao sair
+// (lockedBy/lockedAt) ou o vai-e-vem de approvingUsers disparava o aviso "a teammate was editing"
+// num conflito de CAS que era só churn de metadado — inclusive você sozinho, numa aba só.
+function _contentCanon(p){
+  if(!p || typeof p !== 'object') return _canonJson(p);
+  const clone = Object.assign({}, p);
+  delete clone.lockedBy; delete clone.lockedAt; delete clone.lockSessionId;
+  delete clone.approvingUsers;
+  return _canonJson(clone);
+}
+
+function _isMissingRevColumn(e){
+  const m = ((e && (e.code || e.message)) || '') + '';
+  return m.includes('42703') || /column .*\brev\b.* does not exist/i.test(m);
+}
+function _isDupKey(e){
+  const m = ((e && (e.code || e.message)) || '') + '';
+  return m.includes('23505') || /duplicate key/i.test(m);
+}
+
+// Mescla local + remoto usando a MESMA lógica por-par do save normal (o corpo do map de
+// mergeProjectsForSave), mas DIRETO entre os dois — não via projGetAll(), que mesclaria cada
+// um contra o localStorage e ignoraria o outro. Não perde conteúdo de nenhum lado: corpo do
+// projeto = quem tem updatedAt maior; itens de campanha = união por id; CSV avulso = célula a
+// célula (não-vazia vence). Igual ao loop de mergeProjectsForSave, com local no papel de "p"
+// (o que está salvando) e remote no papel de "other".
+// Campos do CORPO que NÃO entram no merge 3-way por-campo (têm tratamento próprio: itens/tombstones
+// de campanha e data.csv via mergeCampaignItems/mergeLooseData; metadados voláteis de trava/presença;
+// updatedAt/rev que são carimbos de controle).
+const _BODY_MERGE_SKIP = new Set(['items','deletedItemIds','data','clearedCells','lockedBy','lockedAt','lockSessionId','approvingUsers','updatedAt','rev']);
+
+// Reconciliação 3-WAY POR CAMPO dos escalares do corpo (name, sharedWith, approvers, folder, ...).
+// OBS: parkedLangs/pendingRowIds/langs NÃO são campos de corpo — vivem em project.data e são
+// fundidos no mergeLooseData (data está em _BODY_MERGE_SKIP). Sem isso, base=lado mais novo levava TODOS os campos, e uma
+// edição independente de um campo no lado mais velho se perdia. Com o ancestral (o último payload
+// que esta aba sincronizou, _syncedPayloadJson), aplicamos só as mudanças que exatamente UM lado
+// fez vs o ancestral — respeitando também remoções. Sem ancestral confiável → devolve base (LWW,
+// comportamento atual).
+// Campos de LISTA que são conjuntos de e-mails: quando os dois lados mudam, não pode ser LWW da
+// lista inteira (perderia a concessão de um dos admins). Fusão 3-way POR ELEMENTO: um e-mail entra
+// se foi ADICIONADO por qualquer lado; e só sai se estava no ancestral e foi REMOVIDO (por qualquer
+// lado). Assim dois admins adicionando approvers diferentes coexistem, e remoções continuam valendo.
+const _BODY_MERGE_SET_LIST = new Set(['approvers','sharedWith']);
+function _mergeSetList(anc, a, b){
+  if(!Array.isArray(a) || !Array.isArray(b)) return undefined; // não-lista → deixa o chamador decidir
+  const A = new Set(anc || []), X = new Set(a), Y = new Set(b);
+  const seen = new Set(), out = [];
+  [...(anc || []), ...a, ...b].forEach(e => {
+    if(seen.has(e)) return; seen.add(e);
+    const keep = A.has(e) ? (X.has(e) && Y.has(e)) : (X.has(e) || Y.has(e));
+    if(keep) out.push(e);
+  });
+  return out;
+}
+// Merge 3-way POR CHAVE de um objeto-mapa (ex: data.parkedLangs = {lang: traduções guardadas}).
+// Cada chave: se exatamente um lado mudou vs o ancestral, vale a mudança dele (inclui remoção);
+// se os dois mudaram (ou nenhum), prefere quem tem valor (determinístico, lado `a`). Assim dois
+// usuários "estacionando" idiomas diferentes concorrentemente não se sobrescrevem.
+function _merge3wayObj(anc, a, b){
+  anc = anc || {}; a = a || {}; b = b || {};
+  const out = {}, keys = new Set([...Object.keys(anc), ...Object.keys(a), ...Object.keys(b)]);
+  keys.forEach(k => {
+    const inA = k in a, inB = k in b;
+    const aChanged = _canonJson(a[k]) !== _canonJson(anc[k]);
+    const bChanged = _canonJson(b[k]) !== _canonJson(anc[k]);
+    if(aChanged && !bChanged){ if(inA) out[k] = a[k]; }        // só A mexeu (removeu → some)
+    else if(bChanged && !aChanged){ if(inB) out[k] = b[k]; }   // só B mexeu
+    else { if(inA) out[k] = a[k]; else if(inB) out[k] = b[k]; } // ambos/nenhum → quem tiver valor
+  });
+  return out;
+}
+function _reconcileBodyScalars(local, remote, base, ancestor){
+  if(!ancestor) return base;
+  const out = Object.assign({}, base);
+  const keys = new Set([...Object.keys(local || {}), ...Object.keys(remote || {})]);
+  keys.forEach(k => {
+    if(_BODY_MERGE_SKIP.has(k)) return;
+    const aC = _canonJson(ancestor[k]), lC = _canonJson(local[k]), rC = _canonJson(remote[k]);
+    const localChanged = lC !== aC, remoteChanged = rC !== aC;
+    if(localChanged && !remoteChanged){ if(!(k in local)) delete out[k]; else out[k] = local[k]; }
+    else if(remoteChanged && !localChanged){ if(!(k in remote)) delete out[k]; else out[k] = remote[k]; }
+    else if(localChanged && remoteChanged && _BODY_MERGE_SET_LIST.has(k)){
+      // os dois mudaram uma lista de e-mails → une por elemento (add ganha, remoção respeitada)
+      const merged = _mergeSetList(ancestor[k], local[k], remote[k]);
+      if(merged !== undefined) out[k] = merged; // não-lista cai no default (mantém base)
+    }
+    // os dois mudaram (não-lista) ou nenhum → mantém base (lado de updatedAt mais novo).
+  });
+  return out;
+}
+
+function mergeTwoProjects(local, remote){
+  if(!remote) return local;
+  if(!local) return remote;
+  try{
+    const mine = local.updatedAt || 0, theirs = remote.updatedAt || 0;
+    const base = theirs > mine ? remote : local;
+    let ancestor = null;
+    try{ if(local.id && _syncedPayloadJson[local.id]) ancestor = JSON.parse(_syncedPayloadJson[local.id]); }catch(e){}
+    let result;
+    if(base.kind === 'campaign' || local.kind === 'campaign' || remote.kind === 'campaign'){
+      result = { ...base, items: mergeCampaignItems(local, remote), deletedItemIds: unionDeletedItemIds(local, remote) };
+    } else if(local.data && remote.data && local.data.csv && remote.data.csv){
+      const md = mergeLooseData(local, remote, ancestor && ancestor.data);
+      if(md){ result = { ...base, data: md }; }
+      else {
+        // Fallback (guarda de perda reprovou): CSV fica com o lado mais novo, MAS aprovação nunca
+        // por LWW — funde comentários/aprovado-por-idioma/tombstones dos dois lados mesmo aqui.
+        const other = base === local ? remote : local;
+        result = { ...base, data: { ...base.data, ...mergeApprovalIntoFields(base.data, other.data) } };
+      }
+    } else {
+      result = base;
+    }
+    return _reconcileBodyScalars(local, remote, result, ancestor);
+  }catch(e){ return local; }
+}
+
+// Atualiza o cache local com o que foi REALMENTE gravado no banco (o merge pode ter trazido
+// conteúdo do remoto), pra local e banco ficarem iguais e o próximo push não reescrever à toa.
+function _updateLocalProjectPayload(merged){
+  try{
+    const all = projGetAll();
+    const i = all.findIndex(x => x && x.id === merged.id);
+    if(i >= 0){ all[i] = merged; projSaveAllLocal(all); }
+  }catch(e){}
+}
+
+// Gravação SEM compare-and-swap (usada quando a coluna rev não existe / CAS desligado). ANTES era
+// um upsert cego = last-write-wins de documento inteiro (o clobber pré-CAS). Agora lê o remoto
+// atual e MESCLA (mergeTwoProjects, mesma lógica célula-a-célula do caminho normal) antes de gravar:
+// perde só a atomicidade do CAS (janela de corrida pequena entre ler e gravar), NÃO o dado.
+async function _plainUpsertProject(sb, p){
+  let merged = p;
+  try{
+    const sel = await withTimeout(sb.from('projects').select('payload').eq('id', p.id).maybeSingle(), 8000, 'plain read '+p.id);
+    if(!sel.error && sel.data && sel.data.payload) merged = mergeTwoProjects(p, sel.data.payload);
+  }catch(e){ /* sem remoto legível: grava o nosso, ainda melhor que falhar o save */ }
+  const { error } = await withTimeout(sb.from('projects').upsert([{ id: merged.id, payload: merged, updated_at: new Date().toISOString() }]), 8000, 'upsert '+merged.id);
+  if(error) throw error;
+  _syncedPayloadJson[merged.id] = _canonJson(merged);
+  _updateLocalProjectPayload(merged);
+}
+
+// Grava UMA linha com compare-and-swap no rev. Re-tenta em conflito (re-lê + re-mescla).
+async function casWriteProject(sb, p, tries, origContentCanon){
+  tries = tries || 0;
+  // Conteúdo real de origem desta gravação (fixado na 1ª chamada e preservado na recursão): serve
+  // pra decidir, no fim, se o merge trouxe conteúdo ALHEIO de fato ou se o "conflito" foi só churn
+  // de trava/presença nossa. Ignora metadados voláteis (ver _contentCanon).
+  if(origContentCanon == null) origContentCanon = _contentCanon(p);
+  if(_casDisabled) return _plainUpsertProject(sb, p);
+  const sel = await withTimeout(sb.from('projects').select('payload,rev').eq('id', p.id).maybeSingle(), 8000, 'cas read '+p.id);
+  if(sel.error){
+    if(_isMissingRevColumn(sel.error)){ _casDisabled = true; return _plainUpsertProject(sb, p); }
+    throw sel.error;
+  }
+  const nowIso = new Date().toISOString();
+  const cur = sel.data;
+  if(!cur){
+    const ins = await withTimeout(sb.from('projects').insert({ id: p.id, payload: p, rev: 0, updated_at: nowIso }), 8000, 'cas insert '+p.id);
+    if(ins.error){
+      if(_isMissingRevColumn(ins.error)){ _casDisabled = true; return _plainUpsertProject(sb, p); }
+      if(_isDupKey(ins.error)) return casWriteProject(sb, p, tries+1, origContentCanon); // corrida: já existe → vira update
+      throw ins.error;
+    }
+    _projectRev[p.id] = 0; _syncedPayloadJson[p.id] = _canonJson(p);
+    return;
+  }
+  const expected = cur.rev || 0;
+  const merged = mergeTwoProjects(p, cur.payload);
+  const upd = await withTimeout(
+    sb.from('projects').update({ payload: merged, rev: expected + 1, updated_at: nowIso }).eq('id', p.id).eq('rev', expected).select('rev'),
+    8000, 'cas update '+p.id);
+  if(upd.error){
+    if(_isMissingRevColumn(upd.error)){ _casDisabled = true; return _plainUpsertProject(sb, p); }
+    throw upd.error;
+  }
+  if(!upd.data || !upd.data.length){
+    // CONFLITO: o rev mudou entre o read e o write. Re-tenta com o merge atual (já inclui as
+    // nossas mudanças); o próximo read pega o remoto mais novo e mescla de novo. NÃO marca aqui:
+    // um conflito de rev sozinho não significa edição alheia (pode ser a própria pessoa gravando
+    // trava/presença em paralelo). Quem decide é a comparação de CONTEÚDO no commit bem-sucedido.
+    if(tries >= 5) throw new Error('CAS: conflitos demais em '+p.id);
+    return casWriteProject(sb, merged, tries + 1, origContentCanon);
+  }
+  // Só avisa "um colega estava editando" se o merge de fato trouxe conteúdo REAL diferente do que
+  // esta gravação saiu pra escrever — não por causa de churn de trava/presença nossa.
+  if(_contentCanon(merged) !== origContentCanon) _conflictMergedIds.add(p.id);
+  const newRev = (upd.data[0] && upd.data[0].rev != null) ? upd.data[0].rev : expected + 1;
+  _projectRev[p.id] = newRev;
+  _syncedPayloadJson[p.id] = _canonJson(merged);
+  _updateLocalProjectPayload(merged);
+}
+
 async function ghMergeAndPushProjects(localProjects) {
   projSaveAllLocal(localProjects);
   const sb = sbClient();
@@ -2632,10 +2977,24 @@ async function ghMergeAndPushProjects(localProjects) {
       // isso, um projeto deletado por outra pessoa podia ser upsertado de volta no
       // banco compartilhado só porque ESTA aba ainda tinha ele no cache local.
       await withTimeout(pullDeletedProjectIds(), 8000, 'pullDeletedProjectIds');
-      const rows = localProjects.filter(p => !isProjectRecentlyDeleted(p.id)).map(p => ({ id: p.id, payload: p }));
-      if(rows.length) {
-        const { error } = await withTimeout(sb.from('projects').upsert(rows), 8000, 'upsert projects');
-        if(error) throw error;
+      // CRÍTICO: grava updated_at EXPLICITAMENTE. A coluna default now() só se aplica no INSERT —
+      // num UPDATE (upsert de id existente) ela NÃO reavança sozinha, e não há trigger no banco.
+      // Sem isso, updated_at ficava CONGELADO na criação, e o pull incremental (.gt('updated_at'))
+      // nunca trazia as edições dos outros → compartilhar não propagava, ninguém via o CSV do outro,
+      // e o merge local rodava contra cache velho, permitindo sobrescrita. (Bug de produção real.)
+      const writable = localProjects.filter(p => !isProjectRecentlyDeleted(p.id));
+      if(_casDisabled){
+        // Fallback (coluna rev ausente): NÃO sobrescreve mais em massa às cegas — cada linha que
+        // MUDOU de verdade passa por _plainUpsertProject, que lê o remoto e mescla antes de gravar.
+        // Assim o modo degradado deixa de ser um clobber (perde só atomicidade, não dado).
+        const changed = writable.filter(p => _canonJson(p) !== _syncedPayloadJson[p.id]);
+        for(const p of changed){ await _plainUpsertProject(sb, p); }
+      } else {
+        // CAS: só grava as linhas que MUDARAM de verdade (comparação canônica vs baseline),
+        // cada uma com compare-and-swap no rev. Se a coluna rev não existir, casWriteProject
+        // liga _casDisabled e cai no upsert simples — as demais deste laço também.
+        const changed = writable.filter(p => _canonJson(p) !== _syncedPayloadJson[p.id]);
+        for(const p of changed){ await casWriteProject(sb, p); }
       }
       // Só manda o DELETE pra quem esta aba ainda não mandou — sem isso, cada save
       // reprocessava TODO o histórico de tombstones (até 90 dias, de qualquer projeto
@@ -2648,6 +3007,12 @@ async function ghMergeAndPushProjects(localProjects) {
       }
       _saveIssuedProjectDeletesLocal();
       setSyncDot('saved'); // banco confirmou → "Saved" (persiste até o próximo save virar "Saving…")
+      // Auto-snapshot do projeto EM EDIÇÃO (coalescido) — histórico de versões. Só o projeto
+      // aberto, pra não gerar volume de snapshots de projetos que só passaram no merge.
+      try{ const cur = currentProjectId && (localProjects||[]).find(p => p.id === currentProjectId); if(cur) maybeAutoSnapshot(cur); }catch(e){}
+      // Fase 4: se o projeto ABERTO teve merge concorrente neste push, avisa (não-bloqueante) que
+      // trouxemos mudanças de outra pessoa — o merge deixou de ser silencioso.
+      try{ if(currentProjectId && _conflictMergedIds.has(currentProjectId)){ showMergeNotice(); } _conflictMergedIds.clear(); }catch(e){}
     } catch(e) {
       console.warn('Supabase sync (push projects) error:', e);
       setSyncDot('error');
@@ -2691,11 +3056,12 @@ async function ghPullProjects() {
     // pra todo mundo. mergeProjectsForSave() já preserva localmente qualquer projeto que
     // não vier nesta resposta (ver o loop final lá), então um pull parcial funciona
     // corretamente — não precisa da tabela inteira pra saber "o resto continua igual".
-    let query = sb.from('projects').select('id,payload');
+    let query = sb.from('projects').select('id,payload,updated_at');
     if(_lastProjectsPullAt) query = query.gt('updated_at', _lastProjectsPullAt);
     const { data, error } = await withTimeout(query, 8000, 'select projects');
     if(error) throw error;
-    const projects = (data || []).map(r => r.payload).filter(Boolean);
+    const dataRows = data || [];
+    const projects = dataRows.map(r => r.payload).filter(Boolean);
     // Faz o MESMO merge por projeto (updatedAt) que projSaveAll usa — sem isso, um pull
     // disparado pelo Realtime (que acontece até pra mudanças feitas pela própria aba) podia
     // buscar uma leitura do servidor um instante atrasada em relação a um autosave local
@@ -2703,7 +3069,24 @@ async function ghPullProjects() {
     // acima (que só cobre o push ainda em voo, não a defasagem de leitura logo depois).
     const merged = mergeProjectsForSave(projects);
     localStorage.setItem(PROJ_KEY, JSON.stringify(merged));
-    _lastProjectsPullAt = pullStartedAt;
+    // Baseline do CAS: registra o que o banco tem AGORA pra cada linha recebida, pra o próximo
+    // push só reescrever o que mudou de verdade. Canônico (chaves ordenadas) porque o jsonb
+    // reordena as chaves; sem isso tudo pareceria "mudado" e viraria ping-pong entre abas.
+    for(const r of dataRows){ if(r && r.payload && r.id != null) _syncedPayloadJson[r.id] = _canonJson(r.payload); }
+    // Cursor = MAIOR updated_at REALMENTE recebido (mesmo domínio da coluna), menos uma margem
+    // de segurança — em vez do relógio LOCAL desta aba (pullStartedAt), que não é comparável ao
+    // updated_at que outros clientes gravam. A margem re-busca a última janela de mudanças (barato,
+    // o merge dedup) pra tolerar relógios levemente dessincronizados entre navegadores. Se nada
+    // veio, mantém o cursor (não recua). Primeiro pull (cursor null) continua completo.
+    const SKEW_MARGIN_MS = 5 * 60 * 1000;
+    if(dataRows.length){
+      let maxUpd = _lastProjectsPullAt || '';
+      for(const r of dataRows){ if(r.updated_at && r.updated_at > maxUpd) maxUpd = r.updated_at; }
+      const t = maxUpd ? new Date(maxUpd).getTime() : NaN;
+      if(!isNaN(t)) _lastProjectsPullAt = new Date(t - SKEW_MARGIN_MS).toISOString();
+    } else if(!_lastProjectsPullAt){
+      _lastProjectsPullAt = pullStartedAt; // banco vazio na 1ª vez — evita re-full toda hora
+    }
     setSyncDot('on');
     return true;
   } catch(e) {
@@ -2724,6 +3107,125 @@ function sbStartRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => sbOnNotifsChanged())
     .on('postgres_changes', { event: '*', schema: 'public', table: 'users' },         () => sbOnUsersChanged())
     .subscribe();
+}
+
+/* ═══════════════════════ PRESENÇA AO VIVO (Supabase Realtime Presence) ═══════════════════════
+   Mostra, em tempo real, quem MAIS está no mesmo projeto agora. 100% EFÊMERO — nada é gravado no
+   banco (não gera egress de payload, e some sozinho quando a pessoa fecha a aba/cai a conexão, sem
+   a "presença fantasma" que a lista approvingUsers no payload sofre). Canal próprio, separado do de
+   postgres_changes. Complementa a trava de edição (que continua sendo o gate exclusivo). */
+let _presenceChannel = null;
+let _presenceState = {};          // projectId -> [{email,name,at}]
+let _presenceReady = false;       // true depois do 1º sync do canal — só aí dá pra confiar em "quem está presente"
+let _myPresenceProjectId = null;  // em qual projeto ESTOU agora (null = fora de editor)
+
+function sbStartPresence(){
+  const sb = sbClient();
+  if(!sb || _presenceChannel) return;
+  const me = authCurrentUser();
+  if(!me) return;
+  _presenceChannel = sb.channel('mlt-presence-v1', { config: { presence: { key: me.email.toLowerCase() } } });
+  _presenceChannel
+    .on('presence', { event: 'sync' },  () => _recomputePresence())
+    .on('presence', { event: 'join' },  () => _recomputePresence())
+    .on('presence', { event: 'leave' }, () => _recomputePresence())
+    .subscribe(async (status) => { if(status === 'SUBSCRIBED') await _presenceSendTrack(); });
+}
+
+async function _presenceSendTrack(){
+  if(!_presenceChannel) return;
+  const me = authCurrentUser();
+  if(!me) return;
+  try{
+    await _presenceChannel.track({
+      email: me.email,
+      name: (typeof authorName === 'function' ? authorName(me.email) : me.email),
+      projectId: _myPresenceProjectId,
+      at: Date.now()
+    });
+  }catch(e){}
+}
+
+function _recomputePresence(){
+  const map = {};
+  try{
+    const state = _presenceChannel ? _presenceChannel.presenceState() : {};
+    Object.keys(state).forEach(k => {
+      (state[k] || []).forEach(m => {
+        if(!m || !m.projectId) return;
+        (map[m.projectId] = map[m.projectId] || []).push({ email: m.email, name: m.name, at: m.at });
+      });
+    });
+  }catch(e){}
+  _presenceState = map;
+  _presenceReady = true; // já recebemos um estado real do canal — dá pra confiar em "quem está presente"
+  renderPresenceUI();
+  // A trava de edição ("X is editing") no Dashboard passa a confiar na presença ao vivo (ver
+  // projIsLocked): quando alguém sai/cai, o pill precisa sumir mesmo sem um novo pull. Re-render
+  // debounced do Dashboard quando ele está visível.
+  _refreshDashboardForPresence();
+}
+
+let _presenceDashTimer = null;
+function _refreshDashboardForPresence(){
+  const dash = document.getElementById('dashboardScreen');
+  if(!dash || dash.style.display === 'none') return;
+  clearTimeout(_presenceDashTimer);
+  _presenceDashTimer = setTimeout(() => {
+    const d = document.getElementById('dashboardScreen');
+    if(d && d.style.display !== 'none') renderDashboard();
+  }, 500);
+}
+
+// Alguém (por e-mail) está presente AO VIVO neste projeto agora? Usado pra descartar trava fantasma.
+function _isPresentInProject(email, projectId){
+  const e = (email || '').toLowerCase();
+  if(!e || !projectId) return false;
+  return (_presenceState[projectId] || []).some(u => (u.email || '').toLowerCase() === e);
+}
+
+// Declara em qual projeto estou agora (null = saí do editor). Efêmero.
+function presenceSetProject(projectId){
+  _myPresenceProjectId = projectId || null;
+  renderPresenceUI(); // atualiza o badge pro projeto novo já, sem esperar o próximo sync
+  if(!_presenceChannel){ sbStartPresence(); return; }
+  _presenceSendTrack();
+}
+
+// Outras pessoas (não eu) presentes no projeto, deduplicadas por e-mail (mesma pessoa em 2 abas conta 1).
+function presenceFor(projectId){
+  const me = authCurrentUser();
+  const mine = me ? (me.email || '').toLowerCase() : '';
+  const seen = new Set(); const out = [];
+  (_presenceState[projectId] || []).forEach(u => {
+    const e = (u.email || '').toLowerCase();
+    if(!e || e === mine || seen.has(e)) return;
+    seen.add(e); out.push(u);
+  });
+  return out;
+}
+
+function _presenceBadgeHtml(others){
+  const avatars = others.slice(0,5).map(u => {
+    const nm = (u.name || u.email || '?') + '';
+    const init = (nm.trim()[0] || '?').toUpperCase();
+    return `<span class="presence-av" title="${escHtml(t('presence.hereNowTitle', { name: nm }))}">${escHtml(init)}</span>`;
+  }).join('');
+  const extra = others.length > 5 ? `<span class="presence-more">+${others.length-5}</span>` : '';
+  const label = others.length === 1
+    ? escHtml(t('presence.oneHere', { name: others[0].name || others[0].email }))
+    : escHtml(t('presence.manyHere', { n: others.length }));
+  return `<span class="presence-avs">${avatars}${extra}</span><span class="presence-lbl">${label}</span>`;
+}
+
+function renderPresenceUI(){
+  const pid = currentProjectId;
+  const others = pid ? presenceFor(pid) : [];
+  const html = others.length ? _presenceBadgeHtml(others) : '';
+  document.querySelectorAll('.presence-badge').forEach(el => {
+    el.innerHTML = html;
+    el.style.display = others.length ? '' : 'none';
+  });
 }
 
 async function sbOnUsersChanged() {
@@ -2935,7 +3437,65 @@ async function pullDeletedUserEmails() {
   } catch(e) { console.warn('Supabase sync (pull tombstones user) error — rode a migration de deleted_user_emails:', e); }
 }
 function isUserRecentlyDeleted(email) {
-  return Object.prototype.hasOwnProperty.call(_deletedUserEmailsMap, (email||'').toLowerCase());
+  email = (email||'').toLowerCase();
+  const ts = _deletedUserEmailsMap[email];
+  if(ts == null) return false;
+  // TTL: idem load/pull (que já podam por DELETED_PROJ_TTL_MS). Sem isto o tombstone era ETERNO na
+  // sessão e re-convites de e-mails removidos há tempos eram filtrados do push pra sempre.
+  if(Date.now() - ts >= DELETED_PROJ_TTL_MS) { delete _deletedUserEmailsMap[email]; _saveDeletedUserEmailsLocal(); return false; }
+  return true;
+}
+// Convite explícito supera uma exclusão anterior: limpa o tombstone local E a linha remota, senão
+// sbPushUsers filtra o e-mail re-convidado e o membro nunca chega ao banco (falha silenciosa).
+async function clearUserTombstone(email) {
+  email = (email||'').toLowerCase();
+  if(_deletedUserEmailsMap[email] != null) { delete _deletedUserEmailsMap[email]; _saveDeletedUserEmailsLocal(); }
+  const sb = sbClient();
+  if(!sb) return;
+  try {
+    const { error } = await sb.from('deleted_user_emails').delete().eq('email', email);
+    if(error) throw error;
+  } catch(e) { console.warn('clearUserTombstone (delete remote row) error:', e); }
+}
+
+// Baseline por e-mail: canônico do que esta aba SABE estar no banco. Serve pra dois fins no push
+// de usuários: (1) não reescrever linhas que não mudaram; (2) merge 3-way por campo (git-like),
+// pra dois admins editando campos/usuários diferentes não se sobrescreverem.
+const _syncedUserJson = {};
+
+function _userKey(u){ return ((u && u.email) || '').toLowerCase(); }
+
+// Atualiza a cópia local de UM usuário (o merge pode ter trazido um campo que outro admin mudou).
+function _updateLocalUserPayload(u){
+  try{
+    const key = _userKey(u);
+    const arr = authGetUsers();
+    const i = arr.findIndex(x => _userKey(x) === key);
+    if(i >= 0){ arr[i] = u; localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(arr)); }
+  }catch(e){}
+}
+
+// Merge 3-way de UM registro de usuário: aplica SOMENTE os campos que EU mudei (mine vs base) por
+// cima do remoto atual. Campos que eu não toquei ficam com o valor do remoto (outro admin pode ter
+// mudado). Sem base (nunca sincronizei) → prefere o meu, mas preserva campos que só existem no
+// remoto. Sem remoto → grava o meu.
+function _threeWayMergeUser(base, mine, remote){
+  if(!remote) return mine;
+  // Sem ancestral confiável (aba que não fez pull) mas a linha JÁ existe no remoto: usa o REMOTO
+  // como base. Assim só sobrescrevo os campos que de fato mudei vs o remoto e preservo o resto —
+  // antes era Object.assign(remote, mine), que deixava "mine" vencer TODO campo e revertia a
+  // edição concorrente de outro admin no mesmo usuário (campo disjunto). Usuário novo (remote null)
+  // já retornou "mine" acima.
+  if(!base) base = remote;
+  const out = Object.assign({}, remote);
+  const keys = new Set([...Object.keys(base), ...Object.keys(mine)]);
+  keys.forEach(k => {
+    const changedByMe = _canonJson(mine[k]) !== _canonJson(base[k]);
+    if(!changedByMe) return;              // não mexi → mantém o remoto
+    if(!(k in mine)) delete out[k];       // eu removi o campo
+    else out[k] = mine[k];                // eu mudei o campo → o meu vale
+  });
+  return out;
 }
 
 async function sbPushUsers(users) {
@@ -2947,12 +3507,25 @@ async function sbPushUsers(users) {
       // Mesma proteção do push de projects: busca os tombstones mais recentes ANTES
       // de decidir o que upsertar, pra não confiar só no que esta aba já sabia.
       await pullDeletedUserEmails();
-      const rows = users
-        .filter(u => !isUserRecentlyDeleted(u.email))
-        .map(u => ({ email: (u.email||'').toLowerCase(), payload: u }));
-      if(rows.length) {
-        const { error } = await sb.from('users').upsert(rows);
+      const candidates = users.filter(u => !isUserRecentlyDeleted(u.email));
+      // Só as linhas que MUDARAM de verdade vs baseline — o resto nem toca (não pisa em edição de
+      // outro admin em OUTRO usuário, que era a causa #1 de sobrescrita).
+      const changed = candidates.filter(u => _canonJson(u) !== (_syncedUserJson[_userKey(u)] || ''));
+      for(const u of changed){
+        const key = _userKey(u);
+        // Read-modify-write por linha: lê o remoto atual e mescla por campo antes de gravar, pra
+        // não clobberar uma edição concorrente de OUTRO campo do MESMO usuário.
+        let remote = null;
+        try{
+          const sel = await withTimeout(sb.from('users').select('payload').eq('email', key).maybeSingle(), 8000, 'user read '+key);
+          if(!sel.error && sel.data) remote = sel.data.payload;
+        }catch(e){}
+        const base = _syncedUserJson[key] ? JSON.parse(_syncedUserJson[key]) : null;
+        const merged = _threeWayMergeUser(base, u, remote);
+        const { error } = await withTimeout(sb.from('users').upsert({ email: key, payload: merged }), 8000, 'user upsert '+key);
         if(error) throw error;
+        _syncedUserJson[key] = _canonJson(merged);
+        _updateLocalUserPayload(merged);
       }
       setSyncDot('saved');
     } catch(e) {
@@ -2987,6 +3560,8 @@ async function sbPullUsers() {
     const dbUsers = (data || []).map(r => r.payload).filter(Boolean);
     if(dbUsers.length > 0) {
       localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(dbUsers));
+      // Baseline pro merge 3-way do próximo push: registra o que acabamos de ver no banco.
+      dbUsers.forEach(u => { _syncedUserJson[_userKey(u)] = _canonJson(u); });
     } else {
       // Bootstrap: se a DB está vazia, empurra o que já temos localmente.
       const local = authGetUsers();
@@ -3300,10 +3875,17 @@ function mergeCampaignItems(a, b) {
     // célula; o editor de HTML já tem o guard de "alguém mudou, sobrescrever?").
     const winner = ((ai.updatedAt || 0) >= (bi.updatedAt || 0)) ? ai : bi;
     const other  = winner === ai ? bi : ai;
+    const mergedRows = mergeItemRows(winner, other);
+    const mergedRowsById = new Map(mergedRows.map(r => [r.id, r]));
+    const mergedCleared = unionClearedCells(winner.clearedCells, other.clearedCells).filter(c => {
+      const r = mergedRowsById.get(c.id);
+      return r && !(((r.translations || {})[c.lang]) || '').trim(); // mantém só tombstone de célula ainda vazia
+    });
     out.push({
       ...winner,
       langs: [...new Set([...(winner.langs || []), ...(other.langs || [])])],
-      rows: mergeItemRows(winner.rows || [], other.rows || []),
+      rows: mergedRows,
+      clearedCells: mergedCleared,
       ...mergeApprovalIntoFields(winner, other)
     });
   });
@@ -3316,20 +3898,47 @@ function mergeCampaignItems(a, b) {
 // preencheram a MESMA célula com valores diferentes) fica com o vencedor de conteúdo (updatedAt).
 // `winnerRows` já é a estrutura de linhas escolhida (ids/ordem); só o valor de cada tradução é
 // reconciliado contra a outra versão. O texto de origem (src) fica o do vencedor.
-function mergeItemRows(winnerRows, otherRows) {
-  const otherById = new Map((otherRows || []).map(r => [r.id, r]));
-  return (winnerRows || []).map(wr => {
+// Recebe os ITENS (winner = updatedAt mais novo; other = mais velho) pra ter acesso aos
+// clearedCells/updatedAt e tratar esvaziamento intencional (igual mergeLooseData). Célula vazia
+// só apaga a preenchida do outro lado se ESTE lado a limpou de propósito depois da versão do outro.
+function mergeItemRows(winner, other) {
+  const winnerRows = (winner && winner.rows) || [], otherRows = (other && other.rows) || [];
+  const wUpd = (winner && winner.updatedAt) || 0, oUpd = (other && other.updatedAt) || 0;
+  const wClear = _clearMap(winner), oClear = _clearMap(other);
+  const otherById = new Map(otherRows.map(r => [r.id, r]));
+  const winnerIds = new Set(winnerRows.map(r => r.id));
+  const merged = winnerRows.map(wr => {
     const or = otherById.get(wr.id);
     if(!or) return wr;
     const langs = new Set([...Object.keys(wr.translations || {}), ...Object.keys(or.translations || {})]);
     const translations = {};
     langs.forEach(l => {
-      const wv = (wr.translations || {})[l], ov = (or.translations || {})[l];
-      const wFilled = (wv || '').trim(), oFilled = (ov || '').trim();
-      translations[l] = wFilled ? wv : (oFilled ? ov : (wv !== undefined ? wv : ov));
+      const wv = (wr.translations || {})[l] || '', ov = (or.translations || {})[l] || '';
+      const wC = wClear.get(wr.id + '|' + l) || 0, oC = oClear.get(wr.id + '|' + l) || 0;
+      let val;
+      if(wv.trim() && ov.trim()) val = wv;                  // os dois preencheram → winner (mais novo)
+      else if(wv.trim()) val = (oC && oC > wUpd) ? '' : wv; // other vazio: só apaga se OTHER limpou depois do winner
+      else if(ov.trim()) val = (wC && wC > oUpd) ? '' : ov; // winner vazio: só apaga se WINNER limpou depois do other
+      else val = '';
+      translations[l] = val;
     });
     return { ...wr, translations };
   });
+  // TRIPWIRE (defesa em profundidade, hoje NUNCA dispara): as rows de um item são fixadas na
+  // criação (ids únicos) e são imutáveis — não há caminho na UI pra adicionar row a um item
+  // existente. Por isso winner e other sempre têm o MESMO conjunto de ids e este merge por-célula
+  // é correto. Se algum dia uma feature passar a mutar rows (add-row, re-tag que re-extraia rows),
+  // rows presentes só no perdedor sumiriam SILENCIOSAMENTE aqui. NÃO anexamos as órfãs (criariam
+  // row sem correspondência no rawHtml do vencedor = bug pior); alarmamos pra isso ser tratado
+  // conscientemente (ex: notice de conflito + snapshot) na hora que a invariante mudar.
+  const onlyInOther = otherRows.filter(r => !winnerIds.has(r.id));
+  if(onlyInOther.length){
+    console.warn('[mergeItemRows] divergência de estrutura de rows num item de campanha — ' +
+      onlyInOther.length + ' row(s) só no lado mais antigo seriam descartadas. Invariante "rows ' +
+      'imutáveis após criação" quebrou; tratar conflito antes de confiar neste merge.',
+      { itemId: (winner && winner.id) || (other && other.id), ids: onlyInOther.map(r => r.id) });
+  }
+  return merged;
 }
 
 // Aprovação sempre fundida (união via mergeApprovalState) — devolve só os 4 campos de aprovação.
@@ -3364,21 +3973,30 @@ function mergeProjectsForSave(projects) {
     if(!other) return p; // projeto novo, só existe no lado que está salvando agora
     const mine = p.updatedAt || 0, theirs = other.updatedAt || 0;
     const base = theirs > mine ? other : p; // corpo do projeto = quem editou por último de verdade
+    let anc = null;
+    try{ if(p.id && _syncedPayloadJson[p.id]) anc = JSON.parse(_syncedPayloadJson[p.id]); }catch(e){}
+    // Reconcilia os ESCALARES do corpo (approvers/sharedWith por conjunto, name/folder 3-way) — mesma
+    // paridade do caminho CAS (mergeTwoProjects). Sem isto, o save local pegava base (mais novo)
+    // inteiro e descartava, ex., um approver que o outro lado concedeu (achado no teste de pipeline).
+    const reconcile = (result) => _reconcileBodyScalars(p, other, result, anc);
     // PASTA (kind:'campaign'): a lista de itens NUNCA é sobrescrita inteira — faz UNIÃO por id
     // (menos os tombstoned), pra uma cópia velha nunca DERRUBAR um item que a outra adicionou
     // (bug real: mover e-mail pra pasta e ele sumir porque outra aba/pessoa salvou a pasta com a
     // lista antiga). Conteúdo de item compartilhado fica com a versão do lado de updatedAt mais novo.
     if(base.kind === 'campaign' || p.kind === 'campaign' || (other && other.kind === 'campaign')){
-      return { ...base, items: mergeCampaignItems(p, other), deletedItemIds: unionDeletedItemIds(p, other) };
+      return reconcile({ ...base, items: mergeCampaignItems(p, other), deletedItemIds: unionDeletedItemIds(p, other) });
     }
     // AVULSO: tenta fundir o CONTEÚDO do CSV célula a célula (linha nova preservada, tradução de um
     // lado nunca apagada pela versão vazia do outro). GUARDA ESTRITA dentro de mergeLooseData —
     // qualquer dúvida devolve null e cai no comportamento atual (projeto inteiro por updatedAt).
     if(p.data && other.data && p.data.csv && other.data.csv){
-      const md = mergeLooseData(p, other);
-      if(md) return { ...base, data: md };
+      const md = mergeLooseData(p, other, anc && anc.data);
+      if(md) return reconcile({ ...base, data: md });
+      // Fallback: CSV do lado mais novo, aprovação SEMPRE fundida (nunca LWW).
+      const oth = base === p ? other : p;
+      return reconcile({ ...base, data: { ...base.data, ...mergeApprovalIntoFields(base.data, oth.data) } });
     }
-    return base;
+    return reconcile(base);
   });
   // Projeto que já existe no armazenamento atual mas não veio no array que estamos salvando
   // (ex: criado por outra aba entre a hora que lemos e a hora que salvamos) — preserva, não
@@ -3398,9 +4016,534 @@ function projSaveAll(projects) {
   return ghMergeAndPushProjects(merged); // sincroniza com o GitHub em segundo plano, com merge
 }
 
+/* ═══════════════════════ HISTÓRICO DE VERSÕES (tabela project_versions) ═══════════════════════
+   Snapshots do payload INTEIRO do projeto (nunca diff acumulado). Duas camadas de timing:
+   - Autosave do estado atual: debounce ~1,5s (AUTOSAVE_DEBOUNCE_MS).
+   - Snapshot de histórico (kind='auto'): a cada ~60s de PAUSA natural (AUTO_SNAPSHOT_IDLE_MS) OU
+     forçado a cada 5min de edição CONTÍNUA (AUTO_SNAPSHOT_MAX_STREAK_MS), e SÓ se o conteúdo mudou
+     de fato desde o último snapshot (dedup por _contentCanon — nunca grava snapshot idêntico).
+   kind='backup' é manual e sempre grava. Degrada de forma graciosa: se a tabela não existir (42P01)
+   a feature some sem quebrar nada. Restaurar reusa o MESMO merge de save (não sobrescreve trabalho
+   concorrente). */
+const AUTO_SNAPSHOT_IDLE_MS = 60 * 1000;       // pausa natural: 60s sem mudança → grava snapshot
+const AUTO_SNAPSHOT_MAX_STREAK_MS = 5 * 60 * 1000; // edição contínua sem pausa: força snapshot a cada 5min
+const AUTO_SNAPSHOT_KEEP = 30;                 // qtd de autos/segurança mantidos por projeto (além do TTL)
+const AUTO_SNAPSHOT_TTL_DAYS = 14;             // autos/segurança mais velhos que isso são podados
+let _versionsTableMissing = false;             // trava após o 1º 42P01 pra não martelar o banco
+const _lastAutoSnapAt = {};                    // projectId -> ms do último auto-snapshot desta aba
+const _lastAutoSnapCanon = {};                 // projectId -> _contentCanon do último snapshot (dedup)
+const _snapStreakStart = {};                   // projectId -> quando começou a rajada ainda não snapshotada
+let _snapIdleTimer = null;                     // timer da pausa de 60s (um por vez, pro projeto aberto)
+
+function _isMissingVersionsTable(e){
+  const m = ((e && (e.code || e.message)) || '') + '';
+  return m.includes('42P01') || /project_versions.*does not exist/i.test(m);
+}
+
+async function snapshotProjectVersion(project, kind, label){
+  const sb = sbClient();
+  if(!sb || !project || !project.id || _versionsTableMissing) return false;
+  try{
+    const me = (typeof authCurrentUser === 'function' && authCurrentUser()) || null;
+    const row = {
+      project_id: project.id,
+      payload: project,
+      kind: kind === 'backup' ? 'backup' : 'auto',
+      label: label || null,
+      author: (me && me.email) || null
+    };
+    const { error } = await withTimeout(sb.from('project_versions').insert(row), 8000, 'insert version');
+    if(error){ if(_isMissingVersionsTable(error)) _versionsTableMissing = true; else console.warn('snapshot version error', error); return false; }
+    if(row.kind === 'auto'){
+      _lastAutoSnapAt[project.id] = Date.now();
+      // Baseline de dedup: qualquer auto-snapshot (inclusive o da rede de segurança) atualiza o
+      // conteúdo "já snapshotado", pra o próximo maybeAutoSnapshot não gravar idêntico.
+      _lastAutoSnapCanon[project.id] = _contentCanon(project);
+    }
+    pruneProjectVersions(project.id); // fire-and-forget
+    return true;
+  }catch(e){ if(_isMissingVersionsTable(e)) _versionsTableMissing = true; return false; }
+}
+
+// Resolve o projeto aberto AGORA (avulso ou pasta de campanha) — usado pelo timer de pausa, que
+// dispara depois e precisa do estado mais fresco.
+function _snapshotTarget(){
+  if(typeof _campaign !== 'undefined' && _campaign && _campaign.id) return _campaign;
+  return _currentOpenProject();
+}
+
+// Grava o snapshot agora e zera o ciclo (rajada + timer de pausa). Marca o canon ANTES do await
+// pra corridas concorrentes não duplicarem.
+// Sair do editor é uma pausa natural: se há um snapshot pendente (rajada ou timer de 60s em curso)
+// e o conteúdo mudou desde o último, grava JÁ — pra não perder o ponto de histórico ao sair antes
+// dos 60s. Chamado no goToDashboard.
+function _flushPendingAutoSnapshot(){
+  const t = _snapshotTarget();
+  if(!t){ if(_snapIdleTimer){ clearTimeout(_snapIdleTimer); _snapIdleTimer = null; } return; }
+  const pending = _snapIdleTimer || _snapStreakStart[t.id];
+  if(pending && _contentCanon(t) !== _lastAutoSnapCanon[t.id]) _commitAutoSnapshot(t);
+  else if(_snapIdleTimer){ clearTimeout(_snapIdleTimer); _snapIdleTimer = null; }
+}
+
+async function _commitAutoSnapshot(project){
+  if(!project || !project.id || _versionsTableMissing) return;
+  if(_snapIdleTimer){ clearTimeout(_snapIdleTimer); _snapIdleTimer = null; }
+  delete _snapStreakStart[project.id];
+  _lastAutoSnapCanon[project.id] = _contentCanon(project);
+  await snapshotProjectVersion(project, 'auto', null);
+}
+
+// Chamado após CADA push bem-sucedido do projeto aberto (camada 2 do salvamento). Regra:
+// - dedup: se o conteúdo é idêntico ao último snapshot, não faz nada (nunca grava snapshot igual);
+// - edição CONTÍNUA: se a rajada de mudanças já dura >= 5min, grava na hora (não perde granularidade);
+// - pausa NATURAL: senão, (re)agenda um timer de 60s; se ninguém mexer nesses 60s, grava o snapshot.
+async function maybeAutoSnapshot(project){
+  if(!project || !project.id || _versionsTableMissing) return;
+  const id = project.id;
+  const canon = _contentCanon(project);
+
+  // Nada mudou desde o último snapshot → dedup: cancela qualquer pausa pendente e sai.
+  if(canon === _lastAutoSnapCanon[id]){
+    if(_snapIdleTimer){ clearTimeout(_snapIdleTimer); _snapIdleTimer = null; }
+    delete _snapStreakStart[id];
+    return;
+  }
+
+  // Conteúdo mudou. Começa/continua a rajada.
+  if(!_snapStreakStart[id]) _snapStreakStart[id] = Date.now();
+
+  // Edição contínua há >= 5min sem snapshot → grava já.
+  if(Date.now() - _snapStreakStart[id] >= AUTO_SNAPSHOT_MAX_STREAK_MS){
+    await _commitAutoSnapshot(project);
+    return;
+  }
+
+  // Senão: agenda/reinicia a pausa de 60s. Ao disparar, snapshota o estado MAIS FRESCO do projeto
+  // aberto (re-resolve), e só se ainda houver mudança vs o último snapshot.
+  if(_snapIdleTimer) clearTimeout(_snapIdleTimer);
+  _snapIdleTimer = setTimeout(() => {
+    _snapIdleTimer = null;
+    const fresh = _snapshotTarget();
+    if(fresh && fresh.id === id && _contentCanon(fresh) !== _lastAutoSnapCanon[id]){
+      _commitAutoSnapshot(fresh);
+    }
+  }, AUTO_SNAPSHOT_IDLE_MS);
+}
+
+async function pruneProjectVersions(projectId){
+  const sb = sbClient();
+  if(!sb || _versionsTableMissing) return;
+  try{
+    const cutoff = new Date(Date.now() - AUTO_SNAPSHOT_TTL_DAYS*86400000).toISOString();
+    await withTimeout(sb.from('project_versions').delete().eq('project_id', projectId).eq('kind','auto').lt('created_at', cutoff), 8000, 'prune ttl');
+    const { data } = await withTimeout(sb.from('project_versions').select('id').eq('project_id', projectId).eq('kind','auto').order('created_at',{ascending:false}), 8000, 'prune list');
+    if(data && data.length > AUTO_SNAPSHOT_KEEP){
+      const extra = data.slice(AUTO_SNAPSHOT_KEEP).map(r => r.id);
+      if(extra.length) await withTimeout(sb.from('project_versions').delete().in('id', extra), 8000, 'prune extra');
+    }
+  }catch(e){ if(_isMissingVersionsTable(e)) _versionsTableMissing = true; }
+}
+
+async function listProjectVersions(projectId){
+  const sb = sbClient();
+  if(!sb) return [];
+  try{
+    const { data, error } = await withTimeout(sb.from('project_versions').select('id,kind,label,author,created_at').eq('project_id', projectId).order('created_at',{ascending:false}).limit(200), 8000, 'list versions');
+    if(error){ if(_isMissingVersionsTable(error)) _versionsTableMissing = true; return []; }
+    return data || [];
+  }catch(e){ if(_isMissingVersionsTable(e)) _versionsTableMissing = true; return []; }
+}
+
+async function fetchProjectVersionPayload(versionId){
+  const sb = sbClient();
+  if(!sb) return null;
+  try{
+    const { data, error } = await withTimeout(sb.from('project_versions').select('payload').eq('id', versionId).single(), 8000, 'fetch version');
+    if(error) return null;
+    return data ? data.payload : null;
+  }catch(e){ return null; }
+}
+
+// Resolve o projeto ATUALMENTE aberto (funciona pro editor avulso e pro de campanha — ambos
+// setam currentProjectId ao abrir).
+function _currentOpenProject(){
+  if(!currentProjectId) return null;
+  return projGetAll().find(p => p.id === currentProjectId) || null;
+}
+
+/* ─── DIFF DE VERSÃO (estrutural: célula a célula nas traduções + linha a linha no HTML) ───
+   Comparação = do estado ATUAL para a VERSÃO selecionada = "o que restaurar faria". */
+// Extrai um mapa "chave -> célula" do payload (funciona pra avulso e campanha).
+function _cellsFromPayload(payload){
+  const map = {};
+  if(!payload) return map;
+  if(payload.kind === 'campaign' && Array.isArray(payload.items)){
+    payload.items.forEach(it => {
+      (it.rows || []).forEach(row => {
+        const tr = row.translations || {};
+        const langs = new Set([...(it.langs || []), ...Object.keys(tr)]);
+        langs.forEach(l => {
+          map[it.id + '|' + row.id + '|' + l] = { scopeName: it.name || it.id, rowId: row.id, src: row.src || '', lang: l, val: tr[l] || '' };
+        });
+      });
+    });
+  } else if(payload.data && payload.data.csv){
+    const parsed = (typeof parseBrazeCsv === 'function') ? parseBrazeCsv(payload.data.csv) : null;
+    if(parsed && parsed.byLang){
+      Object.keys(parsed.byLang).forEach(l => {
+        parsed.byLang[l].forEach(r => {
+          map['|' + r.id + '|' + l] = { scopeName: '', rowId: r.id, src: r.src || '', lang: l, val: r.tl || '' };
+        });
+      });
+    }
+  }
+  return map;
+}
+
+// Diff unificado por linha entre dois textos (a=atual, b=versão), via LCS já existente no engine.
+function _lineDiff(aStr, bStr){
+  const a = String(aStr || '').split('\n'), b = String(bStr || '').split('\n');
+  const pairs = _lcsLinePairs(a, b);
+  const out = []; let i = 0, j = 0;
+  for(const [ai, bj] of pairs){
+    while(i < ai){ out.push({ type:'del', text:a[i] }); i++; }
+    while(j < bj){ out.push({ type:'add', text:b[j] }); j++; }
+    out.push({ type:'ctx', text:a[ai] }); i = ai + 1; j = bj + 1;
+  }
+  while(i < a.length){ out.push({ type:'del', text:a[i] }); i++; }
+  while(j < b.length){ out.push({ type:'add', text:b[j] }); j++; }
+  return out;
+}
+
+function computeProjectDiff(current, version){
+  const curMap = _cellsFromPayload(current);
+  const verMap = _cellsFromPayload(version);
+  const keys = new Set([...Object.keys(curMap), ...Object.keys(verMap)]);
+  const cells = []; let added = 0, removed = 0, changed = 0;
+  keys.forEach(k => {
+    const c = curMap[k], v = verMap[k];
+    // Direção = "o que mudou DESDE este backup": from = valor no backup (antes), to = valor ATUAL
+    // (agora). Assim uma célula esvaziada aparece como "texto → (empty)" (o que foi deletado).
+    const from = v ? (v.val || '') : '';
+    const to   = c ? (c.val || '') : '';
+    if(from === to) return;
+    const meta = v || c;
+    let type;
+    if(!from.trim() && to.trim()){ type = 'added'; added++; }        // vazio no backup, tem texto agora
+    else if(from.trim() && !to.trim()){ type = 'removed'; removed++; } // tinha texto, ficou vazio (deletado)
+    else { type = 'changed'; changed++; }
+    cells.push({ scopeName: meta.scopeName, rowId: meta.rowId, src: meta.src, lang: meta.lang, from, to, type });
+  });
+  const items = [];
+  if((current && current.kind === 'campaign') || (version && version.kind === 'campaign')){
+    const curIds = new Map(((current && current.items) || []).map(i => [i.id, i]));
+    const verIds = new Map(((version && version.items) || []).map(i => [i.id, i]));
+    // item no backup mas não agora = deletado desde o backup; item novo agora = adicionado desde.
+    verIds.forEach((it, id) => { if(!curIds.has(id)) items.push({ type:'removed', name: it.name || id }); });
+    curIds.forEach((it, id) => { if(!verIds.has(id)) items.push({ type:'added', name: it.name || id }); });
+  }
+  let htmlDiff = null, htmlLines = 0;
+  const curHtml = (current && current.data) ? (current.data.html || '') : '';
+  const verHtml = (version && version.data) ? (version.data.html || '') : '';
+  if(curHtml !== verHtml && (curHtml || verHtml)){
+    htmlDiff = _lineDiff(verHtml, curHtml); // a=backup, b=agora → del = removido desde o backup
+    htmlLines = htmlDiff.filter(l => l.type !== 'ctx').length;
+  }
+  return { cells, items, htmlDiff, summary: { added, removed, changed, htmlLines } };
+}
+
+// Restaura uma versão. NÃO sobrescreve à força: reusa o mesmo mergeProjectsForSave do save
+// normal (a versão restaurada entra com updatedAt novo pra vencer o merge, mas células
+// preenchidas mais novas de outra pessoa não são apagadas). Antes de restaurar, grava um
+// backup do estado atual ("Antes de restaurar"), então dá sempre pra voltar.
+async function restoreProjectVersion(versionId){
+  const payload = await fetchProjectVersionPayload(versionId);
+  if(!payload || !payload.id){ uiNotify(t('versionHistory.cantLoad'), {type:'error'}); return false; }
+  const projects = projGetAll();
+  const idx = projects.findIndex(p => p.id === payload.id);
+  if(idx < 0){ uiNotify(t('versionHistory.projectNotFound'), {type:'error'}); return false; }
+  await snapshotProjectVersion(projects[idx], 'backup', t('versionHistory.beforeRestoreLabel'));
+  // Preserva a trava/aprovação atuais e força updatedAt novo pra vencer o merge por projeto.
+  const cur = projects[idx];
+  const beforePayload = JSON.parse(JSON.stringify(cur)); // pro Ctrl+Z desfazer a restauração inteira
+  const restored = { ...payload, id: payload.id, updatedAt: Date.now(),
+                     lockedBy: cur.lockedBy, lockedAt: cur.lockedAt, approvingUsers: cur.approvingUsers };
+  projects[idx] = restored;
+  await projSaveAll(projects);
+  undoRecordRestore(payload.id, beforePayload, JSON.parse(JSON.stringify(restored)));
+  return true;
+}
+
+/* ─── UI do modal de Histórico ─── */
+let _versionModalProjectId = null;
+
+async function openVersionHistory(){
+  try{ _flushSafetySnap(); }catch(e){} // garante que a deleção mais recente já vire ponto na lista
+  const p = _currentOpenProject();
+  if(!p){ uiNotify(t('versionHistory.openToView'), {type:'info'}); return; }
+  _versionModalProjectId = p.id;
+  const ov = document.getElementById('versionHistoryModal');
+  const list = document.getElementById('vhList');
+  document.getElementById('vhProjName').textContent = p.name || p.id;
+  list.innerHTML = '<div class="vh-empty">' + escHtml(t('versionHistory.loading')) + '</div>';
+  ov.style.display = 'flex';
+  if(_versionsTableMissing){ list.innerHTML = '<div class="vh-empty">' + escHtml(t('versionHistory.unavailable')) + '</div>'; return; }
+  const versions = await listProjectVersions(p.id);
+  renderVersionList(versions);
+}
+
+function closeVersionHistory(){ document.getElementById('versionHistoryModal').style.display = 'none'; }
+
+function _vhFmtTime(iso){
+  try{ const d = new Date(iso); return d.toLocaleString('en-US', { dateStyle:'medium', timeStyle:'short' }); }catch(e){ return iso || ''; }
+}
+
+function renderVersionList(versions){
+  const list = document.getElementById('vhList');
+  if(!versions || !versions.length){ list.innerHTML = '<div class="vh-empty">' + escHtml(t('versionHistory.empty')) + '</div>'; return; }
+  list.innerHTML = versions.map(v => {
+    const isBackup = v.kind === 'backup';
+    const tag = isBackup ? '<span class="vh-tag vh-tag-backup">' + escHtml(t('versionHistory.tagBackup')) + '</span>' : '<span class="vh-tag vh-tag-auto">' + escHtml(t('versionHistory.tagAuto')) + '</span>';
+    const label = v.label ? ' · ' + escHtml(displayVersionLabel(v.label)) : '';
+    const author = v.author ? escHtml(v.author) : '—';
+    return '<div class="vh-item">'
+      + '<div class="vh-item-main">'
+      +   '<div class="vh-item-top">' + tag + '<span class="vh-time">' + escHtml(_vhFmtTime(v.created_at)) + '</span>' + '<span class="vh-label">' + label + '</span></div>'
+      +   '<div class="vh-author">' + author + '</div>'
+      + '</div>'
+      + '<button class="tbtn" onclick="openVersionDiff(\'' + v.id + '\')">' + escHtml(t('versionHistory.viewChanges')) + '</button>'
+      + '</div>';
+  }).join('');
+}
+
+let _vhSelectedVersionId = null;
+
+// Abre o DIFF (atual -> versão selecionada) dentro do próprio modal, sem navegar.
+async function openVersionDiff(versionId){
+  const list = document.getElementById('vhList');
+  list.innerHTML = '<div class="vh-empty">' + escHtml(t('versionHistory.diffLoading')) + '</div>';
+  const cur = _currentOpenProject();
+  const payload = await fetchProjectVersionPayload(versionId);
+  if(!payload){ list.innerHTML = '<div class="vh-empty">' + escHtml(t('versionHistory.cantLoad')) + '</div>'; return; }
+  _vhSelectedVersionId = versionId;
+  renderDiffView(computeProjectDiff(cur, payload), versionId);
+}
+
+function backToVersionList(){
+  _vhSelectedVersionId = null;
+  const p = _currentOpenProject();
+  if(p) listProjectVersions(p.id).then(renderVersionList);
+}
+
+function _diffCellRowHtml(c){
+  const cls = c.type === 'added' ? 'df-add' : (c.type === 'removed' ? 'df-del' : 'df-chg');
+  const empt = '<span class="df-empty">' + escHtml(t('versionHistory.emptyValue')) + '</span>';
+  const from = c.from.trim() ? escHtml(c.from) : empt;
+  const to   = c.to.trim() ? escHtml(c.to) : empt;
+  const scope = c.scopeName ? '<span class="df-scope">' + escHtml(c.scopeName) + ' · </span>' : '';
+  return '<div class="df-cell ' + cls + '">'
+    + '<div class="df-cell-hdr">' + scope + '<span class="df-rowid">' + escHtml(c.rowId) + '</span> · <span class="df-lang">' + escHtml(c.lang) + '</span>'
+    + (c.src ? ' <span class="df-src" title="' + escHtml(c.src) + '">— ' + escHtml(c.src.length > 60 ? c.src.slice(0,60) + '…' : c.src) + '</span>' : '') + '</div>'
+    + '<div class="df-cell-body"><span class="df-from">' + from + '</span><span class="df-arrow">→</span><span class="df-to">' + to + '</span></div>'
+    + '</div>';
+}
+
+function renderDiffView(diff, versionId){
+  const list = document.getElementById('vhList');
+  const s = diff.summary;
+  const total = s.added + s.removed + s.changed;
+  const nothing = total === 0 && (!diff.items || !diff.items.length) && !diff.htmlDiff;
+  let html = '<div class="df-top">'
+    + '<button class="tbtn" onclick="backToVersionList()">' + escHtml(t('versionHistory.back')) + '</button>'
+    + (nothing ? '' : '<button class="tbtn tbtn-primary" onclick="onRestoreVersion(\'' + versionId + '\')">' + escHtml(t('versionHistory.restoreThisVersion')) + '</button>')
+    + '</div>';
+  if(nothing){
+    html += '<div class="vh-empty">' + escHtml(t('versionHistory.noChanges')) + '</div>';
+    list.innerHTML = html; return;
+  }
+  const htmlPart = s.htmlLines ? t('versionHistory.summaryHtml', { n: s.htmlLines }) : '';
+  html += '<div class="df-intro">' + escHtml(t('versionHistory.diffIntro')) + '</div>';
+  html += '<div class="df-summary">' + escHtml(t('versionHistory.summaryLine', { changed:s.changed, added:s.added, removed:s.removed, html:htmlPart })) + '</div>';
+  (diff.items || []).forEach(it => {
+    html += '<div class="df-item-note">' + escHtml(t(it.type === 'added' ? 'versionHistory.itemAdded' : 'versionHistory.itemRemoved', { name: it.name })) + '</div>';
+  });
+  const CAP = 200;
+  if(diff.cells.length){
+    html += '<div class="df-sec-title">' + escHtml(t('versionHistory.secTranslations')) + '</div>';
+    diff.cells.slice(0, CAP).forEach(c => { html += _diffCellRowHtml(c); });
+    if(diff.cells.length > CAP) html += '<div class="df-more">' + escHtml(t('versionHistory.moreChanges', { n: diff.cells.length - CAP })) + '</div>';
+  }
+  if(diff.htmlDiff){
+    html += '<div class="df-sec-title">' + escHtml(t('versionHistory.secHtml')) + '</div><div class="df-html">';
+    diff.htmlDiff.filter(l => l.type !== 'ctx').slice(0, CAP).forEach(l => {
+      html += '<div class="df-line df-' + (l.type === 'add' ? 'add' : 'del') + '">' + (l.type === 'add' ? '+ ' : '− ') + escHtml(l.text) + '</div>';
+    });
+    html += '</div>';
+  }
+  list.innerHTML = html;
+}
+
+function setVhBusy(on, msg){
+  const ov = document.getElementById('vhBusyOverlay'); if(!ov) return;
+  if(on){ const lb = document.getElementById('vhBusyLabel'); if(lb) lb.textContent = msg || t('versionHistory.restoring'); ov.style.display = 'flex'; }
+  else ov.style.display = 'none';
+}
+
+// Reflete o estado restaurado no editor SEM reabrir/recarregar (in-place).
+function _refreshEditorAfterRestore(proj){
+  if(!proj) return;
+  if(proj.kind === 'campaign'){
+    if(_campaign && _campaign.id === proj.id){
+      _campaign = proj;
+      if(_campaignItemIndex >= ((_campaign.items || []).length)) _campaignItemIndex = -1;
+      if(typeof renderCampaignTabs === 'function') renderCampaignTabs();
+      if(typeof renderCampaignMain === 'function') renderCampaignMain();
+    }
+  } else if(currentProjectId === proj.id && !_campaign && proj.data && typeof restoreProjectContent === 'function'){
+    restoreProjectContent(proj.data);
+  }
+}
+
+async function onRestoreVersion(versionId){
+  if(!confirm(t('versionHistory.restoreConfirm'))) return;
+  setVhBusy(true, t('versionHistory.restoring')); // estado "Restoring…" até o backend confirmar
+  let ok = false;
+  try{ ok = await restoreProjectVersion(versionId); }
+  catch(e){ ok = false; }
+  setVhBusy(false);
+  if(ok){
+    const saved = projGetAll().find(p => p.id === _versionModalProjectId);
+    _refreshEditorAfterRestore(saved);       // in-place, sem reload
+    closeVersionHistory();
+  }
+}
+
+async function saveManualBackup(){
+  const p = _currentOpenProject();
+  if(!p){ uiNotify(t('versionHistory.openToBackup'), {type:'info'}); return; }
+  if(_versionsTableMissing){ uiNotify(t('versionHistory.backupUnavailable'), {type:'warning'}); return; }
+  const label = await uiPrompt(t('versionHistory.backupPrompt'), { title: t('versionHistory.saveBackupBtn') });
+  if(label === null) return; // cancelou
+  const ok = await snapshotProjectVersion(p, 'backup', label.trim() || t('versionHistory.defaultBackupLabel'));
+  if(ok){
+    if(document.getElementById('versionHistoryModal').style.display === 'flex'){
+      renderVersionList(await listProjectVersions(p.id));
+    } else {
+      uiNotify(t('versionHistory.backupSaved'), {type:'success'});
+    }
+  } else {
+    uiNotify(t('versionHistory.backupFailed'), {type:'error'});
+  }
+}
+
+/* ═══════════════════════ RECENTLY DELETED (restaurar projeto/pasta deletado) ═══════════════════════
+   Todo delete grava um snapshot 'Before deleting' em project_versions ANTES de apagar. Como as linhas
+   de project_versions não são removidas junto com o projeto, dá pra listar aqui os que têm backup mas
+   já não existem mais (deletados) e recriá-los a partir do último snapshot. */
+// Lista projetos/pastas que têm snapshot mas não estão mais vivos (= deletados, restauráveis).
+async function listDeletedProjects(){
+  const sb = sbClient();
+  if(!sb || _versionsTableMissing) return [];
+  try{
+    // Seleciona campos LEVES (nunca o payload inteiro — evita egress) — nome/kind vêm do JSON.
+    const { data, error } = await withTimeout(
+      sb.from('project_versions').select('project_id, created_at, pname:payload->>name, pkind:payload->>kind').order('created_at', { ascending:false }).limit(2000),
+      8000, 'list deleted');
+    if(error){ if(_isMissingVersionsTable(error)) _versionsTableMissing = true; return []; }
+    const live = new Set(projGetAll().map(p => p.id));
+    const seen = new Map(); // project_id -> linha mais recente (a query já vem desc por created_at)
+    (data || []).forEach(r => { if(!seen.has(r.project_id)) seen.set(r.project_id, r); });
+    return [...seen.values()].filter(r => !live.has(r.project_id));
+  }catch(e){ if(_isMissingVersionsTable(e)) _versionsTableMissing = true; return []; }
+}
+
+// Recria um projeto/pasta deletado a partir do snapshot mais recente.
+async function restoreDeletedProject(projectId){
+  const sb = sbClient();
+  if(!sb) return false;
+  try{
+    const { data, error } = await withTimeout(
+      sb.from('project_versions').select('payload').eq('project_id', projectId).order('created_at', { ascending:false }).limit(1).maybeSingle(),
+      8000, 'fetch deleted payload');
+    if(error || !data || !data.payload) return false;
+    const payload = data.payload;
+    await unmarkProjectDeleted(projectId); // tira o tombstone ANTES de salvar
+    const projects = projGetAll();
+    if(!projects.find(p => p.id === projectId)){
+      projects.push({ ...payload, id: projectId, updatedAt: Date.now() });
+    }
+    await projSaveAll(projects);
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ─── UI do modal Recently deleted ─── */
+async function openDeletedItems(){
+  const ov = document.getElementById('deletedItemsModal');
+  const list = document.getElementById('delList');
+  list.innerHTML = '<div class="vh-empty">' + escHtml(t('deleted.loading')) + '</div>';
+  ov.style.display = 'flex';
+  if(_versionsTableMissing){ list.innerHTML = '<div class="vh-empty">' + escHtml(t('deleted.unavailable')) + '</div>'; return; }
+  renderDeletedList(await listDeletedProjects());
+}
+function closeDeletedItems(){ document.getElementById('deletedItemsModal').style.display = 'none'; }
+
+function renderDeletedList(items){
+  const list = document.getElementById('delList');
+  if(!items || !items.length){ list.innerHTML = '<div class="vh-empty">' + escHtml(t('deleted.empty')) + '</div>'; return; }
+  let html = '<div class="df-intro">' + escHtml(t('deleted.intro')) + '</div>';
+  html += items.map(it => {
+    const isFolder = it.pkind === 'campaign';
+    const kind = isFolder ? t('deleted.kindFolder') : t('deleted.kindProject');
+    const tag = '<span class="vh-tag ' + (isFolder ? 'vh-tag-auto' : 'vh-tag-backup') + '">' + escHtml(kind) + '</span>';
+    const name = it.pname ? escHtml(it.pname) : escHtml(it.project_id);
+    return '<div class="vh-item">'
+      + '<div class="vh-item-main">'
+      +   '<div class="vh-item-top">' + tag + '<span class="vh-time">' + name + '</span></div>'
+      +   '<div class="vh-author">' + escHtml(t('deleted.deletedAt', { when: _vhFmtTime(it.created_at) })) + '</div>'
+      + '</div>'
+      + '<button class="tbtn tbtn-primary" onclick="onRestoreDeleted(\'' + escJsAttr(it.project_id) + '\')">' + escHtml(t('deleted.restore')) + '</button>'
+      + '</div>';
+  }).join('');
+  list.innerHTML = html;
+}
+
+function setDelBusy(on){
+  const ov = document.getElementById('delBusyOverlay'); if(!ov) return;
+  if(on){ const lb = document.getElementById('delBusyLabel'); if(lb) lb.textContent = t('deleted.restoring'); ov.style.display = 'flex'; }
+  else ov.style.display = 'none';
+}
+
+async function onRestoreDeleted(projectId){
+  setDelBusy(true);
+  let ok = false;
+  try{ ok = await restoreDeletedProject(projectId); }catch(e){ ok = false; }
+  setDelBusy(false);
+  if(ok){
+    renderDeletedList(await listDeletedProjects()); // some da lista
+    if(typeof renderDashboard === 'function') renderDashboard();
+    showMergeNotice(t('deleted.restored'));
+  } else {
+    uiNotify(t('deleted.restoreFailed'), {type:'error'});
+  }
+}
+
+// Comparação de identidade de usuário robusta (trim + lowercase). Usada onde a trava/aprovação
+// decidem "sou eu?" — sem o trim, um e-mail gravado com espaço acidental fazia a PRÓPRIA trava da
+// pessoa parecer de outra ("you're editing" virando "X is editing").
+function _sameUser(a, b){
+  return (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
+}
+
 function projIsLocked(p) {
   if(!p.lockedBy) return false;
-  if(Date.now() - (p.lockedAt || 0) > LOCK_TIMEOUT_MS) return false; // trava expirada
+  if(Date.now() - (p.lockedAt || 0) > LOCK_TIMEOUT_MS) return false; // trava expirada (fallback por tempo)
+  // Reconciliação com a PRESENÇA AO VIVO (mata a "trava fantasma"): se o canal de presença já
+  // sincronizou e o dono da trava NÃO está presente neste projeto agora (fechou a aba, deu refresh,
+  // caiu a conexão), a trava é fantasma → livre na hora, sem esperar o timeout de 3min. Enquanto o
+  // canal não sincronizou (_presenceReady=false), mantém o comportamento antigo por tempo, pra não
+  // liberar trava à toa logo que a página carrega.
+  if(_presenceReady && !_isPresentInProject(p.lockedBy, p.id)) return false;
   return true;
 }
 
@@ -3460,6 +4603,10 @@ function releaseAllMyApprovingPresence() {
 }
 
 async function goToDashboard() {
+  try{ _flushSafetySnap(); }catch(e){} // saindo do editor: grava o ponto de restore pendente da rajada
+  try{ _flushPendingAutoSnapshot(); }catch(e){} // sair é pausa natural: fecha o snapshot de histórico pendente
+  presenceSetProject(null); // saí do editor — deixo de aparecer como presente em qualquer projeto
+  undoClear();              // saí do editor — zera a pilha de undo desta sessão de edição
   // Mesmo problema que o beforeunload já resolve pra fechar/recarregar a aba, só que pra
   // navegação DENTRO do app: se uma ação recente agendou um autosave (ex: subir um CSV pra
   // atualizar traduções via applyCsvToEditor, que chama scheduleAutosave()) e a pessoa clica
@@ -3537,40 +4684,125 @@ function escJsAttr(s) {
   return String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
-// ── Pop-ups da plataforma (substituem alert/confirm/prompt do navegador) ─────────────────────
+// ── Pop-ups da plataforma (padrão ÚNICO — substituem alert/confirm/prompt do navegador e os
+//    antigos toasts discretos) ────────────────────────────────────────────────────────────────
 // Baseados em Promise: uiAlert(msg) → resolve void; uiConfirm(msg) → resolve boolean;
-// uiPrompt(msg, {def}) → resolve string (ou null se cancelou). Um modal só, reaproveitado.
-let _uiModalResolver = null, _uiModalMode = 'alert';
-function uiModalResolve(ok) {
-  const resolver = _uiModalResolver; _uiModalResolver = null;
-  const m = document.getElementById('uiModal'); if(m) m.style.display = 'none';
-  if(!resolver) return;
-  if(_uiModalMode === 'prompt') resolver(ok ? document.getElementById('uiModalInput').value : null);
-  else if(_uiModalMode === 'confirm') resolver(!!ok);
-  else resolver();
+// uiPrompt(msg, {def}) → resolve string (ou null se cancelou); uiNotify(msg, {type}) → resolve void.
+// TODOS aparecem como o MESMO pop-up central chamativo, com ícone + acento por tipo
+// (success | error | warning | info | confirm). Enfileirados: um de cada vez, na ordem em que
+// foram pedidos — nada some sem ser visto. Sucesso/info fecham sozinhos (~3,5s) e também dá pra
+// fechar na hora; erro/aviso/confirm exigem clique.
+const _UI_NICON = { success: '✓', error: '✕', warning: '!', info: 'i', confirm: '?' };
+const _UI_AUTODISMISS_MS = 3500; // só success/info em modo alert/notify
+let _uiQueue = [];               // [{ opts, resolve }] aguardando a vez
+let _uiActive = null;            // { opts, resolve } em exibição agora (null = nada aberto)
+let _uiAutoTimer = null;
+
+function _uiDefaultTitle(o) {
+  if(o.title) return o.title;
+  switch(o.type) {
+    case 'success': return 'Done';
+    case 'error':   return 'Something went wrong';
+    case 'warning': return 'Heads up';
+    case 'info':    return 'Heads up';
+    case 'confirm': return 'Please confirm';
+  }
+  return o.mode === 'alert' ? 'Heads up' : 'Please confirm';
 }
+
+// Sucesso/info em modo alert/notify somem sozinhos; o resto exige clique.
+function _uiAutoMs(o) {
+  if(o.autoMs != null) return o.autoMs;
+  const passive = (o.mode === 'alert' || o.mode === 'notify');
+  return (passive && (o.type === 'success' || o.type === 'info')) ? _UI_AUTODISMISS_MS : 0;
+}
+
+// "+N more" na base do pop-up: quantos ainda esperam na fila atrás do que está aberto.
+function _uiUpdateQueueCount() {
+  const qc = document.getElementById('uiModalQueueCount');
+  if(!qc) return;
+  if(_uiActive && _uiQueue.length) { qc.textContent = '+' + _uiQueue.length + ' more'; qc.classList.add('show'); }
+  else { qc.textContent = ''; qc.classList.remove('show'); }
+}
+
+function _uiRenderActive() {
+  if(_uiActive || !_uiQueue.length) return;
+  _uiActive = _uiQueue.shift();
+  const o = _uiActive.opts;
+
+  const card = document.getElementById('uiModalCard');
+  card.className = 'card modal-card ui-pop' + (o.type ? ' t-' + o.type + ' has-icon' : '');
+  const icon = document.getElementById('uiModalIcon');
+  icon.textContent = o.type ? (_UI_NICON[o.type] || '') : '';
+
+  document.getElementById('uiModalTitle').textContent = _uiDefaultTitle(o);
+  document.getElementById('uiModalMsg').textContent = o.message || '';
+
+  const field = document.getElementById('uiModalField'), input = document.getElementById('uiModalInput');
+  if(o.mode === 'prompt') { field.style.display = ''; input.value = o.def || ''; input.placeholder = o.placeholder || ''; }
+  else field.style.display = 'none';
+
+  const cancel = document.getElementById('uiModalCancel'), ok = document.getElementById('uiModalOk');
+  // 'alert'/'notify' têm só o OK; confirm/prompt têm Cancel + OK.
+  cancel.style.display = (o.mode === 'alert' || o.mode === 'notify') ? 'none' : '';
+  cancel.textContent = o.cancelLabel || 'Cancel';
+  ok.textContent = o.okLabel || 'OK';
+  ok.className = o.danger ? 'btn-danger' : 'btn-next';
+  ok.style.flex = '1'; ok.style.marginTop = '0';
+
+  _uiUpdateQueueCount();
+
+  document.getElementById('uiModal').style.display = 'flex';
+  if(o.mode === 'prompt') setTimeout(() => { input.focus(); input.select(); }, 30);
+
+  const autoMs = _uiAutoMs(o);
+  if(autoMs > 0) { _uiAutoTimer = setTimeout(() => uiModalResolve(true), autoMs); }
+}
+
+function uiModalResolve(ok) {
+  if(_uiAutoTimer) { clearTimeout(_uiAutoTimer); _uiAutoTimer = null; }
+  const active = _uiActive; _uiActive = null;
+  const m = document.getElementById('uiModal'); if(m) m.style.display = 'none';
+  if(active && active.resolve) {
+    const mode = active.opts.mode;
+    if(mode === 'prompt') active.resolve(ok ? document.getElementById('uiModalInput').value : null);
+    else if(mode === 'confirm') active.resolve(!!ok);
+    else active.resolve();
+  }
+  // Próximo da fila (se houver) reabre o pop-up já com o conteúdo dele.
+  if(_uiQueue.length) _uiRenderActive();
+}
+
 function _uiOpen(o) {
   o = o || {};
+  // Dedupe opcional: evita empilhar N cópias do mesmo aviso (ex: falha de rede que repete).
+  // Se já há um pop-up com a mesma chave aberto ou na fila, não enfileira outro.
+  if(o.dedupeKey) {
+    const dup = (_uiActive && _uiActive.opts.dedupeKey === o.dedupeKey) ||
+                _uiQueue.some(q => q.opts.dedupeKey === o.dedupeKey);
+    if(dup) return Promise.resolve(o.mode === 'confirm' ? false : (o.mode === 'prompt' ? null : undefined));
+  }
   return new Promise(res => {
-    _uiModalResolver = res; _uiModalMode = o.mode || 'alert';
-    document.getElementById('uiModalTitle').textContent = o.title || (o.mode === 'alert' ? 'Heads up' : 'Please confirm');
-    document.getElementById('uiModalMsg').textContent = o.message || '';
-    const field = document.getElementById('uiModalField'), input = document.getElementById('uiModalInput');
-    if(o.mode === 'prompt') { field.style.display = ''; input.value = o.def || ''; input.placeholder = o.placeholder || ''; }
-    else field.style.display = 'none';
-    const cancel = document.getElementById('uiModalCancel'), ok = document.getElementById('uiModalOk');
-    cancel.style.display = (o.mode === 'alert') ? 'none' : '';
-    cancel.textContent = o.cancelLabel || 'Cancel';
-    ok.textContent = o.okLabel || 'OK';
-    ok.className = o.danger ? 'btn-danger' : 'btn-next';
-    ok.style.flex = '1'; ok.style.marginTop = '0';
-    document.getElementById('uiModal').style.display = 'flex';
-    if(o.mode === 'prompt') setTimeout(() => { input.focus(); input.select(); }, 30);
+    _uiQueue.push({ opts: o, resolve: res });
+    if(_uiActive) _uiUpdateQueueCount(); // já tem um aberto: atualiza o "+N more" na hora
+    _uiRenderActive();
   });
 }
-function uiAlert(message, opts) { return _uiOpen(Object.assign({}, opts, { message: message, mode: 'alert' })); }
-function uiConfirm(message, opts) { return _uiOpen(Object.assign({}, opts, { message: message, mode: 'confirm' })); }
+
+// Fecha pop-ups passivos (alert/notify) com Esc; confirm→false, prompt→null. Não fecha à toa
+// se não há nada aberto.
+document.addEventListener('keydown', (e) => {
+  if(e.key !== 'Escape' || !_uiActive) return;
+  const mode = _uiActive.opts.mode;
+  if(mode === 'confirm' || mode === 'prompt') uiModalResolve(false);
+  else uiModalResolve(true);
+});
+
+function uiAlert(message, opts)  { return _uiOpen(Object.assign({}, opts, { message: message, mode: 'alert' })); }
+function uiConfirm(message, opts){ return _uiOpen(Object.assign({}, opts, { message: message, mode: 'confirm' })); }
 function uiPrompt(message, opts) { return _uiOpen(Object.assign({}, opts, { message: message, mode: 'prompt' })); }
+// Notificação padronizada (com tipo). Ex: uiNotify('Backup saved', {type:'success'}).
+function uiNotify(message, opts) { return _uiOpen(Object.assign({ type: 'info' }, opts, { message: message, mode: 'notify' })); }
 
 // Filtro de pasta do dashboard: 'all' (pastas + soltos, padrão) | 'unfoldered' (só os soltos,
 // esconde a seção de Pastas). Puramente de visualização — não muda dado nenhum.
@@ -3894,6 +5126,8 @@ async function confirmCampaignDelete() {
   const id = _pendingDeleteId;
   if(!id) return;
   if(ghConfigured()) await withTimeout(ghPullProjects(), 8000, 'ghPullProjects');
+  // Backup ANTES de deletar — restaurável em "Recently deleted".
+  try{ const _pd = projGetAll().find(x => x.id === id); if(_pd) await snapshotProjectVersion(_pd, 'backup', t('versionHistory.beforeDeleteLabel')); }catch(e){}
   await withTimeout(markProjectDeleted(id), 8000, 'markProjectDeleted');
   await withTimeout(deleteNotifsForProject(id), 8000, 'deleteNotifsForProject');
   const projects = projGetAll().filter(p => p.id !== id);
@@ -3974,6 +5208,8 @@ async function openCampaignEditor(id) {
     const isOwner = me && p.owner && p.owner.toLowerCase() === me.email.toLowerCase();
     _approverMode = !!(me && !isOwner && (p.approvers || []).some(e => e.toLowerCase() === me.email.toLowerCase()));
     currentProjectId = p.id; // pro código de aprovação (notificações/lock) resolver o projeto certo
+    presenceSetProject(p.id); // presença ao vivo — anuncia que estou nesta pasta agora
+    undoClear();              // undo é por-pasta: começa limpo ao abrir
     document.getElementById('campaignScreenTitle').textContent = p.name;
     renderCampaignTabs();
     renderCampaignMain();
@@ -4017,10 +5253,9 @@ async function saveCampaignProject() {
 let _campaignAutosaveTimer = null;
 function scheduleCampaignAutosave() {
   clearTimeout(_campaignAutosaveTimer);
-  // 150ms em vez de 600ms — "instantâneo" o suficiente pra não perder edição nenhuma se a
-  // pessoa fechar a aba rápido, mas ainda junta as teclas de uma mesma rajada de digitação
-  // (salvar a cada tecla individual seria desperdício de escrita sem ganho perceptível).
-  _campaignAutosaveTimer = setTimeout(saveCampaignProject, 150);
+  // Mesma política do editor solto (AUTOSAVE_DEBOUNCE_MS ~1,5s): junta a rajada de digitação e só
+  // grava na pausa. Fechar a aba/trocar de item no meio faz flush imediato (não perde edição).
+  _campaignAutosaveTimer = setTimeout(saveCampaignProject, AUTOSAVE_DEBOUNCE_MS);
 }
 
 // A barra de cima mostra os 3 TIPOS (Email/In-app/Push) — clicar num tipo mostra
@@ -4397,7 +5632,7 @@ function renderCampaignGrid(item) {
       <td class="rn">${ri + 1}</td>
       <td class="cid">${escHtml(row.label || row.id)}</td>
       <td class="src"><textarea rows="1" ${originEditable ? `oninput="setCampaignOrigin(${ri},this.value)"` : 'readonly'}>${escHtml(row.src)}</textarea></td>
-      ${langs.map((l, ci) => `<td class="tl tl-cell cell-nav${!(row.translations[l] || '').trim() ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}"><textarea rows="1" readonly oninput="autoH(this);setCampaignCell(${ri},'${escJsAttr(l)}',this.value)">${escHtml(row.translations[l] || '')}</textarea></td>`).join('')}
+      ${langs.map((l, ci) => translationCellTd({ ri, ci, lang: l, value: row.translations[l] || '', write: 'setCampaignCell', liveHL: false, wrapInner: false, commentBtn: '', valEsc: escHtml })).join('')}
     </tr>
   `).join('') + '</tbody>';
   table.innerHTML = colgroup + thead + tbody;
@@ -4421,7 +5656,12 @@ function setCampaignOrigin(ri, value) {
 function setCampaignCell(ri, lang, value) {
   const item = _campaign.items[_campaignItemIndex];
   if(!item || !item.rows[ri]) return;
+  const before = item.rows[ri].translations[lang] || '';
+  // Célula sendo ESVAZIADA → backup antes de apagar (ver setCellV).
+  if(before.trim() && !String(value||'').trim()) maybeSnapshotBeforeStructuralDelete();
   item.rows[ri].translations[lang] = value;
+  _recordCellCleared('campaign', item.id, item.rows[ri].id, lang, value); // tombstone de esvaziamento
+  undoRecordCell('campaign', item.id, item.rows[ri].id, lang, before, value);
   touchCampaignItem(item); // edição de conteúdo → carimba pro merge por item
   scheduleCampaignAutosave();
   updateCampaignPreviewCell(item, item.rows[ri], lang);
@@ -4606,6 +5846,9 @@ async function confirmContentItemDelete() {
   // Tombstone do item: exclusão é EXPLÍCITA, pra o merge de união (mergeCampaignItems) não
   // ressuscitar este item a partir de uma cópia velha de outra aba/pessoa.
   const removed = _campaign.items[i];
+  // Backup ANTES de remover o item — a pasta continua viva, então isto fica restaurável pela
+  // tela de Histórico (o snapshot guarda a pasta inteira, com o item, imediatamente antes).
+  try{ await snapshotProjectVersion(_campaign, 'backup', t('versionHistory.beforeDeleteLabel')); }catch(e){}
   _campaign.deletedItemIds = (_campaign.deletedItemIds || []).concat([{ id: removed.id, at: Date.now() }]);
   _campaign.items.splice(i, 1);
   if(_campaignItemIndex === i) { _campaignItemIndex = -1; _campaignViewMode = 'gallery'; }
@@ -5085,23 +6328,39 @@ async function dashAddUser() {
     errEl.classList.add('show');
     return;
   }
-  await dashPullUsersIfPossible();
-  const me = authCurrentUser();
-  // Guard: só superadmin cria alguém já como superadmin (defesa além de esconder a opção).
-  const safeRole = (role === 'superadmin' && !isSuperadmin(me && me.role)) ? 'member' : role;
-  const users = authGetUsers();
-  if(users.some(u => u.email.toLowerCase() === email)) {
-    errEl.textContent = 'A member with this email already exists.';
-    errEl.classList.add('show');
-    return;
+  if(_roleBusy) return; // reaproveita o overlay da modal de Membros
+  setRoleBusy(true, 'Adding member…');
+  const newUser = { email, pass, role, name: name || '', department };
+  try {
+    await dashPullUsersIfPossible();
+    const me = authCurrentUser();
+    // Guard: só superadmin cria alguém já como superadmin (defesa além de esconder a opção).
+    newUser.role = (role === 'superadmin' && !isSuperadmin(me && me.role)) ? 'member' : role;
+    const users = authGetUsers();
+    if(users.some(u => u.email.toLowerCase() === email)) {
+      errEl.textContent = 'A member with this email already exists.';
+      errEl.classList.add('show');
+      return; // cai no finally (setRoleBusy(false))
+    }
+    // Convite explícito reabilita um e-mail removido antes (senão o push o filtra e some no pull).
+    await clearUserTombstone(email);
+    users.push(newUser);
+    // AGUARDA a confirmação do banco (era fire-and-forget): sem isto, uma falha do upsert produzia
+    // um "membro fantasma" — aparecia na lista mas nunca persistia e sumia no próximo pull.
+    await withTimeout(authSaveUsers(users), 8000, 'authSaveUsers (add member)');
+    document.getElementById('dashNewUserName').value = '';
+    document.getElementById('dashNewUserEmail').value = '';
+    document.getElementById('dashNewUserPass').value = '';
+    document.getElementById('dashNewUserDept').value = '';
+  } catch(e) {
+    console.warn('Add member failed:', e);
+    // Desfaz o otimismo local pra não deixar o membro fantasma que some no próximo pull.
+    try { localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(authGetUsers().filter(u => u.email.toLowerCase() !== email))); } catch(_){}
+    showNotif('Could not add the member — please try again. Nothing was saved.', 'warn', 4500);
+  } finally {
+    setRoleBusy(false);
+    renderDashUserList();
   }
-  users.push({ email, pass, role: safeRole, name: name || '', department });
-  authSaveUsers(users);
-  document.getElementById('dashNewUserName').value = '';
-  document.getElementById('dashNewUserEmail').value = '';
-  document.getElementById('dashNewUserPass').value = '';
-  document.getElementById('dashNewUserDept').value = '';
-  renderDashUserList();
 }
 
 async function dashRemoveUser(email) {
@@ -5258,7 +6517,7 @@ function projPreviewBoxHtml(p) {
 function projRowHtml(p, isOwner) {
   const locked = projIsLocked(p);
   const me = authCurrentUser();
-  const lockedByMe = locked && p.lockedBy.toLowerCase() === me.email.toLowerCase();
+  const lockedByMe = locked && _sameUser(p.lockedBy, me.email);
   let lockBadge = '';
   if(locked) {
     lockBadge = lockedByMe
@@ -5744,6 +7003,8 @@ async function projOpen(id, btn) {
 
   currentProjectId = id;
   _lockTakeoverShown = false;
+  presenceSetProject(id); // presença ao vivo — anuncia que estou neste projeto agora
+  undoClear();             // undo é por-projeto: começa limpo ao abrir
 
   if(p.data && p.data.html && p.data.csv) {
     document.getElementById('dashboardScreen').style.display = 'none';
@@ -5845,6 +7106,8 @@ async function confirmProjDelete() {
   const id = _pendingDeleteId;
   if(!id) return;
   if(ghConfigured()) await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); // ver comentário em confirmAssignFolder
+  // Backup ANTES de deletar — deletar também vai pro histórico, restaurável em "Recently deleted".
+  try{ const _pd = projGetAll().find(x => x.id === id); if(_pd) await snapshotProjectVersion(_pd, 'backup', t('versionHistory.beforeDeleteLabel')); }catch(e){}
   await withTimeout(markProjectDeleted(id), 8000, 'markProjectDeleted');
   await withTimeout(deleteNotifsForProject(id), 8000, 'deleteNotifsForProject');
   let projects = projGetAll();
@@ -6107,6 +7370,8 @@ async function confirmDeleteFolder() {
     const projects = projGetAll();
     const folder = projects.find(p => p.id === folderId && p.kind === 'campaign');
     if(!folder) { closeDeleteFolderModal(); renderDashboard(); return; }
+    // Backup ANTES de deletar a pasta — restaurável em "Recently deleted".
+    try{ await snapshotProjectVersion(folder, 'backup', t('versionHistory.beforeDeleteLabel')); }catch(e){}
 
     if(scope === 'folderonly') {
       // Preserva os e-mails como avulsos (in-app/push somem com a pasta). Trava anti-perda:
@@ -7220,6 +8485,7 @@ function restoreProjectContent(data, readOnly) {
   });
 
   S.rawHtml = data.html;
+  S.clearedCells = Array.isArray(data.clearedCells) ? data.clearedCells.slice() : []; // tombstones de célula esvaziada
   S.filename = data.htmlName || 'project.html';
   S.csv.name = parsedCsv.templateName || S.filename.replace(/\.html?$/i, '');
   S.csv.langs = langs;
@@ -8040,18 +9306,175 @@ function syncAllRowHeights(){
   });
 }
 function setSrcV(ri,v){S.csv.rows[ri].src=v;updatePreviewText(ri,null);scheduleAutosave();}
+// Tombstones de célula ESVAZIADA de propósito (ver mergeLooseData/clearedCells): registra o
+// esvaziamento com timestamp pra o merge saber que foi intencional e mais novo; remove quando a
+// célula volta a ter conteúdo. Guardados em S.clearedCells (avulso) / item.clearedCells (campanha).
+function _clearedListFor(surface, itemId){
+  if(surface === 'campaign'){
+    if(typeof _campaign === 'undefined' || !_campaign) return null;
+    const it = _campaign.items.find(x => x.id === itemId); if(!it) return null;
+    if(!Array.isArray(it.clearedCells)) it.clearedCells = [];
+    return it.clearedCells;
+  }
+  if(typeof S === 'undefined' || !S) return null;
+  if(!Array.isArray(S.clearedCells)) S.clearedCells = [];
+  return S.clearedCells;
+}
+function _recordCellCleared(surface, itemId, rowId, lang, value){
+  const list = _clearedListFor(surface, itemId);
+  if(!list) return;
+  const empty = !String(value || '').trim();
+  const idx = list.findIndex(c => c.id === rowId && c.lang === lang);
+  if(empty){
+    if(idx >= 0) list[idx].at = Date.now(); else list.push({ id: rowId, lang, at: Date.now() });
+  } else if(idx >= 0){
+    list.splice(idx, 1); // re-preencheu → tombstone sai
+  }
+}
+
 function setCellV(ri,l,v){
   const row=S.csv.rows[ri];
+  const before = row.translations[l] || '';
+  // Célula sendo ESVAZIADA (tinha conteúdo, virou vazia) → backup antes de apagar. Chamado ANTES
+  // de gravar o vazio pra o snapshot conter o conteúdo original.
+  if(before.trim() && !String(v||'').trim()) maybeSnapshotBeforeStructuralDelete();
   row.translations[l]=v;
+  _recordCellCleared('loose', null, row.id, l, v); // tombstone de esvaziamento (persiste o clear)
   // Ao localizar (traduzir) uma imagem que entrou "pendente" pós-aprovação, o item foi tratado:
   // limpa o marcador. Persiste pelo scheduleAutosave (editor grava data.pendingRowIds). A
   // aprovação nunca foi resetada — o badge só existia pra sinalizar que faltava revisar.
   if(S.pendingImgIds && S.pendingImgIds.includes(row.id) && (v||'').trim()){
     S.pendingImgIds = S.pendingImgIds.filter(id => id !== row.id);
   }
+  undoRecordCell('loose', null, row.id, l, before, v);
   updatePreviewText(ri,l);
   scheduleAutosave();
 }
+
+/* ═══════════════════════ UNDO / REDO (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y) ═══════════════════════
+   Camada IMEDIATA, LOCAL e POR-SESSÃO — complementa (não substitui) o histórico de versões.
+   Só as SUAS ações desta aba entram na pilha (nunca dá pra desfazer ação de outra pessoa). Cada
+   passo passa pela MESMA gravação (autosave -> merge/CAS), então é consistente com a colaboração.
+   Guarda ANTI-CLOBBER: um undo só aplica se o valor ATUAL da célula ainda for o que VOCÊ colocou
+   (curVal === after); se outra pessoa mudou depois, o passo é pulado (não sobrescreve o trabalho
+   dela). Redo é simétrico (curVal === before). Restaurar versão entra como UMA entrada (Ctrl+Z
+   desfaz a restauração inteira). */
+const _undoStack = [];
+const _redoStack = [];
+let _undoBusy = false;
+
+function undoRecordCell(surface, itemId, rowId, lang, before, after){
+  if((before || '') === (after || '')) return;
+  _undoStack.push({ kind:'cell', surface, itemId, rowId, lang, before: before || '', after: after || '' });
+  if(_undoStack.length > 200) _undoStack.shift();
+  _redoStack.length = 0; // qualquer edição nova invalida o redo
+}
+function undoRecordRestore(projectId, beforePayload, afterPayload){
+  _undoStack.push({ kind:'restore', projectId, beforePayload, afterPayload });
+  if(_undoStack.length > 200) _undoStack.shift();
+  _redoStack.length = 0;
+}
+function undoClear(){ _undoStack.length = 0; _redoStack.length = 0; }
+
+function _undoCurrentCellValue(e){
+  if(e.surface === 'loose'){
+    if(typeof S === 'undefined' || !S || !S.csv) return null;
+    const r = S.csv.rows.find(r => r.id === e.rowId); if(!r) return null;
+    return r.translations[e.lang] || '';
+  } else {
+    if(typeof _campaign === 'undefined' || !_campaign) return null;
+    const it = _campaign.items.find(x => x.id === e.itemId); if(!it) return null;
+    const r = it.rows.find(r => r.id === e.rowId); if(!r) return null;
+    return r.translations[e.lang] || '';
+  }
+}
+
+// Aplica um valor DIRETO na célula (modelo + DOM se visível + preview + autosave) SEM registrar
+// nova entrada de undo (não chama setCellV/setCampaignCell).
+function _undoApplyCell(e, value){
+  if(e.surface === 'loose'){
+    if(typeof S === 'undefined' || !S || !S.csv) return false;
+    const ri = S.csv.rows.findIndex(r => r.id === e.rowId); if(ri < 0) return false;
+    S.csv.rows[ri].translations[e.lang] = value;
+    const c = gridLangs().indexOf(e.lang);
+    const td = c >= 0 ? gridCellEl(ri, c) : null;
+    if(td){ const f = gridField(td); if(f) f.value = value; td.classList.toggle('tl-missing', !String(value || '').trim()); }
+    updatePreviewText(ri, e.lang);
+    scheduleAutosave();
+    return true;
+  } else {
+    if(typeof _campaign === 'undefined' || !_campaign) return false;
+    const it = _campaign.items.find(x => x.id === e.itemId); if(!it) return false;
+    const rj = it.rows.findIndex(r => r.id === e.rowId); if(rj < 0) return false;
+    it.rows[rj].translations[e.lang] = value;
+    touchCampaignItem(it);
+    const activeItem = _campaign.items[_campaignItemIndex];
+    if(activeItem && activeItem.id === e.itemId){
+      try{ const sr = S && S.csv && S.csv.rows.find(r => r.id === e.rowId); if(sr) sr.translations[e.lang] = value; }catch(_){}
+      const c = gridLangs().indexOf(e.lang);
+      const td = c >= 0 ? gridCellEl(rj, c) : null;
+      if(td){ const f = gridField(td); if(f) f.value = value; }
+      updateCampaignPreviewCell(it, it.rows[rj], e.lang);
+    }
+    scheduleCampaignAutosave();
+    return true;
+  }
+}
+
+async function _undoApplyRestore(payload){
+  const projects = projGetAll();
+  const idx = projects.findIndex(p => p.id === payload.id);
+  if(idx < 0) return false;
+  const cur = projects[idx];
+  projects[idx] = { ...payload, id: payload.id, updatedAt: Date.now(),
+                    lockedBy: cur.lockedBy, lockedAt: cur.lockedAt, approvingUsers: cur.approvingUsers };
+  await projSaveAll(projects);
+  _refreshEditorAfterRestore(projGetAll().find(p => p.id === payload.id));
+  return true;
+}
+
+async function undoAction(){
+  if(_undoBusy) return; _undoBusy = true;
+  try{
+    while(_undoStack.length){
+      const e = _undoStack.pop();
+      if(e.kind === 'restore'){ _redoStack.push(e); await _undoApplyRestore(e.beforePayload); return; }
+      const curVal = _undoCurrentCellValue(e);
+      if(curVal === null) continue;                    // alvo não está mais aberto — pula
+      if(curVal !== e.after){ showMergeNotice(t('undo.skipped')); continue; } // mudado por outro — não clobber
+      if(_undoApplyCell(e, e.before)){ _redoStack.push(e); return; }
+    }
+  } finally { _undoBusy = false; }
+}
+
+async function redoAction(){
+  if(_undoBusy) return; _undoBusy = true;
+  try{
+    while(_redoStack.length){
+      const e = _redoStack.pop();
+      if(e.kind === 'restore'){ _undoStack.push(e); await _undoApplyRestore(e.afterPayload); return; }
+      const curVal = _undoCurrentCellValue(e);
+      if(curVal === null) continue;
+      if(curVal !== e.before){ showMergeNotice(t('undo.skipped')); continue; }
+      if(_undoApplyCell(e, e.after)){ _undoStack.push(e); return; }
+    }
+  } finally { _undoBusy = false; }
+}
+
+// Atalhos globais. Não sequestra o undo NATIVO de um campo de texto editável (inclui a célula do
+// grid em modo EDIÇÃO, que é um textarea editável) — só age quando o foco NÃO está num campo
+// editável (ex: grid em modo navegação, célula readonly).
+document.addEventListener('keydown', function(e){
+  if(!(e.ctrlKey || e.metaKey)) return;
+  const k = (e.key || '').toLowerCase();
+  if(k !== 'z' && k !== 'y') return;
+  if(!currentProjectId) return; // só dentro de um editor
+  const ae = document.activeElement;
+  if(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA') && !ae.readOnly) return; // deixa nativo
+  const redo = (k === 'y') || e.shiftKey;
+  e.preventDefault();
+  if(redo) redoAction(); else undoAction();
+});
 
 /* ═══════════ NAVEGAÇÃO/SELEÇÃO/COLAR ESTILO PLANILHA (grid de tradução) ═══════════
    Camada leve (sem lib) sobre a tabela já existente. Só atua nas COLUNAS DE IDIOMA
@@ -8697,12 +10120,16 @@ function insertMention(name) {
 }
 
 
-// Salva automaticamente as traduções enquanto a pessoa edita (com debounce pra não travar a
-// digitação) — 150ms em vez de 600ms, pra salvar praticamente ao vivo sem gravar a cada tecla.
+// Autosave do ESTADO ATUAL por debounce: salva ~1,5s DEPOIS que a pessoa para de editar (o timer
+// reinicia a cada alteração). Evita gravar no meio de uma edição incompleta e evita bater no banco
+// a cada tecla. A perda dos últimos caracteres ao fechar/navegar é coberta pelo flush imediato
+// (beforeunload / goToDashboard / troca de item). É a camada 1 (autosave); a camada 2 é o snapshot
+// de histórico (a cada 60s, só se mudou — ver maybeAutoSnapshot).
+const AUTOSAVE_DEBOUNCE_MS = 1500;
 let _autosaveTimer = null;
 function scheduleAutosave() {
   clearTimeout(_autosaveTimer);
-  _autosaveTimer = setTimeout(autosaveProject, 150);
+  _autosaveTimer = setTimeout(autosaveProject, AUTOSAVE_DEBOUNCE_MS);
 }
 
 // Salva imediatamente (sem esperar o debounce) se a pessoa fechar/recarregar a aba
@@ -8715,9 +10142,31 @@ function scheduleAutosave() {
 // achado real de QA: editar um item de campanha e fechar a aba dentro dos 150ms do debounce
 // perdia a edição, silenciosamente, sem nenhum aviso.
 window.addEventListener('beforeunload', (e) => {
+  // Libera a trava de edição ao FECHAR/RECARREGAR a aba (o goToDashboard já liberava na navegação
+  // interna, mas fechar a aba não passava por lá — a trava ficava presa até o timeout de 3min).
+  // Limpa o campo localmente ANTES do autosave abaixo, pra o push do autosave carregar a trava já
+  // liberada. É best-effort (rede no unload não é garantida); a garantia de verdade é a
+  // reconciliação por presença ao vivo em projIsLocked. NÃO zera currentProjectId (diferente de
+  // projReleaseMine), senão o autosave logo abaixo não acharia o projeto.
+  let _lockReleasedOnUnload = false;
+  try{
+    const me = authCurrentUser();
+    if(me && !_campaign && currentProjectId){
+      const projects = projGetAll();
+      const p = projects.find(x => x.id === currentProjectId);
+      if(p && p.lockedBy && p.lockedBy.toLowerCase() === me.email.toLowerCase()){
+        p.lockedBy = null; p.lockedAt = null;
+        projSaveAll(projects);
+        _lockReleasedOnUnload = true;
+      }
+    }
+  }catch(err){}
   if(_autosaveTimer) {
     clearTimeout(_autosaveTimer);
     autosaveProject();
+  } else if(_lockReleasedOnUnload) {
+    // Não havia autosave pendente, mas liberamos a trava — tenta empurrar essa mudança (best-effort).
+    try{ autosaveProject(); }catch(err){}
   }
   if(_avAutosaveTimer) {
     clearTimeout(_avAutosaveTimer);
@@ -8776,6 +10225,7 @@ function autosaveProject() {
     if(p.data.maxIdIssued > S.maxIdIssued) S.maxIdIssued = p.data.maxIdIssued;
     p.data.pendingRowIds = [...(S.pendingImgIds||[])];
     p.data.parkedLangs = { ...(S.parkedLangs||{}) };
+    p.data.clearedCells = Array.isArray(S.clearedCells) ? S.clearedCells.slice() : []; // tombstones de célula esvaziada
   }
   // NÃO grava approvalComments/approvalDoneByLang/approvalActivity/approvalDeletedIds aqui.
   // Essa função salva a cada tecla digitada numa tradução (scheduleAutosave, 150ms) e lê
@@ -8842,6 +10292,20 @@ async function autosaveCampaignApprovalState() {
   }
 }
 
+// Escolhe DETERMINISTICAMENTE entre duas marcas de aprovação de um idioma, independente de ordem
+// de commit (comutativo: _pickDoneEntry(a,b) === _pickDoneEntry(b,a)). Antes o empate de `at`
+// (mesmo milissegundo) era decidido pelo lado "local" = vencedor por updatedAt, então aprovar vs
+// desaprovar no mesmo ms dava resultado dependente da ordem. Regra de empate: (1) mais novo vence;
+// (2) empate → o "undone" (desaprovação) vence, estado mais conservador; (3) ainda empatado →
+// desempata estável por `by`.
+function _pickDoneEntry(a, b){
+  if(!a) return b; if(!b) return a;
+  const aa = a.at || 0, ba = b.at || 0;
+  if(aa !== ba) return aa > ba ? a : b;
+  const au = !!a.undone, bu = !!b.undone;
+  if(au !== bu) return au ? a : b;
+  return String(a.by || '') <= String(b.by || '') ? a : b;
+}
 function mergeApprovalState(remoteData, localComments, localActivity, localDoneByLang, localDeletedIds) {
   const remoteComments = Array.isArray(remoteData?.approvalComments) ? remoteData.approvalComments : [];
   const remoteActivity = Array.isArray(remoteData?.approvalActivity) ? remoteData.approvalActivity : [];
@@ -8900,7 +10364,7 @@ function mergeApprovalState(remoteData, localComments, localActivity, localDoneB
   Object.keys(localDoneByLang).forEach(lang => {
     const local = localDoneByLang[lang];
     const remote = mergedDoneByLang[lang];
-    if(!remote || (local?.at || 0) >= (remote?.at || 0)) mergedDoneByLang[lang] = local;
+    mergedDoneByLang[lang] = remote ? _pickDoneEntry(local, remote) : local;
   });
   // Idiomas que eu desfiz localmente (delete) só valem se eu desfiz DEPOIS do que está no servidor.
   Object.keys(remoteDoneByLang).forEach(lang => {
@@ -9018,9 +10482,75 @@ function updatePreviewText(ri, lang) {
   if(iframe && iframe.contentWindow)
     iframe.contentWindow.postMessage({type:'braze-update', ri, text: newText, src: row.src, tid: row.id}, '*');
 }
-function delRow(ri){S.csv.rows.splice(ri,1);reBody();debR();scheduleAutosave();}
+// Backup ANTES de uma deleção ESTRUTURAL no CSV builder (linha/coluna). Coalescido: 1 backup por
+// rajada de 60s por projeto — apagar várias linhas seguidas guarda o estado de ANTES da 1ª (esse
+// snapshot já contém todas as linhas), sem gerar um backup por clique. Fire-and-forget.
+/* ══ REDE DE SEGURANÇA: snapshot ANTES de destruir (esvaziar célula / deletar linha ou coluna) ══
+   Antes: gate de BORDA DE SUBIDA (só snapshotava se >60s do último) — engolia deleções em rajada e
+   dava a sensação de "não comitou na hora". Agora: DEBOUNCE DE SAÍDA que NUNCA descarta.
+   Na 1ª ação destrutiva de uma rajada capturo AGORA (síncrono, barato) o payload de ANTES; quando a
+   rajada assenta (SAFETY_SNAP_DEBOUNCE_MS) — ou você sai/fecha a aba — grava 1 LINHA só, contendo o
+   estado pré-rajada (todas as N deleções da rajada ficam recuperáveis daquele único ponto).
+   kind='auto' => entra na poda (TTL 14d + manter 30), então NÃO incha o banco; o backup MANUAL
+   ("Save backup") continua sendo kind='backup' e nunca é podado. */
+const SAFETY_SNAP_DEBOUNCE_MS = 4000;   // rajada assenta => grava
+const SAFETY_SNAP_MAX_HOLD_MS = 45000;  // edição contínua: não segura um pré-estado velho demais
+let _pendingSafetySnap = null;          // { projectId, payload, label, capturedAt }
+let _safetySnapTimer = null;
+
+// Captura SÍNCRONA e congelada (deep copy) do payload do projeto/campanha aberto = estado de ANTES.
+function _captureCurrentPayloadForSafety(){
+  try{
+    if(_campaign && _campaign.id){
+      return { projectId: _campaign.id, payload: JSON.parse(JSON.stringify(_campaign)) };
+    }
+    if(currentProjectId){
+      if(typeof autosaveProject === 'function'){ try{ autosaveProject(); }catch(e){} } // flush S->localStorage
+      const proj = projGetAll().find(p => p.id === currentProjectId);
+      if(proj) return { projectId: proj.id, payload: JSON.parse(JSON.stringify(proj)) };
+    }
+  }catch(e){}
+  return null;
+}
+
+// Descarrega o snapshot de segurança pendente (grava 1 linha). Idempotente.
+function _flushSafetySnap(){
+  if(_safetySnapTimer){ clearTimeout(_safetySnapTimer); _safetySnapTimer = null; }
+  const pend = _pendingSafetySnap;
+  _pendingSafetySnap = null;
+  if(!pend || _versionsTableMissing) return;
+  try{ snapshotProjectVersion(pend.payload, 'auto', pend.label); }catch(e){}
+}
+
+// Chamado ANTES de esvaziar célula / deletar linha ou coluna. Garante o ponto de restore sem
+// gravar 1 linha por tecla: coalesce a rajada, mas jamais descarta a deleção.
+function maybeSnapshotBeforeStructuralDelete(){
+  try{
+    if(_versionsTableMissing) return;
+    const label = (typeof t === 'function' ? t('versionHistory.beforeDeleteLabel') : 'Before deleting');
+    const nowProject = (_campaign && _campaign.id) ? _campaign.id : currentProjectId;
+    if(!nowProject) return;
+    // Rajada mudou de projeto, ou o pré-estado pendente já está velho demais: grava o pendente antes.
+    if(_pendingSafetySnap && (_pendingSafetySnap.projectId !== nowProject ||
+        (Date.now() - _pendingSafetySnap.capturedAt) > SAFETY_SNAP_MAX_HOLD_MS)){
+      _flushSafetySnap();
+    }
+    if(!_pendingSafetySnap){
+      const cap = _captureCurrentPayloadForSafety();
+      if(!cap) return;
+      _pendingSafetySnap = { projectId: cap.projectId, payload: cap.payload, label, capturedAt: Date.now() };
+    }
+    if(_safetySnapTimer) clearTimeout(_safetySnapTimer);
+    _safetySnapTimer = setTimeout(_flushSafetySnap, SAFETY_SNAP_DEBOUNCE_MS);
+  }catch(e){}
+}
+// Fechar/atualizar a aba no meio de uma rajada não pode perder o ponto de restore.
+window.addEventListener('beforeunload', _flushSafetySnap);
+
+function delRow(ri){maybeSnapshotBeforeStructuralDelete();S.csv.rows.splice(ri,1);reBody();debR();scheduleAutosave();}
 async function delLang(l){
   if(!(await uiConfirm(`Remove column "${l}"?`, {title:'Remove column', okLabel:'Remove', danger:true})))return;
+  maybeSnapshotBeforeStructuralDelete();
   S.csv.langs=S.csv.langs.filter(x=>x!==l);
   S.csv.rows.forEach(r=>delete r.translations[l]);
   S.targets=S.targets.filter(code=>S.allC.find(c=>c.code===code)?.lang!==l);
@@ -9812,6 +11342,7 @@ window.addEventListener('message', function(e){
 <!-- APPROVAL VIEW canvas — SEPARADO só pra organização (ver modules/approval-canvas.js). Código de
      escopo global (classic script, sem IIFE): as funções seguem globais e leem os globais do app
      em runtime. Carregado DEPOIS do script inline (referências só acontecem em runtime). -->
+<script src="modules/strings.js"></script>
 <script src="modules/translation-engine.js"></script>
 <script src="modules/approval-canvas.js"></script>
 <!-- Módulo "Pasta/Folder" — ISOLADO (ver modules/folders.js). Carregado DEPOIS do script inline
