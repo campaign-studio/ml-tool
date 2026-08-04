@@ -1,0 +1,25 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Backup também ao deletar LINHA/COLUNA no CSV builder.
+
+O QUE FOI FEITO
+- delRow (deletar linha) e delLang (deletar coluna de idioma) do editor avulso passam a gravar um
+  snapshot "Before deleting" ANTES da exclusão, via maybeSnapshotBeforeStructuralDelete().
+- COALESCÊNCIA: 1 backup por rajada de 60s por projeto — apagar várias linhas seguidas guarda o
+  estado de ANTES da primeira (esse snapshot já contém todas as linhas), sem 1 backup por clique.
+- Flush do editor (autosaveProject) antes do snapshot no caso avulso, pro backup refletir as linhas
+  atuais. Fire-and-forget; try/catch — nunca atrapalha a deleção.
+- Como o projeto continua VIVO (é edição de conteúdo, não exclusão do projeto), fica restaurável
+  pela tela de HISTÓRICO (View changes -> Restore), não pela "Recently deleted".
+
+ARQUIVOS (index.html)
+- maybeSnapshotBeforeStructuralDelete() + _lastStructDelSnapAt; chamada no topo de delRow e delLang.
+
+VERIFICAÇÃO
+- Load sem erros de console; delRow/delLang contêm a chamada; helper seguro sem projeto aberto.
+
+NOTA IMPORTANTE (deploy)
+- O app que estava sendo usado estava numa versão anterior ao commit do backup-ao-deletar (28ed3f2)
+  — por isso "não aparecia" nada em Recently deleted e o delete não gerava backup. É preciso
+  atualizar/deployar a versão nova (hard refresh Cmd+Shift+R, ou atualizar o deploy) pra TODO o
+  backup-ao-deletar (projeto, pasta, item, linha, coluna) entrar em ação.

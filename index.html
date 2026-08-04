@@ -9967,9 +9967,28 @@ function updatePreviewText(ri, lang) {
   if(iframe && iframe.contentWindow)
     iframe.contentWindow.postMessage({type:'braze-update', ri, text: newText, src: row.src, tid: row.id}, '*');
 }
-function delRow(ri){S.csv.rows.splice(ri,1);reBody();debR();scheduleAutosave();}
+// Backup ANTES de uma deleção ESTRUTURAL no CSV builder (linha/coluna). Coalescido: 1 backup por
+// rajada de 60s por projeto — apagar várias linhas seguidas guarda o estado de ANTES da 1ª (esse
+// snapshot já contém todas as linhas), sem gerar um backup por clique. Fire-and-forget.
+let _lastStructDelSnapAt = {};
+function maybeSnapshotBeforeStructuralDelete(){
+  try{
+    if(!currentProjectId || _versionsTableMissing) return;
+    const now = Date.now();
+    if(now - (_lastStructDelSnapAt[currentProjectId] || 0) < 60000) return;
+    // Flush do estado atual do editor avulso pro projeto, pro snapshot conter as linhas de agora.
+    if(!_campaign && typeof autosaveProject === 'function'){ try{ autosaveProject(); }catch(e){} }
+    const proj = projGetAll().find(p => p.id === currentProjectId);
+    if(!proj) return;
+    _lastStructDelSnapAt[currentProjectId] = now;
+    snapshotProjectVersion(proj, 'backup', t('versionHistory.beforeDeleteLabel'));
+  }catch(e){}
+}
+
+function delRow(ri){maybeSnapshotBeforeStructuralDelete();S.csv.rows.splice(ri,1);reBody();debR();scheduleAutosave();}
 async function delLang(l){
   if(!(await uiConfirm(`Remove column "${l}"?`, {title:'Remove column', okLabel:'Remove', danger:true})))return;
+  maybeSnapshotBeforeStructuralDelete();
   S.csv.langs=S.csv.langs.filter(x=>x!==l);
   S.csv.rows.forEach(r=>delete r.translations[l]);
   S.targets=S.targets.filter(code=>S.allC.find(c=>c.code===code)?.lang!==l);
