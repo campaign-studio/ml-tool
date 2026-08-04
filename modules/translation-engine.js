@@ -45,16 +45,41 @@ function _buildSaveCsvFrom(name, langsInternal, rowsById, order) {
   return '﻿' + lines.join('\n');
 }
 
-function mergeLooseData(a, b) {
+// clearedCells: tombstones de célula ESVAZIADA de propósito — [{id, lang, at}] em data.clearedCells.
+// Permitem distinguir "esvaziei de propósito (recente)" de "está vazio porque nunca preenchi /
+// cache velho". Sem eles, "preenchido vence vazio" revertia todo clear intencional (bug real).
+function _clearMap(data){
+  const m = new Map();
+  ((data && data.clearedCells) || []).forEach(c => {
+    if(!c || c.id == null || c.lang == null) return;
+    const k = c.id + '|' + c.lang, at = c.at || 0;
+    if(!m.has(k) || m.get(k) < at) m.set(k, at);
+  });
+  return m;
+}
+function unionClearedCells(a, b){
+  const m = new Map();
+  [...(a || []), ...(b || [])].forEach(c => {
+    if(!c || c.id == null || c.lang == null) return;
+    const k = c.id + '|' + c.lang, at = c.at || 0;
+    if(!m.has(k) || (m.get(k).at || 0) < at) m.set(k, { id: c.id, lang: c.lang, at });
+  });
+  return [...m.values()];
+}
+
+function mergeLooseData(a, b, anc) {
   try {
     const ad = a.data, bd = b.data;
     if(!ad || !bd || !ad.csv || !bd.csv) return null;
-    if(ad.csv === bd.csv) return null; // idêntico → nada a fundir (deixa o caminho normal seguir)
+    const sameCleared = JSON.stringify(ad.clearedCells || []) === JSON.stringify(bd.clearedCells || []);
+    if(ad.csv === bd.csv && sameCleared) return null; // idêntico → nada a fundir
     const A = _rowsFromSaveCsv(ad.csv), B = _rowsFromSaveCsv(bd.csv);
     if(!A || !B) return null;
-    const aNewer = (a.updatedAt || 0) >= (b.updatedAt || 0);
-    const newer = aNewer ? A : B, older = aNewer ? B : A;
+    const aUpd = a.updatedAt || 0, bUpd = b.updatedAt || 0;
+    const aNewer = aUpd >= bUpd;
+    const aClear = _clearMap(ad), bClear = _clearMap(bd);
     const langs = [...new Set([...A.langs, ...B.langs])];
+    const newer = aNewer ? A : B, older = aNewer ? B : A;
     const order = [...newer.order];
     older.order.forEach(id => { if(!newer.rowsById.has(id)) order.push(id); });
     const rowsById = new Map();
@@ -63,31 +88,64 @@ function mergeLooseData(a, b) {
       const src = (na && na.src) || (ol && ol.src) || '';
       const tls = {};
       langs.forEach(l => {
-        const nv = na ? (na.tls[l] || '') : '', ov = ol ? (ol.tls[l] || '') : '';
-        tls[l] = nv.trim() ? nv : (ov.trim() ? ov : (nv || ov || '')); // preenchido vence vazio; conflito → novo
+        const arow = A.rowsById.get(id), brow = B.rowsById.get(id);
+        const av = arow ? (arow.tls[l] || '') : '', bv = brow ? (brow.tls[l] || '') : '';
+        const aC = aClear.get(id + '|' + l) || 0, bC = bClear.get(id + '|' + l) || 0;
+        let val;
+        if(av.trim() && bv.trim()) val = aNewer ? av : bv;            // os dois preencheram → projeto mais novo
+        else if(av.trim()) val = (bC && bC > aUpd) ? '' : av;         // B vazio: só apaga se B LIMPOU depois de A
+        else if(bv.trim()) val = (aC && aC > bUpd) ? '' : bv;         // A vazio: só apaga se A LIMPOU depois de B
+        else val = '';
+        tls[l] = val;
       });
       rowsById.set(id, { id, src, tls });
     });
     const mergedCsv = _buildSaveCsvFrom(aNewer ? A.name : B.name, langs, rowsById, order);
-    // GUARDA: nenhuma célula preenchida em A OU B pode ficar vazia no resultado.
     const M = _rowsFromSaveCsv(mergedCsv);
     if(!M) return null;
-    const noLoss = side => [...side.rowsById.keys()].every(id =>
+    // GUARDA (relaxada p/ clear intencional): célula preenchida num lado só pode ficar vazia no
+    // resultado se o OUTRO lado a limpou de propósito com timestamp mais novo que a versão deste lado.
+    const noLoss = (side, sideUpd, otherClear) => [...side.rowsById.keys()].every(id =>
       side.langs.every(l => {
         const v = (side.rowsById.get(id).tls[l] || '');
         if(!v.trim()) return true;
         const mr = M.rowsById.get(id);
-        return mr && (mr.tls[l] || '').trim().length > 0;
+        if(mr && (mr.tls[l] || '').trim().length > 0) return true;
+        const oc = otherClear.get(id + '|' + l) || 0; // clear intencional do outro lado, mais novo?
+        return oc > sideUpd;
       }));
-    if(!noLoss(A) || !noLoss(B)) return null;
+    if(!noLoss(A, aUpd, bClear) || !noLoss(B, bUpd, aClear)) return null;
+    // clearedCells de saída = união, mantendo só os que resultaram em célula AINDA vazia (re-fill dropa).
+    const outCleared = unionClearedCells(ad.clearedCells, bd.clearedCells).filter(c => {
+      const mr = M.rowsById.get(c.id);
+      return mr && !(mr.tls[c.lang] || '').trim();
+    });
     const base = aNewer ? ad : bd;
+    const other = aNewer ? bd : ad;
+    // Aprovação NUNCA pode vir por LWW de `...base`: como toda edição de tradução carimba
+    // updatedAt, o editor é sempre o lado "mais novo" e sua cópia (potencialmente defasada) de
+    // approval* apagava o que um approver acabou de gravar no remoto. Fundimos por união/tombstone
+    // — exatamente o que a campanha já faz via mergeApprovalIntoFields (paridade avulso↔campanha).
+    const mergedApproval = (typeof mergeApprovalIntoFields === 'function')
+      ? mergeApprovalIntoFields(base, other) : null;
+    // pendingRowIds (imagens pós-aprovação pendentes) e parkedLangs (traduções de idiomas removidos,
+    // guardadas) viviam por LWW de `...base`. Com o ancestral, funde: lista por conjunto 3-way,
+    // objeto por chave 3-way — dois usuários mexendo em ids/idiomas diferentes não se sobrescrevem.
+    const mergedPending = (anc && typeof _mergeSetList === 'function')
+      ? _mergeSetList(anc.pendingRowIds, ad.pendingRowIds || [], bd.pendingRowIds || []) : undefined;
+    const mergedParked = (anc && typeof _merge3wayObj === 'function')
+      ? _merge3wayObj(anc.parkedLangs, ad.parkedLangs, bd.parkedLangs) : undefined;
     return {
       ...base,
+      ...(mergedApproval || {}),
       csv: mergedCsv,
       langs: sortLangsForDisplay(langs),
       html: aNewer ? ad.html : bd.html,
       comments: { ...(bd.comments || {}), ...(ad.comments || {}) },
       maxIdIssued: Math.max(ad.maxIdIssued || 0, bd.maxIdIssued || 0),
+      clearedCells: outCleared,
+      ...(mergedPending !== undefined ? { pendingRowIds: mergedPending } : {}),
+      ...(mergedParked !== undefined ? { parkedLangs: mergedParked } : {}),
     };
   } catch(e) { console.warn('mergeLooseData → fallback (comportamento atual):', e); return null; }
 }
@@ -1500,6 +1558,26 @@ function langDisplayName(lang) {
 //   cfg.pendingImgIds— ids de imagens pendentes (S.pendingImgIds || [])
 // Os handlers inline (switchAndHL/setCellV/sendHL/autoH/highlightFromTable/delRow/
 // ackTextMismatch) e os helpers csvSourceText/cellCommentBtn/escHtml continuam GLOBAIS.
+// Célula de tradução COMPARTILHADA pelos dois grids (editor avulso e editor de campanha). É a
+// fonte ÚNICA do contrato que o controlador de grid depende: td.tl-cell.cell-nav + data-r/data-c +
+// <textarea readonly>. As diferenças legítimas de cada editor entram por opções, sem um lado mudar
+// o comportamento do outro:
+//   o.write     — nome da função de escrita ('setCellV' avulso | 'setCampaignCell' campanha)
+//   o.liveHL    — avulso destaca no preview ao focar/digitar (onfocus switchAndHL + sendHL); campanha não
+//   o.wrapInner — avulso embrulha em .tl-inner e adiciona o botão de comentário; campanha é enxuta
+//   o.commentBtn/o.valEsc — html do botão de comentário e função de escape do valor de cada contexto
+function translationCellTd(o){
+  const ll = (typeof escJsAttr === 'function') ? escJsAttr(o.lang) : o.lang;
+  const isEmpty = !(o.value || '').trim();
+  const esc = o.valEsc || (s => String(s == null ? '' : s));
+  const v = esc(o.value || '');
+  const focus = o.liveHL ? ` onfocus="switchAndHL(${o.ri},'${ll}')"` : '';
+  const hl = o.liveHL ? `;sendHL(${o.ri},'${ll}')` : '';
+  const ta = `<textarea rows="1" readonly${focus} oninput="autoH(this);${o.write}(${o.ri},'${ll}',this.value)${hl}">${v}</textarea>`;
+  const inner = o.wrapInner ? `<div class="tl-inner">${ta}${o.commentBtn || ''}</div>` : ta;
+  return `<td class="tl tl-cell cell-nav${isEmpty ? ' tl-missing' : ''}" data-r="${o.ri}" data-c="${o.ci}">${inner}</td>`;
+}
+
 function renderTranslationGridBody(cfg) {
   const langsOrdered = cfg.langs;
   return cfg.rows.map((row,ri)=>{
@@ -1541,19 +1619,12 @@ function renderTranslationGridBody(cfg) {
     // custom_attribute, context) no meio da frase, mesmo já tendo sido "limpo" só no CSV.
     const displaySrc = csvSourceText(row).replace(/</g,'&lt;').replace(/"/g,'&quot;');
     const origLang = cfg.originLang;
-    const tls = langsOrdered.map((l,ci)=>{
-      const v=(row.translations[l]||'').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-      const isEmpty = !(row.translations[l]||'').trim();
-      return `<td class="tl tl-cell cell-nav${isEmpty ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}">
-        <div class="tl-inner">
-          <textarea rows="1" readonly
-            onfocus="switchAndHL(${ri},'${l}')"
-            oninput="autoH(this);setCellV(${ri},'${l}',this.value);sendHL(${ri},'${l}')"
-          >${v}</textarea>
-          ${cellCommentBtn(ri, l, row)}
-        </div>
-      </td>`;
-    }).join('');
+    const tls = langsOrdered.map((l,ci)=> translationCellTd({
+      ri, ci, lang: l, value: row.translations[l] || '',
+      write: 'setCellV', liveHL: true, wrapInner: true,
+      commentBtn: cellCommentBtn(ri, l, row),
+      valEsc: s => String(s).replace(/</g,'&lt;').replace(/"/g,'&quot;')
+    })).join('');
     const mismatch = row._textMismatch;
     const mismatchTitle = mismatch ? `HTML: "${String(mismatch.htmlSrc).replace(/"/g,'&quot;').slice(0,150)}" — CSV said: "${String(mismatch.csvSrc).replace(/"/g,'&quot;').slice(0,150)}"` : '';
     const warnBadge = mismatch
