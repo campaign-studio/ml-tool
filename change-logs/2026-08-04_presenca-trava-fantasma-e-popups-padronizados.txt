@@ -1,0 +1,96 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: (1) Corrigir "editando" preso (trava fantasma) via presença ao vivo + release no unload;
+      (2) Padronizar TODOS os alertas num único pop-up central enfileirado.
+
+===============================================================================
+1) BUG: indicador de "X is editing" ficava preso mesmo depois de a pessoa sair
+===============================================================================
+CAUSA-RAIZ
+- Existem dois indicadores distintos:
+  A) Presença AO VIVO (_presenceChannel) — efêmero, some sozinho ao cair a conexão. OK.
+  B) TRAVA de edição (p.lockedBy, gravada no payload) — pill "🔒 X is editing" no Dashboard e
+     gate do botão "Open Project". ESSA é a que ficava presa.
+- Motivos da trava presa:
+  1. O beforeunload NÃO chamava projReleaseMine(). Fechar a aba / dar refresh / o navegador
+     matar a aba deixava lockedBy cravado. Só o clique em "Dashboard" (goToDashboard) liberava.
+  2. Expiração só passiva e mal ancorada: projIsLocked considerava a trava expirada apenas
+     3min (LOCK_TIMEOUT_MS) DEPOIS de lockedAt, e lockedAt só era atualizado ao abrir/salvar —
+     sem heartbeat. Então quem fechava a aba logo após um save ficava "editando" pros outros
+     por até 3min.
+
+O QUE MUDOU
+- projIsLocked() agora RECONCILIA com a presença ao vivo: se o canal de presença já sincronizou
+  (_presenceReady) e o dono da trava NÃO está presente naquele projeto agora, a trava é tratada
+  como FANTASMA → livre na hora, sem esperar os 3min. Enquanto o canal não sincronizou, mantém o
+  fallback por tempo (não libera trava à toa no load). Custo no banco: ZERO (presença é efêmera).
+- _recomputePresence() marca _presenceReady=true no 1º sync e dispara um re-render DEBOUNCED
+  (500ms) do Dashboard quando visível, pra o pill "X is editing" sumir assim que a pessoa sai/cai,
+  sem depender do próximo pull.
+- Novo helper _isPresentInProject(email, projectId).
+- beforeunload: libera a trava best-effort ao fechar/recarregar a aba (limpa lockedBy/lockedAt
+  local ANTES do autosave, pra o push carregar a trava liberada; não zera currentProjectId). É
+  best-effort (rede no unload não é garantida) — a garantia de verdade é a reconciliação por
+  presença acima.
+
+EDGE CASES COBERTOS
+- Perde conexão sem fechar a aba: presença Realtime emite leave + heartbeat para → pill some.
+- Fecha a aba logo após salvar: some em segundos (antes: até 3min).
+- Duas pessoas entrando/saindo rápido: presença deduplica por e-mail; lockTakeoverModal e
+  lockSessionId seguem protegendo a corrida de edição simultânea.
+
+===============================================================================
+2) Padronização: TODO alerta agora é o mesmo pop-up central (enfileirado)
+===============================================================================
+ANTES (3 estilos convivendo)
+- Modal central uiAlert/uiConfirm/uiPrompt (bom, mas sem variação por tipo).
+- alert() NATIVO do navegador (8 ocorrências no Histórico/Recently deleted).
+- Toasts discretos no rodapé que sumiam sozinhos (syncWarningToast, mergeNoticeToast) — o
+  "aparece e some sem chamar atenção" que o pedido queria eliminar.
+
+DEPOIS (padrão único)
+- Um só componente de pop-up central chamativo, com ícone + acento por TIPO:
+  success | error | warning | info | confirm.
+- ENFILEIRADO (um de cada vez, na ordem pedida): nada some sem ser visto. Rodapé mostra
+  "+N more" quando há itens esperando.
+- Comportamento (escolha do usuário — "o recomendado"):
+    success/info  -> fecham sozinhos (~3,5s) e também dá pra fechar na hora;
+    error/warning/confirm/prompt -> EXIGEM clique.
+- Esc fecha o pop-up passivo (confirm→false, prompt→null).
+- dedupeKey: avisos repetidos (ex: falha de rede) não empilham N cópias.
+- Nova API: uiNotify(msg, {type}). uiAlert/uiConfirm/uiPrompt mantidos (agora enfileirados e com
+  suporte a type). Corrigido de quebra um bug latente: duas chamadas de _uiOpen concorrentes antes
+  sobrescreviam o resolver e a 1ª Promise nunca resolvia — a fila resolve isso.
+
+SUBSTITUIÇÕES
+- Os 8 alert() do navegador -> uiNotify com tipo (error/info/warning/success conforme o caso).
+- showSyncWarning() -> uiNotify(type:'warning', dedupeKey:'sync-warning').
+- showMergeNotice() -> uiNotify(type:'success', dedupeKey:'merge-notice').
+- Removidos o DOM e o CSS órfãos dos toasts antigos (.sync-toast/.merge-toast,
+  #syncWarningToast/#mergeNoticeToast) e os timers _syncToastTimer/_mergeToastTimer.
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- CSS: .ui-nicon (ícone circular por tipo), acentos .ui-pop.t-* e .ui-queue-count.
+- HTML #uiModal: + #uiModalIcon, classe ui-pop no card (#uiModalCard), + #uiModalQueueCount.
+- JS pop-up: fila (_uiQueue/_uiActive/_uiAutoTimer), _uiRenderActive, _uiUpdateQueueCount,
+  _uiDefaultTitle, _uiAutoMs, uiModalResolve (resolve o ativo + abre o próximo), _uiOpen (dedupe),
+  keydown Esc, uiNotify. showSyncWarning/showMergeNotice reescritos delegando a uiNotify.
+- JS presença/trava: _presenceReady, _isPresentInProject, _refreshDashboardForPresence
+  (debounce 500ms), _recomputePresence (marca ready + refresh), projIsLocked (reconciliação),
+  beforeunload (release best-effort da trava).
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Load em localhost:3000: ZERO erros de console; todas as funções novas definidas (o script
+  parseia inteiro). NENHUMA escrita em produção.
+- Pop-up testado via console: success renderiza (ícone ✓, título "Done", cancel oculto,
+  auto-timer setado) e auto-fecha em ~3,5s; warning/error/confirm exigem clique (sem auto-timer);
+  fila enfileira e mostra "+2 more" ao vivo; dedupe reduz 3 sync warnings a 1. Geometria do card
+  conferida (417x238, centralizado; borda-topo verde no success / âmbar no warning; bg do ícone
+  correto). O screenshot do painel saiu defasado (fixo 800x227 vs janela real 1398x397), então a
+  prova foi via getBoundingClientRect + estilos computados.
+- Presença/trava: prova ao vivo (dois clientes, um fecha a aba e o pill some no outro) fica pro
+  teste logado após redeploy — não dá pra simular join/leave multi-cliente numa aba só.

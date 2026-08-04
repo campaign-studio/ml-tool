@@ -742,9 +742,23 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .notif-pager{display:none;align-items:center;justify-content:space-between;padding:12px 18px;border-top:1px solid var(--border);background:var(--s2);flex-shrink:0;}
 .notif-pager.show{display:flex;}
 
-.sync-toast{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;font-size:12.5px;font-weight:500;padding:11px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.3);z-index:9999;max-width:90vw;text-align:center;}
-.sync-toast.show{display:block;animation:fadeIn .2s ease;}
-.merge-toast{background:#0b3d2e;border:1px solid #10b981;}
+/* ── Pop-up padrão da plataforma (uiAlert/uiConfirm/uiPrompt/uiNotify): ícone + acento por tipo ── */
+.ui-nicon{display:none;width:44px;height:44px;border-radius:50%;align-items:center;justify-content:center;font-size:24px;font-weight:700;line-height:1;margin:0 0 14px;}
+.ui-pop.has-icon .ui-nicon{display:flex;}
+.ui-pop.t-success .ui-nicon{background:#dcfce7;color:#15803d;}
+.ui-pop.t-error   .ui-nicon{background:#fee2e2;color:#b91c1c;}
+.ui-pop.t-warning .ui-nicon{background:#fef3c7;color:#b45309;}
+.ui-pop.t-info    .ui-nicon{background:#dbeafe;color:#1d4ed8;}
+.ui-pop.t-confirm .ui-nicon{background:#ede9fe;color:#6d28d9;}
+.ui-pop{border-top:4px solid transparent;}
+.ui-pop.t-success{border-top-color:#22c55e;}
+.ui-pop.t-error{border-top-color:#ef4444;}
+.ui-pop.t-warning{border-top-color:#f59e0b;}
+.ui-pop.t-info{border-top-color:#3b82f6;}
+.ui-pop.t-confirm{border-top-color:#8b5cf6;}
+/* contador de "mais N pop-ups na fila" (enfileiramento, um de cada vez) */
+.ui-queue-count{display:none;margin-top:12px;font-size:11.5px;color:var(--muted,#8a8a94);text-align:center;}
+.ui-queue-count.show{display:block;}
 
 /* ═══════════ ROW COMMENTS (CSV editor) ═══════════ */
 /* Célula de tradução com botão de comentário embutido */
@@ -1700,8 +1714,9 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 <!-- ═══════════ UI MODAL genérico — substitui alert()/confirm()/prompt() do navegador por um
      pop-up da própria plataforma (uiAlert/uiConfirm/uiPrompt, baseados em Promise). ═══════════ -->
 <div id="uiModal" class="modal-ov" style="display:none;">
-  <div class="card modal-card" style="width:100%;max-width:430px;">
+  <div id="uiModalCard" class="card modal-card ui-pop" style="width:100%;max-width:430px;">
     <div class="ci" style="padding:26px;">
+      <div id="uiModalIcon" class="ui-nicon" aria-hidden="true"></div>
       <h1 id="uiModalTitle" style="margin:0 0 8px;font-size:18px;"></h1>
       <p class="sub" id="uiModalMsg" style="margin-bottom:16px;white-space:pre-wrap;"></p>
       <div class="field" id="uiModalField" style="margin-bottom:0;display:none;">
@@ -1711,14 +1726,13 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
         <button class="btn-back" id="uiModalCancel" style="flex:1;" onclick="uiModalResolve(false)">Cancel</button>
         <button class="btn-next" id="uiModalOk" style="flex:1;margin-top:0;" onclick="uiModalResolve(true)">OK</button>
       </div>
+      <div id="uiModalQueueCount" class="ui-queue-count"></div>
     </div>
   </div>
 </div>
 
 <!-- ═══════════ LOCK TAKEOVER WARNING (someone else grabbed the lock after 3min) ═══════════ -->
 <!-- ═══════════ SYNC WARNING TOAST ═══════════ -->
-<div id="syncWarningToast" class="sync-toast"></div>
-<div id="mergeNoticeToast" class="sync-toast merge-toast"></div>
 
 <div id="lockTakeoverModal" class="modal-ov" style="display:none;">
   <div class="card modal-card" style="width:100%;max-width:420px;">
@@ -2581,26 +2595,18 @@ function setSyncDot(state) {
 }
 
 
-let _syncToastTimer = null;
+// Padronizado: agora sai no MESMO pop-up central da plataforma (antes era um toast discreto no
+// rodapé). Aviso de rede = tipo 'warning' (exige clique). dedupeKey evita empilhar N cópias
+// quando a sincronização falha repetidamente.
 function showSyncWarning(msg) {
-  const toast = document.getElementById('syncWarningToast');
-  if(!toast) return;
-  toast.textContent = msg || '⚠ Could not sync with GitHub — your changes are saved locally only.';
-  toast.classList.add('show');
-  clearTimeout(_syncToastTimer);
-  _syncToastTimer = setTimeout(() => toast.classList.remove('show'), 5000);
+  uiNotify(msg || 'Could not sync with the server — your changes are saved locally only.',
+           { type: 'warning', dedupeKey: 'sync-warning' });
 }
 
-// Fase 4: aviso NÃO-bloqueante de que o save trouxe/mesclou mudanças de outra pessoa (o merge
-// deixou de ser 100% silencioso). Verde (informativo), some sozinho.
-let _mergeToastTimer = null;
+// Aviso de que o save trouxe/mesclou mudanças de outra pessoa (o merge deixou de ser silencioso).
+// Informativo/positivo = tipo 'success' (fecha sozinho), no mesmo pop-up padrão.
 function showMergeNotice(msg) {
-  const toast = document.getElementById('mergeNoticeToast');
-  if(!toast) return;
-  toast.textContent = msg || t('sync.mergeNotice');
-  toast.classList.add('show');
-  clearTimeout(_mergeToastTimer);
-  _mergeToastTimer = setTimeout(() => toast.classList.remove('show'), 6000);
+  uiNotify(msg || t('sync.mergeNotice'), { type: 'success', dedupeKey: 'merge-notice' });
 }
 
 // Tombstones — persistidos no Supabase (tabela deleted_project_ids), com uma cópia em
@@ -3002,6 +3008,7 @@ function sbStartRealtime() {
    postgres_changes. Complementa a trava de edição (que continua sendo o gate exclusivo). */
 let _presenceChannel = null;
 let _presenceState = {};          // projectId -> [{email,name,at}]
+let _presenceReady = false;       // true depois do 1º sync do canal — só aí dá pra confiar em "quem está presente"
 let _myPresenceProjectId = null;  // em qual projeto ESTOU agora (null = fora de editor)
 
 function sbStartPresence(){
@@ -3043,7 +3050,30 @@ function _recomputePresence(){
     });
   }catch(e){}
   _presenceState = map;
+  _presenceReady = true; // já recebemos um estado real do canal — dá pra confiar em "quem está presente"
   renderPresenceUI();
+  // A trava de edição ("X is editing") no Dashboard passa a confiar na presença ao vivo (ver
+  // projIsLocked): quando alguém sai/cai, o pill precisa sumir mesmo sem um novo pull. Re-render
+  // debounced do Dashboard quando ele está visível.
+  _refreshDashboardForPresence();
+}
+
+let _presenceDashTimer = null;
+function _refreshDashboardForPresence(){
+  const dash = document.getElementById('dashboardScreen');
+  if(!dash || dash.style.display === 'none') return;
+  clearTimeout(_presenceDashTimer);
+  _presenceDashTimer = setTimeout(() => {
+    const d = document.getElementById('dashboardScreen');
+    if(d && d.style.display !== 'none') renderDashboard();
+  }, 500);
+}
+
+// Alguém (por e-mail) está presente AO VIVO neste projeto agora? Usado pra descartar trava fantasma.
+function _isPresentInProject(email, projectId){
+  const e = (email || '').toLowerCase();
+  if(!e || !projectId) return false;
+  return (_presenceState[projectId] || []).some(u => (u.email || '').toLowerCase() === e);
 }
 
 // Declara em qual projeto estou agora (null = saí do editor). Efêmero.
@@ -3955,10 +3985,10 @@ function computeProjectDiff(current, version){
 // backup do estado atual ("Antes de restaurar"), então dá sempre pra voltar.
 async function restoreProjectVersion(versionId){
   const payload = await fetchProjectVersionPayload(versionId);
-  if(!payload || !payload.id){ alert(t('versionHistory.cantLoad')); return false; }
+  if(!payload || !payload.id){ uiNotify(t('versionHistory.cantLoad'), {type:'error'}); return false; }
   const projects = projGetAll();
   const idx = projects.findIndex(p => p.id === payload.id);
-  if(idx < 0){ alert(t('versionHistory.projectNotFound')); return false; }
+  if(idx < 0){ uiNotify(t('versionHistory.projectNotFound'), {type:'error'}); return false; }
   await snapshotProjectVersion(projects[idx], 'backup', t('versionHistory.beforeRestoreLabel'));
   // Preserva a trava/aprovação atuais e força updatedAt novo pra vencer o merge por projeto.
   const cur = projects[idx];
@@ -3977,7 +4007,7 @@ let _versionModalProjectId = null;
 async function openVersionHistory(){
   try{ _flushSafetySnap(); }catch(e){} // garante que a deleção mais recente já vire ponto na lista
   const p = _currentOpenProject();
-  if(!p){ alert(t('versionHistory.openToView')); return; }
+  if(!p){ uiNotify(t('versionHistory.openToView'), {type:'info'}); return; }
   _versionModalProjectId = p.id;
   const ov = document.getElementById('versionHistoryModal');
   const list = document.getElementById('vhList');
@@ -4117,8 +4147,8 @@ async function onRestoreVersion(versionId){
 
 async function saveManualBackup(){
   const p = _currentOpenProject();
-  if(!p){ alert(t('versionHistory.openToBackup')); return; }
-  if(_versionsTableMissing){ alert(t('versionHistory.backupUnavailable')); return; }
+  if(!p){ uiNotify(t('versionHistory.openToBackup'), {type:'info'}); return; }
+  if(_versionsTableMissing){ uiNotify(t('versionHistory.backupUnavailable'), {type:'warning'}); return; }
   const label = prompt(t('versionHistory.backupPrompt'), '');
   if(label === null) return; // cancelou
   const ok = await snapshotProjectVersion(p, 'backup', label.trim() || t('versionHistory.defaultBackupLabel'));
@@ -4126,10 +4156,10 @@ async function saveManualBackup(){
     if(document.getElementById('versionHistoryModal').style.display === 'flex'){
       renderVersionList(await listProjectVersions(p.id));
     } else {
-      alert(t('versionHistory.backupSaved'));
+      uiNotify(t('versionHistory.backupSaved'), {type:'success'});
     }
   } else {
-    alert(t('versionHistory.backupFailed'));
+    uiNotify(t('versionHistory.backupFailed'), {type:'error'});
   }
 }
 
@@ -4221,13 +4251,19 @@ async function onRestoreDeleted(projectId){
     if(typeof renderDashboard === 'function') renderDashboard();
     showMergeNotice(t('deleted.restored'));
   } else {
-    alert(t('deleted.restoreFailed'));
+    uiNotify(t('deleted.restoreFailed'), {type:'error'});
   }
 }
 
 function projIsLocked(p) {
   if(!p.lockedBy) return false;
-  if(Date.now() - (p.lockedAt || 0) > LOCK_TIMEOUT_MS) return false; // trava expirada
+  if(Date.now() - (p.lockedAt || 0) > LOCK_TIMEOUT_MS) return false; // trava expirada (fallback por tempo)
+  // Reconciliação com a PRESENÇA AO VIVO (mata a "trava fantasma"): se o canal de presença já
+  // sincronizou e o dono da trava NÃO está presente neste projeto agora (fechou a aba, deu refresh,
+  // caiu a conexão), a trava é fantasma → livre na hora, sem esperar o timeout de 3min. Enquanto o
+  // canal não sincronizou (_presenceReady=false), mantém o comportamento antigo por tempo, pra não
+  // liberar trava à toa logo que a página carrega.
+  if(_presenceReady && !_isPresentInProject(p.lockedBy, p.id)) return false;
   return true;
 }
 
@@ -4367,40 +4403,125 @@ function escJsAttr(s) {
   return String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
-// ── Pop-ups da plataforma (substituem alert/confirm/prompt do navegador) ─────────────────────
+// ── Pop-ups da plataforma (padrão ÚNICO — substituem alert/confirm/prompt do navegador e os
+//    antigos toasts discretos) ────────────────────────────────────────────────────────────────
 // Baseados em Promise: uiAlert(msg) → resolve void; uiConfirm(msg) → resolve boolean;
-// uiPrompt(msg, {def}) → resolve string (ou null se cancelou). Um modal só, reaproveitado.
-let _uiModalResolver = null, _uiModalMode = 'alert';
-function uiModalResolve(ok) {
-  const resolver = _uiModalResolver; _uiModalResolver = null;
-  const m = document.getElementById('uiModal'); if(m) m.style.display = 'none';
-  if(!resolver) return;
-  if(_uiModalMode === 'prompt') resolver(ok ? document.getElementById('uiModalInput').value : null);
-  else if(_uiModalMode === 'confirm') resolver(!!ok);
-  else resolver();
+// uiPrompt(msg, {def}) → resolve string (ou null se cancelou); uiNotify(msg, {type}) → resolve void.
+// TODOS aparecem como o MESMO pop-up central chamativo, com ícone + acento por tipo
+// (success | error | warning | info | confirm). Enfileirados: um de cada vez, na ordem em que
+// foram pedidos — nada some sem ser visto. Sucesso/info fecham sozinhos (~3,5s) e também dá pra
+// fechar na hora; erro/aviso/confirm exigem clique.
+const _UI_NICON = { success: '✓', error: '✕', warning: '!', info: 'i', confirm: '?' };
+const _UI_AUTODISMISS_MS = 3500; // só success/info em modo alert/notify
+let _uiQueue = [];               // [{ opts, resolve }] aguardando a vez
+let _uiActive = null;            // { opts, resolve } em exibição agora (null = nada aberto)
+let _uiAutoTimer = null;
+
+function _uiDefaultTitle(o) {
+  if(o.title) return o.title;
+  switch(o.type) {
+    case 'success': return 'Done';
+    case 'error':   return 'Something went wrong';
+    case 'warning': return 'Heads up';
+    case 'info':    return 'Heads up';
+    case 'confirm': return 'Please confirm';
+  }
+  return o.mode === 'alert' ? 'Heads up' : 'Please confirm';
 }
+
+// Sucesso/info em modo alert/notify somem sozinhos; o resto exige clique.
+function _uiAutoMs(o) {
+  if(o.autoMs != null) return o.autoMs;
+  const passive = (o.mode === 'alert' || o.mode === 'notify');
+  return (passive && (o.type === 'success' || o.type === 'info')) ? _UI_AUTODISMISS_MS : 0;
+}
+
+// "+N more" na base do pop-up: quantos ainda esperam na fila atrás do que está aberto.
+function _uiUpdateQueueCount() {
+  const qc = document.getElementById('uiModalQueueCount');
+  if(!qc) return;
+  if(_uiActive && _uiQueue.length) { qc.textContent = '+' + _uiQueue.length + ' more'; qc.classList.add('show'); }
+  else { qc.textContent = ''; qc.classList.remove('show'); }
+}
+
+function _uiRenderActive() {
+  if(_uiActive || !_uiQueue.length) return;
+  _uiActive = _uiQueue.shift();
+  const o = _uiActive.opts;
+
+  const card = document.getElementById('uiModalCard');
+  card.className = 'card modal-card ui-pop' + (o.type ? ' t-' + o.type + ' has-icon' : '');
+  const icon = document.getElementById('uiModalIcon');
+  icon.textContent = o.type ? (_UI_NICON[o.type] || '') : '';
+
+  document.getElementById('uiModalTitle').textContent = _uiDefaultTitle(o);
+  document.getElementById('uiModalMsg').textContent = o.message || '';
+
+  const field = document.getElementById('uiModalField'), input = document.getElementById('uiModalInput');
+  if(o.mode === 'prompt') { field.style.display = ''; input.value = o.def || ''; input.placeholder = o.placeholder || ''; }
+  else field.style.display = 'none';
+
+  const cancel = document.getElementById('uiModalCancel'), ok = document.getElementById('uiModalOk');
+  // 'alert'/'notify' têm só o OK; confirm/prompt têm Cancel + OK.
+  cancel.style.display = (o.mode === 'alert' || o.mode === 'notify') ? 'none' : '';
+  cancel.textContent = o.cancelLabel || 'Cancel';
+  ok.textContent = o.okLabel || 'OK';
+  ok.className = o.danger ? 'btn-danger' : 'btn-next';
+  ok.style.flex = '1'; ok.style.marginTop = '0';
+
+  _uiUpdateQueueCount();
+
+  document.getElementById('uiModal').style.display = 'flex';
+  if(o.mode === 'prompt') setTimeout(() => { input.focus(); input.select(); }, 30);
+
+  const autoMs = _uiAutoMs(o);
+  if(autoMs > 0) { _uiAutoTimer = setTimeout(() => uiModalResolve(true), autoMs); }
+}
+
+function uiModalResolve(ok) {
+  if(_uiAutoTimer) { clearTimeout(_uiAutoTimer); _uiAutoTimer = null; }
+  const active = _uiActive; _uiActive = null;
+  const m = document.getElementById('uiModal'); if(m) m.style.display = 'none';
+  if(active && active.resolve) {
+    const mode = active.opts.mode;
+    if(mode === 'prompt') active.resolve(ok ? document.getElementById('uiModalInput').value : null);
+    else if(mode === 'confirm') active.resolve(!!ok);
+    else active.resolve();
+  }
+  // Próximo da fila (se houver) reabre o pop-up já com o conteúdo dele.
+  if(_uiQueue.length) _uiRenderActive();
+}
+
 function _uiOpen(o) {
   o = o || {};
+  // Dedupe opcional: evita empilhar N cópias do mesmo aviso (ex: falha de rede que repete).
+  // Se já há um pop-up com a mesma chave aberto ou na fila, não enfileira outro.
+  if(o.dedupeKey) {
+    const dup = (_uiActive && _uiActive.opts.dedupeKey === o.dedupeKey) ||
+                _uiQueue.some(q => q.opts.dedupeKey === o.dedupeKey);
+    if(dup) return Promise.resolve(o.mode === 'confirm' ? false : (o.mode === 'prompt' ? null : undefined));
+  }
   return new Promise(res => {
-    _uiModalResolver = res; _uiModalMode = o.mode || 'alert';
-    document.getElementById('uiModalTitle').textContent = o.title || (o.mode === 'alert' ? 'Heads up' : 'Please confirm');
-    document.getElementById('uiModalMsg').textContent = o.message || '';
-    const field = document.getElementById('uiModalField'), input = document.getElementById('uiModalInput');
-    if(o.mode === 'prompt') { field.style.display = ''; input.value = o.def || ''; input.placeholder = o.placeholder || ''; }
-    else field.style.display = 'none';
-    const cancel = document.getElementById('uiModalCancel'), ok = document.getElementById('uiModalOk');
-    cancel.style.display = (o.mode === 'alert') ? 'none' : '';
-    cancel.textContent = o.cancelLabel || 'Cancel';
-    ok.textContent = o.okLabel || 'OK';
-    ok.className = o.danger ? 'btn-danger' : 'btn-next';
-    ok.style.flex = '1'; ok.style.marginTop = '0';
-    document.getElementById('uiModal').style.display = 'flex';
-    if(o.mode === 'prompt') setTimeout(() => { input.focus(); input.select(); }, 30);
+    _uiQueue.push({ opts: o, resolve: res });
+    if(_uiActive) _uiUpdateQueueCount(); // já tem um aberto: atualiza o "+N more" na hora
+    _uiRenderActive();
   });
 }
-function uiAlert(message, opts) { return _uiOpen(Object.assign({}, opts, { message: message, mode: 'alert' })); }
-function uiConfirm(message, opts) { return _uiOpen(Object.assign({}, opts, { message: message, mode: 'confirm' })); }
+
+// Fecha pop-ups passivos (alert/notify) com Esc; confirm→false, prompt→null. Não fecha à toa
+// se não há nada aberto.
+document.addEventListener('keydown', (e) => {
+  if(e.key !== 'Escape' || !_uiActive) return;
+  const mode = _uiActive.opts.mode;
+  if(mode === 'confirm' || mode === 'prompt') uiModalResolve(false);
+  else uiModalResolve(true);
+});
+
+function uiAlert(message, opts)  { return _uiOpen(Object.assign({}, opts, { message: message, mode: 'alert' })); }
+function uiConfirm(message, opts){ return _uiOpen(Object.assign({}, opts, { message: message, mode: 'confirm' })); }
 function uiPrompt(message, opts) { return _uiOpen(Object.assign({}, opts, { message: message, mode: 'prompt' })); }
+// Notificação padronizada (com tipo). Ex: uiNotify('Backup saved', {type:'success'}).
+function uiNotify(message, opts) { return _uiOpen(Object.assign({ type: 'info' }, opts, { message: message, mode: 'notify' })); }
 
 // Filtro de pasta do dashboard: 'all' (pastas + soltos, padrão) | 'unfoldered' (só os soltos,
 // esconde a seção de Pastas). Puramente de visualização — não muda dado nenhum.
@@ -9721,9 +9842,31 @@ function scheduleAutosave() {
 // achado real de QA: editar um item de campanha e fechar a aba dentro dos 150ms do debounce
 // perdia a edição, silenciosamente, sem nenhum aviso.
 window.addEventListener('beforeunload', (e) => {
+  // Libera a trava de edição ao FECHAR/RECARREGAR a aba (o goToDashboard já liberava na navegação
+  // interna, mas fechar a aba não passava por lá — a trava ficava presa até o timeout de 3min).
+  // Limpa o campo localmente ANTES do autosave abaixo, pra o push do autosave carregar a trava já
+  // liberada. É best-effort (rede no unload não é garantida); a garantia de verdade é a
+  // reconciliação por presença ao vivo em projIsLocked. NÃO zera currentProjectId (diferente de
+  // projReleaseMine), senão o autosave logo abaixo não acharia o projeto.
+  let _lockReleasedOnUnload = false;
+  try{
+    const me = authCurrentUser();
+    if(me && !_campaign && currentProjectId){
+      const projects = projGetAll();
+      const p = projects.find(x => x.id === currentProjectId);
+      if(p && p.lockedBy && p.lockedBy.toLowerCase() === me.email.toLowerCase()){
+        p.lockedBy = null; p.lockedAt = null;
+        projSaveAll(projects);
+        _lockReleasedOnUnload = true;
+      }
+    }
+  }catch(err){}
   if(_autosaveTimer) {
     clearTimeout(_autosaveTimer);
     autosaveProject();
+  } else if(_lockReleasedOnUnload) {
+    // Não havia autosave pendente, mas liberamos a trava — tenta empurrar essa mudança (best-effort).
+    try{ autosaveProject(); }catch(err){}
   }
   if(_avAutosaveTimer) {
     clearTimeout(_avAutosaveTimer);
