@@ -1,0 +1,54 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Corrigir falso-positivo do aviso "a teammate was editing at the same time" (você sozinho,
+      numa aba só, ao sair do projeto).
+
+===============================================================================
+SINTOMA
+===============================================================================
+Ao sair de um projeto, aparecia o pop-up verde "✓ Synced — a teammate was editing at the same
+time, so their changes were merged in." — mas não havia colega nenhum; era a própria pessoa, na
+mesma aba.
+
+===============================================================================
+CAUSA-RAIZ
+===============================================================================
+- O aviso é disparado quando um id entra em _conflictMergedIds, que era populado em QUALQUER
+  conflito de CAS (casWriteProject): o rev mudou entre ler e gravar.
+- A rede de segurança nova (liberar a trava de edição ao SAIR — goToDashboard e beforeunload)
+  passou a gravar o projeto mais uma vez (lockedBy/lockedAt = null) quase junto do autosave. Essas
+  duas gravações DA MESMA PESSOA corriam entre si: a segunda via o rev já incrementado pela
+  primeira → conflito de CAS → _conflictMergedIds.add → aviso de "colega editando".
+- Ou seja: o "conflito" era só churn de METADADO (trava/presença), sem nenhuma mudança de
+  conteúdo real e sem ninguém mais envolvido.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+- Novo _contentCanon(p): canon do conteúdo IGNORANDO metadados voláteis que a própria pessoa mexe
+  como efeito colateral — lockedBy, lockedAt, lockSessionId, approvingUsers.
+- casWriteProject:
+  * NÃO marca mais _conflictMergedIds no conflito de rev (um conflito sozinho não prova edição
+    alheia).
+  * Fixa o conteúdo de origem da gravação (origContentCanon) na 1ª chamada e preserva na recursão.
+  * No commit bem-sucedido, só marca _conflictMergedIds se _contentCanon(merged) !== origContentCanon
+    — isto é, apenas quando o merge trouxe CONTEÚDO REAL diferente do que esta gravação saiu pra
+    escrever. Churn de trava/presença não dispara mais nada.
+- Efeito: o aviso "a teammate was editing" volta a significar o que promete (conteúdo de outra
+  pessoa mesclado de verdade). Sair do projeto sozinho não avisa mais nada.
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- + função _contentCanon (logo após _canonJson).
+- casWriteProject: assinatura + origContentCanon, remoção do add no conflito de rev, add condicional
+  por conteúdo no commit, threading do origContentCanon nas recursões (dup-key e conflito).
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Load em localhost:3000: ZERO erros de console; _contentCanon e casWriteProject definidos.
+- Teste unitário no console: dois payloads que só diferem em trava/presença → _contentCanon IGUAL
+  (não marca); payloads com csv diferente → _contentCanon DIFERENTE (marca). OK.
+- NENHUMA escrita em produção. O fluxo real (sair do projeto sozinho não mostra mais o aviso) fica
+  pro teste logado após redeploy/hard refresh.

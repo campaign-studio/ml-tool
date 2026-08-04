@@ -2762,6 +2762,18 @@ function _canonJson(v){
   return '{' + keys.map(k => JSON.stringify(k) + ':' + _canonJson(v[k])).join(',') + '}';
 }
 
+// Canon do CONTEÚDO real do projeto, IGNORANDO metadados voláteis que a própria pessoa mexe como
+// efeito colateral (trava de edição e presença de aprovação). Sem isso, liberar a trava ao sair
+// (lockedBy/lockedAt) ou o vai-e-vem de approvingUsers disparava o aviso "a teammate was editing"
+// num conflito de CAS que era só churn de metadado — inclusive você sozinho, numa aba só.
+function _contentCanon(p){
+  if(!p || typeof p !== 'object') return _canonJson(p);
+  const clone = Object.assign({}, p);
+  delete clone.lockedBy; delete clone.lockedAt; delete clone.lockSessionId;
+  delete clone.approvingUsers;
+  return _canonJson(clone);
+}
+
 function _isMissingRevColumn(e){
   const m = ((e && (e.code || e.message)) || '') + '';
   return m.includes('42703') || /column .*\brev\b.* does not exist/i.test(m);
@@ -2811,8 +2823,12 @@ async function _plainUpsertProject(sb, p){
 }
 
 // Grava UMA linha com compare-and-swap no rev. Re-tenta em conflito (re-lê + re-mescla).
-async function casWriteProject(sb, p, tries){
+async function casWriteProject(sb, p, tries, origContentCanon){
   tries = tries || 0;
+  // Conteúdo real de origem desta gravação (fixado na 1ª chamada e preservado na recursão): serve
+  // pra decidir, no fim, se o merge trouxe conteúdo ALHEIO de fato ou se o "conflito" foi só churn
+  // de trava/presença nossa. Ignora metadados voláteis (ver _contentCanon).
+  if(origContentCanon == null) origContentCanon = _contentCanon(p);
   if(_casDisabled) return _plainUpsertProject(sb, p);
   const sel = await withTimeout(sb.from('projects').select('payload,rev').eq('id', p.id).maybeSingle(), 8000, 'cas read '+p.id);
   if(sel.error){
@@ -2825,7 +2841,7 @@ async function casWriteProject(sb, p, tries){
     const ins = await withTimeout(sb.from('projects').insert({ id: p.id, payload: p, rev: 0, updated_at: nowIso }), 8000, 'cas insert '+p.id);
     if(ins.error){
       if(_isMissingRevColumn(ins.error)){ _casDisabled = true; return _plainUpsertProject(sb, p); }
-      if(_isDupKey(ins.error)) return casWriteProject(sb, p, tries+1); // corrida: já existe → vira update
+      if(_isDupKey(ins.error)) return casWriteProject(sb, p, tries+1, origContentCanon); // corrida: já existe → vira update
       throw ins.error;
     }
     _projectRev[p.id] = 0; _syncedPayloadJson[p.id] = _canonJson(p);
@@ -2842,11 +2858,15 @@ async function casWriteProject(sb, p, tries){
   }
   if(!upd.data || !upd.data.length){
     // CONFLITO: o rev mudou entre o read e o write. Re-tenta com o merge atual (já inclui as
-    // nossas mudanças); o próximo read pega o remoto mais novo e mescla de novo.
-    _conflictMergedIds.add(p.id); // Fase 4: marca pra avisar o usuário que mesclamos algo concorrente
+    // nossas mudanças); o próximo read pega o remoto mais novo e mescla de novo. NÃO marca aqui:
+    // um conflito de rev sozinho não significa edição alheia (pode ser a própria pessoa gravando
+    // trava/presença em paralelo). Quem decide é a comparação de CONTEÚDO no commit bem-sucedido.
     if(tries >= 5) throw new Error('CAS: conflitos demais em '+p.id);
-    return casWriteProject(sb, merged, tries + 1);
+    return casWriteProject(sb, merged, tries + 1, origContentCanon);
   }
+  // Só avisa "um colega estava editando" se o merge de fato trouxe conteúdo REAL diferente do que
+  // esta gravação saiu pra escrever — não por causa de churn de trava/presença nossa.
+  if(_contentCanon(merged) !== origContentCanon) _conflictMergedIds.add(p.id);
   const newRev = (upd.data[0] && upd.data[0].rev != null) ? upd.data[0].rev : expected + 1;
   _projectRev[p.id] = newRev;
   _syncedPayloadJson[p.id] = _canonJson(merged);
