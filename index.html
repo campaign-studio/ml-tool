@@ -2816,10 +2816,20 @@ function _updateLocalProjectPayload(merged){
   }catch(e){}
 }
 
+// Gravação SEM compare-and-swap (usada quando a coluna rev não existe / CAS desligado). ANTES era
+// um upsert cego = last-write-wins de documento inteiro (o clobber pré-CAS). Agora lê o remoto
+// atual e MESCLA (mergeTwoProjects, mesma lógica célula-a-célula do caminho normal) antes de gravar:
+// perde só a atomicidade do CAS (janela de corrida pequena entre ler e gravar), NÃO o dado.
 async function _plainUpsertProject(sb, p){
-  const { error } = await withTimeout(sb.from('projects').upsert([{ id: p.id, payload: p, updated_at: new Date().toISOString() }]), 8000, 'upsert '+p.id);
+  let merged = p;
+  try{
+    const sel = await withTimeout(sb.from('projects').select('payload').eq('id', p.id).maybeSingle(), 8000, 'plain read '+p.id);
+    if(!sel.error && sel.data && sel.data.payload) merged = mergeTwoProjects(p, sel.data.payload);
+  }catch(e){ /* sem remoto legível: grava o nosso, ainda melhor que falhar o save */ }
+  const { error } = await withTimeout(sb.from('projects').upsert([{ id: merged.id, payload: merged, updated_at: new Date().toISOString() }]), 8000, 'upsert '+merged.id);
   if(error) throw error;
-  _syncedPayloadJson[p.id] = _canonJson(p);
+  _syncedPayloadJson[merged.id] = _canonJson(merged);
+  _updateLocalProjectPayload(merged);
 }
 
 // Grava UMA linha com compare-and-swap no rev. Re-tenta em conflito (re-lê + re-mescla).
@@ -2894,13 +2904,11 @@ async function ghMergeAndPushProjects(localProjects) {
       // e o merge local rodava contra cache velho, permitindo sobrescrita. (Bug de produção real.)
       const writable = localProjects.filter(p => !isProjectRecentlyDeleted(p.id));
       if(_casDisabled){
-        // Fallback (coluna rev ausente): upsert em massa, como era antes.
-        const nowIso = new Date().toISOString();
-        const rows = writable.map(p => ({ id: p.id, payload: p, updated_at: nowIso }));
-        if(rows.length){
-          const { error } = await withTimeout(sb.from('projects').upsert(rows), 8000, 'upsert projects');
-          if(error) throw error;
-        }
+        // Fallback (coluna rev ausente): NÃO sobrescreve mais em massa às cegas — cada linha que
+        // MUDOU de verdade passa por _plainUpsertProject, que lê o remoto e mescla antes de gravar.
+        // Assim o modo degradado deixa de ser um clobber (perde só atomicidade, não dado).
+        const changed = writable.filter(p => _canonJson(p) !== _syncedPayloadJson[p.id]);
+        for(const p of changed){ await _plainUpsertProject(sb, p); }
       } else {
         // CAS: só grava as linhas que MUDARAM de verdade (comparação canônica vs baseline),
         // cada uma com compare-and-swap no rev. Se a coluna rev não existir, casWriteProject
@@ -3352,6 +3360,41 @@ function isUserRecentlyDeleted(email) {
   return Object.prototype.hasOwnProperty.call(_deletedUserEmailsMap, (email||'').toLowerCase());
 }
 
+// Baseline por e-mail: canônico do que esta aba SABE estar no banco. Serve pra dois fins no push
+// de usuários: (1) não reescrever linhas que não mudaram; (2) merge 3-way por campo (git-like),
+// pra dois admins editando campos/usuários diferentes não se sobrescreverem.
+const _syncedUserJson = {};
+
+function _userKey(u){ return ((u && u.email) || '').toLowerCase(); }
+
+// Atualiza a cópia local de UM usuário (o merge pode ter trazido um campo que outro admin mudou).
+function _updateLocalUserPayload(u){
+  try{
+    const key = _userKey(u);
+    const arr = authGetUsers();
+    const i = arr.findIndex(x => _userKey(x) === key);
+    if(i >= 0){ arr[i] = u; localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(arr)); }
+  }catch(e){}
+}
+
+// Merge 3-way de UM registro de usuário: aplica SOMENTE os campos que EU mudei (mine vs base) por
+// cima do remoto atual. Campos que eu não toquei ficam com o valor do remoto (outro admin pode ter
+// mudado). Sem base (nunca sincronizei) → prefere o meu, mas preserva campos que só existem no
+// remoto. Sem remoto → grava o meu.
+function _threeWayMergeUser(base, mine, remote){
+  if(!remote) return mine;
+  if(!base) return Object.assign({}, remote, mine);
+  const out = Object.assign({}, remote);
+  const keys = new Set([...Object.keys(base), ...Object.keys(mine)]);
+  keys.forEach(k => {
+    const changedByMe = _canonJson(mine[k]) !== _canonJson(base[k]);
+    if(!changedByMe) return;              // não mexi → mantém o remoto
+    if(!(k in mine)) delete out[k];       // eu removi o campo
+    else out[k] = mine[k];                // eu mudei o campo → o meu vale
+  });
+  return out;
+}
+
 async function sbPushUsers(users) {
   const sb = sbClient();
   if(!sb) return;
@@ -3361,12 +3404,25 @@ async function sbPushUsers(users) {
       // Mesma proteção do push de projects: busca os tombstones mais recentes ANTES
       // de decidir o que upsertar, pra não confiar só no que esta aba já sabia.
       await pullDeletedUserEmails();
-      const rows = users
-        .filter(u => !isUserRecentlyDeleted(u.email))
-        .map(u => ({ email: (u.email||'').toLowerCase(), payload: u }));
-      if(rows.length) {
-        const { error } = await sb.from('users').upsert(rows);
+      const candidates = users.filter(u => !isUserRecentlyDeleted(u.email));
+      // Só as linhas que MUDARAM de verdade vs baseline — o resto nem toca (não pisa em edição de
+      // outro admin em OUTRO usuário, que era a causa #1 de sobrescrita).
+      const changed = candidates.filter(u => _canonJson(u) !== (_syncedUserJson[_userKey(u)] || ''));
+      for(const u of changed){
+        const key = _userKey(u);
+        // Read-modify-write por linha: lê o remoto atual e mescla por campo antes de gravar, pra
+        // não clobberar uma edição concorrente de OUTRO campo do MESMO usuário.
+        let remote = null;
+        try{
+          const sel = await withTimeout(sb.from('users').select('payload').eq('email', key).maybeSingle(), 8000, 'user read '+key);
+          if(!sel.error && sel.data) remote = sel.data.payload;
+        }catch(e){}
+        const base = _syncedUserJson[key] ? JSON.parse(_syncedUserJson[key]) : null;
+        const merged = _threeWayMergeUser(base, u, remote);
+        const { error } = await withTimeout(sb.from('users').upsert({ email: key, payload: merged }), 8000, 'user upsert '+key);
         if(error) throw error;
+        _syncedUserJson[key] = _canonJson(merged);
+        _updateLocalUserPayload(merged);
       }
       setSyncDot('saved');
     } catch(e) {
@@ -3401,6 +3457,8 @@ async function sbPullUsers() {
     const dbUsers = (data || []).map(r => r.payload).filter(Boolean);
     if(dbUsers.length > 0) {
       localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(dbUsers));
+      // Baseline pro merge 3-way do próximo push: registra o que acabamos de ver no banco.
+      dbUsers.forEach(u => { _syncedUserJson[_userKey(u)] = _canonJson(u); });
     } else {
       // Bootstrap: se a DB está vazia, empurra o que já temos localmente.
       const local = authGetUsers();

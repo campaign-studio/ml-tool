@@ -1,0 +1,63 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: RECONSTRUÇÃO DA CAMADA DE SALVAMENTO — FASE 1: fechar os dois vetores de PERDA DE DADO
+      concorrente de maior severidade (tabela de usuários sem merge; fallback sem-CAS clobbando).
+
+Contexto: diagnóstico completo apontou que o núcleo de projetos (CAS por rev + merge célula-a-célula
++ tombstones) já é sólido; os buracos reais de sobrescrita estavam FORA dele. Decisão do usuário:
+consolidar e endurecer (não reescrever do zero). Esta é a 1ª de 4 fases.
+
+===============================================================================
+RISCO #1 — Usuários/papéis: last-write-wins da tabela inteira (sem CAS/merge)
+===============================================================================
+ANTES: sbPushUsers(users) fazia upsert de TODA a lista em memória. dashSetUserRole lia a lista
+inteira, mudava 1 alvo e empurrava todas as linhas. Dois admins editando usuários DIFERENTES (ou
+qualquer campo não-papel) ao mesmo tempo: o push mais tardio carregava cópia velha e revertia a
+edição do outro. Sem rev, sem merge.
+
+AGORA:
+- _syncedUserJson[email]: baseline canônico do que a aba sabe estar no banco (setado no pull, em
+  sbPullUsers, e após cada push).
+- sbPushUsers só empurra as linhas que MUDARAM de verdade vs baseline (não toca nas outras → não
+  pisa em edição de outro admin em OUTRO usuário).
+- Cada linha mudada passa por read-modify-write com MERGE 3-WAY POR CAMPO (_threeWayMergeUser):
+  aplica só os campos que EU mudei (mine vs base) por cima do remoto atual; campos que eu não
+  toquei ficam com o valor do remoto. Dois admins em campos diferentes do MESMO usuário → ambos
+  preservados. _updateLocalUserPayload reflete o merge no localStorage.
+- Sem migração nova (a coluna payload jsonb já basta).
+- Residual conhecido: dois admins no MESMO campo do MESMO usuário = last-writer-wins daquele campo
+  (inerente sem serialização; janela pequena). Aceitável pra Fase 1.
+
+===============================================================================
+RISCO #2 — Fallback sem-CAS (_casDisabled) era um clobber de documento inteiro
+===============================================================================
+ANTES: se a coluna rev sumisse/erro fosse mal-classificado, _casDisabled latchava TRUE pra sessão
+inteira e todo save virava upsert cego (o clobber pré-CAS), até fechar a aba. Dois pontos faziam
+isso: _plainUpsertProject e o ramo bulk de ghMergeAndPushProjects.
+
+AGORA (o modo degradado deixa de perder dado — perde só a atomicidade do CAS):
+- _plainUpsertProject lê o remoto atual e MESCLA (mergeTwoProjects — mesma lógica célula-a-célula
+  do caminho normal) antes de gravar; atualiza baseline e cache local.
+- O ramo _casDisabled de ghMergeAndPushProjects não faz mais upsert em massa às cegas: filtra só as
+  linhas que mudaram e roda cada uma por _plainUpsertProject (agora com merge).
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- _plainUpsertProject: read-remote + mergeTwoProjects + upsert + _updateLocalProjectPayload.
+- ghMergeAndPushProjects: ramo _casDisabled agora roteia por _plainUpsertProject (só rows mudadas).
+- + _syncedUserJson, _userKey, _updateLocalUserPayload, _threeWayMergeUser.
+- sbPushUsers reescrito: só rows mudadas + read-modify-write com merge 3-way por campo.
+- sbPullUsers: popula _syncedUserJson (baseline) com o que veio do banco.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Load em localhost:3000: ZERO erros de console; todas as funções novas definidas.
+- Teste unitário de _threeWayMergeUser no console:
+  * base(role viewer,name Ann) + mine(role editor) + remote(name Anne) => {role:editor, name:Anne}
+    — os dois admins preservados. OK.
+  * sem base => prefere o meu, preserva campo só-remoto. OK.
+  * sem remoto => grava o meu. OK.
+- NENHUMA escrita em produção nesta verificação. O teste multi-cliente real (dois admins de fato)
+  fica pro ambiente logado após redeploy.
