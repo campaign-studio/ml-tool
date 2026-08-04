@@ -1,0 +1,48 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: "you're editing" se confundindo com outra pessoa — modal de takeover ignorava a presença ao
+      vivo, e a comparação de identidade não tratava espaços no e-mail.
+
+===============================================================================
+SINTOMA
+===============================================================================
+"Ainda aparece que um teammate está editando, sem estar." A edição da própria pessoa se confundia
+com a de outra.
+
+===============================================================================
+CAUSA-RAIZ
+===============================================================================
+1) checkMyLockTakeover (o modal "X is editing this file now, after 3 minutes of inactivity") era o
+   ÚNICO caminho de "quem está editando" que NÃO passava pela reconciliação por presença ao vivo que
+   projIsLocked/pill já usam. Ele comparava p.lockedBy cru: uma trava-fantasma (dono que já saiu,
+   cache velho, ou um lockedBy trazido por um merge) disparava o modal mesmo sem ninguém lá.
+2) A comparação de identidade usava só toLowerCase, sem trim. Um e-mail gravado com espaço acidental
+   fazia a PRÓPRIA trava da pessoa não casar com o e-mail da sessão — "you're editing" virava
+   "X is editing".
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+- checkMyLockTakeover agora aplica a MESMA reconciliação do projIsLocked: se o canal de presença já
+  sincronizou e o dono da trava NÃO está presente ao vivo no projeto, NÃO mostra o modal (trava
+  fantasma). Só é takeover real quando o novo dono está de fato presente.
+- Novo _sameUser(a,b) = trim + lowercase. Aplicado no pill do dashboard (lockedByMe) e no
+  checkMyLockTakeover. Descarta mismatch por espaço/caixa que fazia a própria trava parecer de outro.
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- checkMyLockTakeover: guarda por presença (_presenceReady && !_isPresentInProject) + _sameUser.
+- projRowHtml: lockedByMe usa _sameUser.
+- + função _sameUser (antes de projIsLocked).
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Load em localhost:3000: ZERO erros de console.
+- Testes no console:
+  * _sameUser('  User@X.com ', 'user@x.com') => true; ('a','b') => false. OK.
+  * projIsLocked (mesma reconciliação do takeover): dono ausente => NÃO travado (fantasma);
+    dono presente ao vivo => travado. OK.
+- NENHUMA escrita em produção. Teste multi-cliente real (uma pessoa fecha a aba e a outra, editando,
+  NÃO recebe mais o modal "X is editing") fica pro ambiente logado após redeploy.

@@ -2526,7 +2526,12 @@ async function checkMyLockTakeover() {
   const me = authCurrentUser();
   if(!p || !me || !p.lockedBy) return;
 
-  if(p.lockedBy.toLowerCase() !== me.email.toLowerCase()) {
+  if(!_sameUser(p.lockedBy, me.email)) {
+    // MESMA reconciliação por presença ao vivo do projIsLocked/pill: só é takeover REAL se o novo
+    // dono da trava está de fato presente neste projeto agora. Sem isso, uma trava-fantasma (alguém
+    // que já saiu, cache velho, ou um lockedBy trazido por um merge) disparava "X is editing this
+    // file now" mesmo sem ninguém lá — era o "você editando" se confundindo com outra pessoa.
+    if(_presenceReady && !_isPresentInProject(p.lockedBy, p.id)) return;
     _lockTakeoverShown = true;
     document.getElementById('lockTakeoverName').textContent = authorName(p.lockedBy);
     document.getElementById('lockTakeoverModal').style.display = 'flex';
@@ -4428,6 +4433,13 @@ async function onRestoreDeleted(projectId){
   } else {
     uiNotify(t('deleted.restoreFailed'), {type:'error'});
   }
+}
+
+// Comparação de identidade de usuário robusta (trim + lowercase). Usada onde a trava/aprovação
+// decidem "sou eu?" — sem o trim, um e-mail gravado com espaço acidental fazia a PRÓPRIA trava da
+// pessoa parecer de outra ("you're editing" virando "X is editing").
+function _sameUser(a, b){
+  return (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
 }
 
 function projIsLocked(p) {
@@ -6396,7 +6408,7 @@ function projPreviewBoxHtml(p) {
 function projRowHtml(p, isOwner) {
   const locked = projIsLocked(p);
   const me = authCurrentUser();
-  const lockedByMe = locked && p.lockedBy.toLowerCase() === me.email.toLowerCase();
+  const lockedByMe = locked && _sameUser(p.lockedBy, me.email);
   let lockBadge = '';
   if(locked) {
     lockBadge = lockedByMe
