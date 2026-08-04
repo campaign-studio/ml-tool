@@ -48,7 +48,7 @@
         restoring: 'Restoring…',
         diffLoading: 'Loading changes…',
         noChanges: 'This version is identical to the current state — nothing to restore.',
-        diffIntro: 'What restoring this version would change compared to the current state:',
+        diffIntro: 'What changed since this backup (restoring reverts these changes):',
         secTranslations: 'Translations',
         secHtml: 'Tagged HTML',
         colWillAdd: 'Would add',
@@ -58,8 +58,8 @@
         moreChanges: '+{n} more changes not shown',
         summaryLine: '{changed} changed · {added} added · {removed} removed{html}',
         summaryHtml: ' · HTML: {n} lines',
-        itemAdded: 'Item would be restored: {name}',
-        itemRemoved: 'Item would be removed: {name}'
+        itemAdded: 'Added since this backup: {name}',
+        itemRemoved: 'Deleted since this backup: {name}'
       },
       presence: {
         hereNowTitle: '{name} is here now',

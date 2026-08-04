@@ -1,0 +1,23 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Diff do histórico invertido para "o que mudou DESDE este backup" (mostra texto -> empty).
+
+PROBLEMA
+- O diff mostrava "atual -> versão" (o que restaurar faria). Uma célula esvaziada aparecia como
+  "(empty) -> texto" (verde, "would add"), o oposto do que a pessoa fez — não dava pra ver o
+  "texto que tava -> empty cell".
+
+CORREÇÃO (computeProjectDiff)
+- Direção invertida: from = valor no BACKUP (antes), to = valor ATUAL (agora). Agora:
+  * célula esvaziada  -> removed: "texto" -> (empty)   [df-del, vermelho]
+  * conteúdo novo     -> added:  (empty) -> "texto"    [df-add, verde]
+  * alterado          -> changed: "antigo" -> "novo"   [df-chg, âmbar]
+- HTML: _lineDiff(verHtml, curHtml) (a=backup, b=agora) -> del = removido desde o backup.
+- Itens de campanha: no backup e não agora = deletado; novo agora = adicionado.
+- Textos (strings.js): diffIntro = "What changed since this backup (restoring reverts these
+  changes):"; itemRemoved = "Deleted since this backup: {name}"; itemAdded = "Added since this backup".
+- Restore continua igual (volta pro estado do backup).
+
+VERIFICAÇÃO
+- Mock: backup tinha 'Olá', atual vazio -> removed, from='Olá', to='' , render "Olá -> (empty)"
+  com classe df-del. Load sem erros de console.

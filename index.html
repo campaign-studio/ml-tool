@@ -3901,13 +3901,15 @@ function computeProjectDiff(current, version){
   const cells = []; let added = 0, removed = 0, changed = 0;
   keys.forEach(k => {
     const c = curMap[k], v = verMap[k];
-    const from = c ? (c.val || '') : '';
-    const to   = v ? (v.val || '') : '';
+    // Direção = "o que mudou DESDE este backup": from = valor no backup (antes), to = valor ATUAL
+    // (agora). Assim uma célula esvaziada aparece como "texto → (empty)" (o que foi deletado).
+    const from = v ? (v.val || '') : '';
+    const to   = c ? (c.val || '') : '';
     if(from === to) return;
     const meta = v || c;
     let type;
-    if(!from.trim() && to.trim()){ type = 'added'; added++; }
-    else if(from.trim() && !to.trim()){ type = 'removed'; removed++; }
+    if(!from.trim() && to.trim()){ type = 'added'; added++; }        // vazio no backup, tem texto agora
+    else if(from.trim() && !to.trim()){ type = 'removed'; removed++; } // tinha texto, ficou vazio (deletado)
     else { type = 'changed'; changed++; }
     cells.push({ scopeName: meta.scopeName, rowId: meta.rowId, src: meta.src, lang: meta.lang, from, to, type });
   });
@@ -3915,14 +3917,15 @@ function computeProjectDiff(current, version){
   if((current && current.kind === 'campaign') || (version && version.kind === 'campaign')){
     const curIds = new Map(((current && current.items) || []).map(i => [i.id, i]));
     const verIds = new Map(((version && version.items) || []).map(i => [i.id, i]));
-    verIds.forEach((it, id) => { if(!curIds.has(id)) items.push({ type:'added', name: it.name || id }); });
-    curIds.forEach((it, id) => { if(!verIds.has(id)) items.push({ type:'removed', name: it.name || id }); });
+    // item no backup mas não agora = deletado desde o backup; item novo agora = adicionado desde.
+    verIds.forEach((it, id) => { if(!curIds.has(id)) items.push({ type:'removed', name: it.name || id }); });
+    curIds.forEach((it, id) => { if(!verIds.has(id)) items.push({ type:'added', name: it.name || id }); });
   }
   let htmlDiff = null, htmlLines = 0;
   const curHtml = (current && current.data) ? (current.data.html || '') : '';
   const verHtml = (version && version.data) ? (version.data.html || '') : '';
   if(curHtml !== verHtml && (curHtml || verHtml)){
-    htmlDiff = _lineDiff(curHtml, verHtml);
+    htmlDiff = _lineDiff(verHtml, curHtml); // a=backup, b=agora → del = removido desde o backup
     htmlLines = htmlDiff.filter(l => l.type !== 'ctx').length;
   }
   return { cells, items, htmlDiff, summary: { added, removed, changed, htmlLines } };
