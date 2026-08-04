@@ -744,6 +744,7 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 
 .sync-toast{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;font-size:12.5px;font-weight:500;padding:11px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.3);z-index:9999;max-width:90vw;text-align:center;}
 .sync-toast.show{display:block;animation:fadeIn .2s ease;}
+.merge-toast{background:#0b3d2e;border:1px solid #10b981;}
 
 /* ═══════════ ROW COMMENTS (CSV editor) ═══════════ */
 /* Célula de tradução com botão de comentário embutido */
@@ -1675,6 +1676,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 <!-- ═══════════ LOCK TAKEOVER WARNING (someone else grabbed the lock after 3min) ═══════════ -->
 <!-- ═══════════ SYNC WARNING TOAST ═══════════ -->
 <div id="syncWarningToast" class="sync-toast"></div>
+<div id="mergeNoticeToast" class="sync-toast merge-toast"></div>
 
 <div id="lockTakeoverModal" class="modal-ov" style="display:none;">
   <div class="card modal-card" style="width:100%;max-width:420px;">
@@ -2550,6 +2552,18 @@ function showSyncWarning(msg) {
   _syncToastTimer = setTimeout(() => toast.classList.remove('show'), 5000);
 }
 
+// Fase 4: aviso NÃO-bloqueante de que o save trouxe/mesclou mudanças de outra pessoa (o merge
+// deixou de ser 100% silencioso). Verde (informativo), some sozinho.
+let _mergeToastTimer = null;
+function showMergeNotice(msg) {
+  const toast = document.getElementById('mergeNoticeToast');
+  if(!toast) return;
+  toast.textContent = msg || '✓ Synced — a teammate was editing at the same time, so their changes were merged in.';
+  toast.classList.add('show');
+  clearTimeout(_mergeToastTimer);
+  _mergeToastTimer = setTimeout(() => toast.classList.remove('show'), 6000);
+}
+
 // Tombstones — persistidos no Supabase (tabela deleted_project_ids), com uma cópia em
 // cache no localStorage só pra leitura instantânea antes do primeiro pull. Bug real
 // encontrado: uma versão anterior guardava isso só em localStorage (ou pior, só em
@@ -2676,6 +2690,7 @@ let _pendingProjectsPush = null;
 let _casDisabled = false;
 const _projectRev = {};          // id -> último rev conhecido do banco
 const _syncedPayloadJson = {};   // id -> _canonJson do que já está confirmado no banco (baseline)
+const _conflictMergedIds = new Set(); // Fase 4: ids que tiveram merge concorrente e precisam avisar
 
 function _canonJson(v){
   if(v === null || typeof v !== 'object') return JSON.stringify(v);
@@ -2765,6 +2780,7 @@ async function casWriteProject(sb, p, tries){
   if(!upd.data || !upd.data.length){
     // CONFLITO: o rev mudou entre o read e o write. Re-tenta com o merge atual (já inclui as
     // nossas mudanças); o próximo read pega o remoto mais novo e mescla de novo.
+    _conflictMergedIds.add(p.id); // Fase 4: marca pra avisar o usuário que mesclamos algo concorrente
     if(tries >= 5) throw new Error('CAS: conflitos demais em '+p.id);
     return casWriteProject(sb, merged, tries + 1);
   }
@@ -2823,6 +2839,9 @@ async function ghMergeAndPushProjects(localProjects) {
       // Auto-snapshot do projeto EM EDIÇÃO (coalescido) — histórico de versões. Só o projeto
       // aberto, pra não gerar volume de snapshots de projetos que só passaram no merge.
       try{ const cur = currentProjectId && (localProjects||[]).find(p => p.id === currentProjectId); if(cur) maybeAutoSnapshot(cur); }catch(e){}
+      // Fase 4: se o projeto ABERTO teve merge concorrente neste push, avisa (não-bloqueante) que
+      // trouxemos mudanças de outra pessoa — o merge deixou de ser silencioso.
+      try{ if(currentProjectId && _conflictMergedIds.has(currentProjectId)){ showMergeNotice(); } _conflictMergedIds.clear(); }catch(e){}
     } catch(e) {
       console.warn('Supabase sync (push projects) error:', e);
       setSyncDot('error');

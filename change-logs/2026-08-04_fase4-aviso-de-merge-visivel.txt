@@ -1,0 +1,21 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Reconstrução da camada de salvamento — FASE 4: aviso visível de merge concorrente.
+
+O QUE FOI FEITO
+- O merge do CAS deixou de ser 100% silencioso. Quando um save do projeto ABERTO detecta conflito
+  concorrente (o UPDATE ... WHERE rev bateu 0 linhas e a gente re-mesclou), aparece um toast verde
+  NÃO-bloqueante avisando que trouxemos as mudanças de outra pessoa. Some sozinho em 6s.
+- Texto já em inglês (a UI vai ser padronizada em inglês na sequência):
+  "✓ Synced — a teammate was editing at the same time, so their changes were merged in."
+
+ARQUIVOS (index.html)
+- _conflictMergedIds (Set) declarado junto do estado do CAS.
+- casWriteProject: no ramo de conflito, _conflictMergedIds.add(p.id).
+- ghMergeAndPushProjects: após o 'saved'/auto-snapshot, se currentProjectId teve conflito, chama
+  showMergeNotice() e limpa o set.
+- showMergeNotice() + elemento #mergeNoticeToast + CSS .merge-toast (verde), espelhando showSyncWarning.
+
+VERIFICAÇÃO
+- Load sem erros de console. showMergeNotice mostra o toast verde com o texto certo. O ramo de
+  conflito do casWriteProject popula _conflictMergedIds (testado com sb mock). Sem escrita em produção.
