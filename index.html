@@ -5233,6 +5233,8 @@ function setCampaignCell(ri, lang, value) {
   const item = _campaign.items[_campaignItemIndex];
   if(!item || !item.rows[ri]) return;
   const before = item.rows[ri].translations[lang] || '';
+  // Célula sendo ESVAZIADA → backup antes de apagar (ver setCellV).
+  if(before.trim() && !String(value||'').trim()) maybeSnapshotBeforeStructuralDelete();
   item.rows[ri].translations[lang] = value;
   undoRecordCell('campaign', item.id, item.rows[ri].id, lang, before, value);
   touchCampaignItem(item); // edição de conteúdo → carimba pro merge por item
@@ -8865,6 +8867,9 @@ function setSrcV(ri,v){S.csv.rows[ri].src=v;updatePreviewText(ri,null);scheduleA
 function setCellV(ri,l,v){
   const row=S.csv.rows[ri];
   const before = row.translations[l] || '';
+  // Célula sendo ESVAZIADA (tinha conteúdo, virou vazia) → backup antes de apagar. Chamado ANTES
+  // de gravar o vazio pra o snapshot conter o conteúdo original.
+  if(before.trim() && !String(v||'').trim()) maybeSnapshotBeforeStructuralDelete();
   row.translations[l]=v;
   // Ao localizar (traduzir) uma imagem que entrou "pendente" pós-aprovação, o item foi tratado:
   // limpa o marcador. Persiste pelo scheduleAutosave (editor grava data.pendingRowIds). A

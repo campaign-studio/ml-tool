@@ -1,0 +1,20 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Backup ao ESVAZIAR uma célula do CSV (deletar conteúdo que fica empty).
+
+O QUE FOI FEITO
+- setCellV (avulso) e setCampaignCell (campanha): quando um valor NÃO-VAZIO vira VAZIO (a pessoa
+  apaga o conteúdo da célula — Delete/Backspace, seleção+apagar, etc.), grava um snapshot
+  "Before deleting" ANTES de aplicar o vazio (o hook é chamado antes da gravação, então o backup
+  contém o conteúdo original).
+- Reusa maybeSnapshotBeforeStructuralDelete (coalescido: 1 backup por rajada de 60s/projeto) —
+  apagar várias células seguidas guarda o estado de antes da primeira, sem 1 backup por tecla.
+- Só dispara em esvaziamento (before.trim() && !after.trim()); edição normal segue no auto-snapshot
+  coalescido de 5min + Ctrl+Z. Projeto continua vivo -> restaurável pela tela de Histórico.
+
+ARQUIVOS (index.html)
+- setCellV / setCampaignCell: guard de esvaziamento chamando maybeSnapshotBeforeStructuralDelete().
+
+VERIFICAÇÃO
+- Load sem erros de console; ambas as funções contêm o hook.
+- Lembrete: precisa rodar a versão nova no app usado (hard refresh / redeploy) pra valer.
