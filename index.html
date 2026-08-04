@@ -2632,7 +2632,13 @@ async function ghMergeAndPushProjects(localProjects) {
       // isso, um projeto deletado por outra pessoa podia ser upsertado de volta no
       // banco compartilhado só porque ESTA aba ainda tinha ele no cache local.
       await withTimeout(pullDeletedProjectIds(), 8000, 'pullDeletedProjectIds');
-      const rows = localProjects.filter(p => !isProjectRecentlyDeleted(p.id)).map(p => ({ id: p.id, payload: p }));
+      // CRÍTICO: grava updated_at EXPLICITAMENTE. A coluna default now() só se aplica no INSERT —
+      // num UPDATE (upsert de id existente) ela NÃO reavança sozinha, e não há trigger no banco.
+      // Sem isso, updated_at ficava CONGELADO na criação, e o pull incremental (.gt('updated_at'))
+      // nunca trazia as edições dos outros → compartilhar não propagava, ninguém via o CSV do outro,
+      // e o merge local rodava contra cache velho, permitindo sobrescrita. (Bug de produção real.)
+      const nowIso = new Date().toISOString();
+      const rows = localProjects.filter(p => !isProjectRecentlyDeleted(p.id)).map(p => ({ id: p.id, payload: p, updated_at: nowIso }));
       if(rows.length) {
         const { error } = await withTimeout(sb.from('projects').upsert(rows), 8000, 'upsert projects');
         if(error) throw error;
@@ -2691,11 +2697,12 @@ async function ghPullProjects() {
     // pra todo mundo. mergeProjectsForSave() já preserva localmente qualquer projeto que
     // não vier nesta resposta (ver o loop final lá), então um pull parcial funciona
     // corretamente — não precisa da tabela inteira pra saber "o resto continua igual".
-    let query = sb.from('projects').select('id,payload');
+    let query = sb.from('projects').select('id,payload,updated_at');
     if(_lastProjectsPullAt) query = query.gt('updated_at', _lastProjectsPullAt);
     const { data, error } = await withTimeout(query, 8000, 'select projects');
     if(error) throw error;
-    const projects = (data || []).map(r => r.payload).filter(Boolean);
+    const dataRows = data || [];
+    const projects = dataRows.map(r => r.payload).filter(Boolean);
     // Faz o MESMO merge por projeto (updatedAt) que projSaveAll usa — sem isso, um pull
     // disparado pelo Realtime (que acontece até pra mudanças feitas pela própria aba) podia
     // buscar uma leitura do servidor um instante atrasada em relação a um autosave local
@@ -2703,7 +2710,20 @@ async function ghPullProjects() {
     // acima (que só cobre o push ainda em voo, não a defasagem de leitura logo depois).
     const merged = mergeProjectsForSave(projects);
     localStorage.setItem(PROJ_KEY, JSON.stringify(merged));
-    _lastProjectsPullAt = pullStartedAt;
+    // Cursor = MAIOR updated_at REALMENTE recebido (mesmo domínio da coluna), menos uma margem
+    // de segurança — em vez do relógio LOCAL desta aba (pullStartedAt), que não é comparável ao
+    // updated_at que outros clientes gravam. A margem re-busca a última janela de mudanças (barato,
+    // o merge dedup) pra tolerar relógios levemente dessincronizados entre navegadores. Se nada
+    // veio, mantém o cursor (não recua). Primeiro pull (cursor null) continua completo.
+    const SKEW_MARGIN_MS = 5 * 60 * 1000;
+    if(dataRows.length){
+      let maxUpd = _lastProjectsPullAt || '';
+      for(const r of dataRows){ if(r.updated_at && r.updated_at > maxUpd) maxUpd = r.updated_at; }
+      const t = maxUpd ? new Date(maxUpd).getTime() : NaN;
+      if(!isNaN(t)) _lastProjectsPullAt = new Date(t - SKEW_MARGIN_MS).toISOString();
+    } else if(!_lastProjectsPullAt){
+      _lastProjectsPullAt = pullStartedAt; // banco vazio na 1ª vez — evita re-full toda hora
+    }
     setSyncDot('on');
     return true;
   } catch(e) {

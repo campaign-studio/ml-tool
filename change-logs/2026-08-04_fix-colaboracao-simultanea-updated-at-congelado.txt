@@ -1,0 +1,57 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: CORREÇÃO DE INCIDENTE EM PRODUÇÃO — colaboração simultânea quebrada.
+      Sintomas relatados: "pessoas compartilharam o projeto e nada atualizou", "pessoas
+      atualizaram o CSV e não foi salvo", "não dá pra trabalhar simultaneamente na tool".
+
+===============================================================================
+CAUSA RAIZ (confirmada por query read-only no Supabase)
+===============================================================================
+A coluna projects.updated_at estava CONGELADA. Amostra: 8/8 projetos editados hoje
+ainda com updated_at de dias atrás (ex.: p_1785759614800 → updated_at 2026-08-03T12:20
+enquanto o payload.updatedAt do app era 2026-08-04T16:46).
+
+Motivo: o DEFAULT now() da coluna só roda no INSERT; não existe trigger de UPDATE. O
+upsert de save (ghMergeAndPushProjects) mandava só { id, payload } — nunca tocava
+updated_at. Então, depois do primeiro insert, a coluna nunca mais avançava.
+
+Consequência em cascata: o pull incremental (ghPullProjects) filtra por
+.gt('updated_at', cursor). Com updated_at congelado no passado, mudanças novas de outros
+clientes NUNCA passavam do filtro → cada aba ficava presa numa foto antiga, e ainda
+sobrescrevia o banco com o estado local velho no save seguinte. Daí os 3 sintomas
+(compartilhamento não aparece, edição de CSV "some", zero simultaneidade).
+
+===============================================================================
+CORREÇÃO (index.html)
+===============================================================================
+1) ghMergeAndPushProjects — o upsert agora seta updated_at explicitamente:
+     const nowIso = new Date().toISOString();
+     rows = ...map(p => ({ id: p.id, payload: p, updated_at: nowIso }))
+   Descongela a coluna: todo save passa a avançar o updated_at, então o pull incremental
+   de outros clientes volta a enxergar a mudança.
+
+2) ghPullProjects — cursor "high-water mark" em vez do relógio LOCAL da aba:
+   - select passou a incluir updated_at.
+   - o cursor _lastProjectsPullAt agora é o MAIOR updated_at REALMENTE recebido (mesmo
+     domínio de relógio da coluna), menos uma margem de 5 min. Antes era pullStartedAt
+     (Date.now() da própria aba), que não é comparável ao updated_at que OUTRO cliente
+     grava — bastava uma diferença de relógio entre navegadores pra pular mudanças.
+   - a margem re-busca a última janela de mudanças (barato; o mergeProjectsForSave dedup).
+   - se 0 linhas voltam, o cursor NÃO recua (evita re-full desnecessário); 1º pull segue completo.
+
+===============================================================================
+CORREÇÃO ROBUSTA RECOMENDADA (migração — rodar manualmente no Supabase)
+===============================================================================
+O fix (1) usa o relógio do CLIENTE que salva. Se o relógio de alguma máquina estiver
+muito adiantado, o cursor pode overshoot e perder janela. A prova de bala é o relógio do
+SERVIDOR via trigger. Arquivo: migrations/2026-08-04_updated_at_trigger.sql
+Depois de rodar, updated_at passa a ser sempre now() do servidor (um relógio só), e o
+map do fix (1) vira redundante mas inofensivo (o trigger sobrepõe).
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Load em localhost sem erros de console.
+- Causa raiz confirmada por leitura read-only do banco (sbClient NÃO foi bloqueado só pra
+  SELECT; NENHUMA escrita foi feita em produção).
+- Prova de ponta-a-ponta (2 usuários simultâneos) fica pro teste logado do usuário.
