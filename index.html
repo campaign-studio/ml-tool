@@ -3787,8 +3787,8 @@ function projSaveAll(projects) {
    nada do resto. Restaurar reusa o MESMO merge de save (não sobrescreve trabalho concorrente:
    traz de volta o que a versão tinha, sem apagar célula preenchida mais nova de outra pessoa). */
 const AUTO_SNAPSHOT_WINDOW_MS = 5 * 60 * 1000; // coalescência do auto-snapshot por projeto
-const AUTO_SNAPSHOT_KEEP = 30;                 // qtd de autos mantidos por projeto (além do TTL)
-const AUTO_SNAPSHOT_TTL_DAYS = 30;             // autos mais velhos que isso são podados
+const AUTO_SNAPSHOT_KEEP = 30;                 // qtd de autos/segurança mantidos por projeto (além do TTL)
+const AUTO_SNAPSHOT_TTL_DAYS = 14;             // autos/segurança mais velhos que isso são podados
 let _versionsTableMissing = false;             // trava após o 1º 42P01 pra não martelar o banco
 const _lastAutoSnapAt = {};                    // projectId -> ms do último auto-snapshot desta aba
 
@@ -3975,6 +3975,7 @@ async function restoreProjectVersion(versionId){
 let _versionModalProjectId = null;
 
 async function openVersionHistory(){
+  try{ _flushSafetySnap(); }catch(e){} // garante que a deleção mais recente já vire ponto na lista
   const p = _currentOpenProject();
   if(!p){ alert(t('versionHistory.openToView')); return; }
   _versionModalProjectId = p.id;
@@ -4286,6 +4287,7 @@ function releaseAllMyApprovingPresence() {
 }
 
 async function goToDashboard() {
+  try{ _flushSafetySnap(); }catch(e){} // saindo do editor: grava o ponto de restore pendente da rajada
   presenceSetProject(null); // saí do editor — deixo de aparecer como presente em qualquer projeto
   undoClear();              // saí do editor — zera a pilha de undo desta sessão de edição
   // Mesmo problema que o beforeunload já resolve pra fechar/recarregar a aba, só que pra
@@ -10026,20 +10028,67 @@ function updatePreviewText(ri, lang) {
 // Backup ANTES de uma deleção ESTRUTURAL no CSV builder (linha/coluna). Coalescido: 1 backup por
 // rajada de 60s por projeto — apagar várias linhas seguidas guarda o estado de ANTES da 1ª (esse
 // snapshot já contém todas as linhas), sem gerar um backup por clique. Fire-and-forget.
-let _lastStructDelSnapAt = {};
+/* ══ REDE DE SEGURANÇA: snapshot ANTES de destruir (esvaziar célula / deletar linha ou coluna) ══
+   Antes: gate de BORDA DE SUBIDA (só snapshotava se >60s do último) — engolia deleções em rajada e
+   dava a sensação de "não comitou na hora". Agora: DEBOUNCE DE SAÍDA que NUNCA descarta.
+   Na 1ª ação destrutiva de uma rajada capturo AGORA (síncrono, barato) o payload de ANTES; quando a
+   rajada assenta (SAFETY_SNAP_DEBOUNCE_MS) — ou você sai/fecha a aba — grava 1 LINHA só, contendo o
+   estado pré-rajada (todas as N deleções da rajada ficam recuperáveis daquele único ponto).
+   kind='auto' => entra na poda (TTL 14d + manter 30), então NÃO incha o banco; o backup MANUAL
+   ("Save backup") continua sendo kind='backup' e nunca é podado. */
+const SAFETY_SNAP_DEBOUNCE_MS = 4000;   // rajada assenta => grava
+const SAFETY_SNAP_MAX_HOLD_MS = 45000;  // edição contínua: não segura um pré-estado velho demais
+let _pendingSafetySnap = null;          // { projectId, payload, label, capturedAt }
+let _safetySnapTimer = null;
+
+// Captura SÍNCRONA e congelada (deep copy) do payload do projeto/campanha aberto = estado de ANTES.
+function _captureCurrentPayloadForSafety(){
+  try{
+    if(_campaign && _campaign.id){
+      return { projectId: _campaign.id, payload: JSON.parse(JSON.stringify(_campaign)) };
+    }
+    if(currentProjectId){
+      if(typeof autosaveProject === 'function'){ try{ autosaveProject(); }catch(e){} } // flush S->localStorage
+      const proj = projGetAll().find(p => p.id === currentProjectId);
+      if(proj) return { projectId: proj.id, payload: JSON.parse(JSON.stringify(proj)) };
+    }
+  }catch(e){}
+  return null;
+}
+
+// Descarrega o snapshot de segurança pendente (grava 1 linha). Idempotente.
+function _flushSafetySnap(){
+  if(_safetySnapTimer){ clearTimeout(_safetySnapTimer); _safetySnapTimer = null; }
+  const pend = _pendingSafetySnap;
+  _pendingSafetySnap = null;
+  if(!pend || _versionsTableMissing) return;
+  try{ snapshotProjectVersion(pend.payload, 'auto', pend.label); }catch(e){}
+}
+
+// Chamado ANTES de esvaziar célula / deletar linha ou coluna. Garante o ponto de restore sem
+// gravar 1 linha por tecla: coalesce a rajada, mas jamais descarta a deleção.
 function maybeSnapshotBeforeStructuralDelete(){
   try{
-    if(!currentProjectId || _versionsTableMissing) return;
-    const now = Date.now();
-    if(now - (_lastStructDelSnapAt[currentProjectId] || 0) < 60000) return;
-    // Flush do estado atual do editor avulso pro projeto, pro snapshot conter as linhas de agora.
-    if(!_campaign && typeof autosaveProject === 'function'){ try{ autosaveProject(); }catch(e){} }
-    const proj = projGetAll().find(p => p.id === currentProjectId);
-    if(!proj) return;
-    _lastStructDelSnapAt[currentProjectId] = now;
-    snapshotProjectVersion(proj, 'backup', t('versionHistory.beforeDeleteLabel'));
+    if(_versionsTableMissing) return;
+    const label = (typeof t === 'function' ? t('versionHistory.beforeDeleteLabel') : 'Before deleting');
+    const nowProject = (_campaign && _campaign.id) ? _campaign.id : currentProjectId;
+    if(!nowProject) return;
+    // Rajada mudou de projeto, ou o pré-estado pendente já está velho demais: grava o pendente antes.
+    if(_pendingSafetySnap && (_pendingSafetySnap.projectId !== nowProject ||
+        (Date.now() - _pendingSafetySnap.capturedAt) > SAFETY_SNAP_MAX_HOLD_MS)){
+      _flushSafetySnap();
+    }
+    if(!_pendingSafetySnap){
+      const cap = _captureCurrentPayloadForSafety();
+      if(!cap) return;
+      _pendingSafetySnap = { projectId: cap.projectId, payload: cap.payload, label, capturedAt: Date.now() };
+    }
+    if(_safetySnapTimer) clearTimeout(_safetySnapTimer);
+    _safetySnapTimer = setTimeout(_flushSafetySnap, SAFETY_SNAP_DEBOUNCE_MS);
   }catch(e){}
 }
+// Fechar/atualizar a aba no meio de uma rajada não pode perder o ponto de restore.
+window.addEventListener('beforeunload', _flushSafetySnap);
 
 function delRow(ri){maybeSnapshotBeforeStructuralDelete();S.csv.rows.splice(ri,1);reBody();debR();scheduleAutosave();}
 async function delLang(l){

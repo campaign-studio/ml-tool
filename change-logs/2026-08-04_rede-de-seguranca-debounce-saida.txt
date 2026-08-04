@@ -1,0 +1,65 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Rede de segurança de restore em toda deleção — debounce de SAÍDA (nunca descarta) + poda saudável.
+
+===============================================================================
+PROBLEMA RELATADO
+===============================================================================
+"Eu apaguei, e mesmo assim não comitou na hora. Preciso que cada mudança seja
+registrada para um restore de maneira saudável, sem explodir o banco, mas eficaz."
+
+CAUSA-RAIZ
+- maybeSnapshotBeforeStructuralDelete era um gate de BORDA DE SUBIDA: só gravava
+  snapshot se já tinham passado 60s do último. Se você tinha gerado QUALQUER snapshot
+  nos últimos 60s, a sua deleção não virava ponto de restore naquele instante — o gate
+  "engolia" a deleção. Daí a sensação de "não comitou na hora".
+- Do outro lado (não explodir o banco): só kind='auto' era podado. Os snapshots de
+  segurança (Before deleting / Before restoring) eram gravados como kind='backup' e
+  NUNCA eram podados. Fazer a deleção snapshotar mais os acumularia pra sempre.
+
+===============================================================================
+O QUE MUDOU
+===============================================================================
+1) DEBOUNCE DE SAÍDA QUE NUNCA DESCARTA (substitui o gate de 60s):
+   - Na 1ª ação destrutiva de uma rajada, o payload de ANTES é capturado JÁ, síncrono e
+     congelado (deep copy em memória — barato). _captureCurrentPayloadForSafety() faz o
+     flush do editor avulso (autosaveProject) antes de ler, e usa _campaign direto no
+     editor de campanha.
+   - Quando a rajada assenta (SAFETY_SNAP_DEBOUNCE_MS = 4s) — OU você sai pro dashboard
+     (goToDashboard), abre o Histórico (openVersionHistory) ou fecha/atualiza a aba
+     (beforeunload) — grava 1 LINHA só, com o estado pré-rajada.
+   - Rajada de N deleções => 1 snapshot contendo todas as N (recuperáveis daquele ponto).
+   - Trava de segurança SAFETY_SNAP_MAX_HOLD_MS = 45s: em edição contínua, não segura um
+     pré-estado velho demais — descarrega e recaptura. Troca de projeto no meio também
+     descarrega o pendente antes de capturar o novo.
+
+2) PODA SAUDÁVEL (não explode o banco) — retenção escolhida: 14 dias + manter 30:
+   - Snapshots de segurança agora são kind='auto' (entram na poda por TTL + manter N),
+     em vez de kind='backup' (que nunca é podado).
+   - AUTO_SNAPSHOT_TTL_DAYS: 30 -> 14. AUTO_SNAPSHOT_KEEP segue 30.
+   - O backup MANUAL ("Save backup") continua kind='backup' e NUNCA é podado — nada muda
+     pra ele. As deleções de projeto/pasta inteiros (Recently deleted) seguem kind='backup'
+     (um por deleção, não incham) e restauráveis como antes.
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- Constantes de retenção: AUTO_SNAPSHOT_TTL_DAYS 30->14.
+- Bloco da rede de segurança (~10040): novas consts SAFETY_SNAP_DEBOUNCE_MS,
+  SAFETY_SNAP_MAX_HOLD_MS; estado _pendingSafetySnap/_safetySnapTimer; funções
+  _captureCurrentPayloadForSafety, _flushSafetySnap; reescrita de
+  maybeSnapshotBeforeStructuralDelete (mesmo nome — call sites intactos) como
+  debounce de saída; window 'beforeunload' -> _flushSafetySnap.
+- goToDashboard e openVersionHistory: _flushSafetySnap() no início, pra o ponto de
+  restore da rajada já aparecer na hora / não se perder ao navegar.
+- Removido _lastStructDelSnapAt (gate antigo).
+- Call sites inalterados: delRow, delLang, setCellV (esvaziar célula avulsa),
+  setCampaignCell (esvaziar célula de campanha).
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- node --check nos módulos: OK. Load em localhost:3000: nenhum erro de console.
+- Sem referências órfãs ao _lastStructDelSnapAt; 4 call sites passam pela função nova.
+- NENHUMA escrita em produção nesta verificação. O fluxo real (esvaziar/deletar ->
+  ponto aparece no Histórico) fica pro teste logado após redeploy/hard refresh.
