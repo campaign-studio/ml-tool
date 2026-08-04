@@ -1,0 +1,30 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Esvaziar uma célula agora PERSISTE (clear intencional deixa de ser revertido pelo merge).
+
+CAUSA (diagnosticada por leitura do banco)
+- O merge anti-perda fazia "célula preenchida vence célula vazia" (mergeLooseData/mergeItemRows).
+  Ele não distinguia "esvaziei de propósito" de "vazio por cache velho/nunca preenchi", então TODO
+  clear intencional era revertido no save. Sintomas: célula esvaziada voltava com o texto ("não
+  salva") e o diff do backup vs atual dava zero (ambos com o texto -> "não funcionou").
+
+CORREÇÃO — tombstones de célula por timestamp (clearedCells), análogo a deletedItemIds
+- Modelo: data.clearedCells (avulso) / item.clearedCells (campanha) = [{id, lang, at}].
+- Registro: ao esvaziar uma célula (setCellV/setCampaignCell), grava {id,lang,at=now}; ao repreencher,
+  remove o tombstone (_recordCellCleared / _clearedListFor).
+- Persistência avulso: autosaveProject grava data.clearedCells; restoreProjectContent recarrega em
+  S.clearedCells. Campanha: clearedCells vive no próprio item (persiste com o payload).
+- Merge (translation-engine.js mergeLooseData + index.html mergeItemRows): quando um lado está vazio
+  e o outro preenchido, o VAZIO só vence se ESTE lado limpou de propósito (tombstone) com at mais
+  novo que o updatedAt do outro lado. Senão mantém "preenchido vence" (proteção contra cache velho
+  intacta). clearedCells de saída = união, mantendo só tombstone de célula AINDA vazia (re-fill dropa).
+- Guarda noLoss relaxada só para clears intencionais.
+
+VERIFICAÇÃO (funções puras, mock no browser)
+- mergeLooseData: (1) clear novo vence -> vazio + tombstone; (2) empty SEM tombstone NÃO apaga texto;
+  (3) clear velho perde p/ fill mais novo; (4) ambos preenchidos -> mais novo. Todos OK.
+- mergeCampaignItems/mergeItemRows: mesmos 4 + refill dropa tombstone. Todos OK.
+- node --check no engine; load sem erros de console. A parte de S/_campaign (recording) confere por
+  inspeção (espelha o modelo já existente). NENHUMA escrita em produção nesta verificação.
+
+LEMBRETE: precisa rodar a versão nova no app usado (hard refresh / redeploy).

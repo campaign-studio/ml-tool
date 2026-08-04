@@ -3664,10 +3664,17 @@ function mergeCampaignItems(a, b) {
     // célula; o editor de HTML já tem o guard de "alguém mudou, sobrescrever?").
     const winner = ((ai.updatedAt || 0) >= (bi.updatedAt || 0)) ? ai : bi;
     const other  = winner === ai ? bi : ai;
+    const mergedRows = mergeItemRows(winner, other);
+    const mergedRowsById = new Map(mergedRows.map(r => [r.id, r]));
+    const mergedCleared = unionClearedCells(winner.clearedCells, other.clearedCells).filter(c => {
+      const r = mergedRowsById.get(c.id);
+      return r && !(((r.translations || {})[c.lang]) || '').trim(); // mantém só tombstone de célula ainda vazia
+    });
     out.push({
       ...winner,
       langs: [...new Set([...(winner.langs || []), ...(other.langs || [])])],
-      rows: mergeItemRows(winner.rows || [], other.rows || []),
+      rows: mergedRows,
+      clearedCells: mergedCleared,
       ...mergeApprovalIntoFields(winner, other)
     });
   });
@@ -3680,17 +3687,28 @@ function mergeCampaignItems(a, b) {
 // preencheram a MESMA célula com valores diferentes) fica com o vencedor de conteúdo (updatedAt).
 // `winnerRows` já é a estrutura de linhas escolhida (ids/ordem); só o valor de cada tradução é
 // reconciliado contra a outra versão. O texto de origem (src) fica o do vencedor.
-function mergeItemRows(winnerRows, otherRows) {
-  const otherById = new Map((otherRows || []).map(r => [r.id, r]));
-  return (winnerRows || []).map(wr => {
+// Recebe os ITENS (winner = updatedAt mais novo; other = mais velho) pra ter acesso aos
+// clearedCells/updatedAt e tratar esvaziamento intencional (igual mergeLooseData). Célula vazia
+// só apaga a preenchida do outro lado se ESTE lado a limpou de propósito depois da versão do outro.
+function mergeItemRows(winner, other) {
+  const winnerRows = (winner && winner.rows) || [], otherRows = (other && other.rows) || [];
+  const wUpd = (winner && winner.updatedAt) || 0, oUpd = (other && other.updatedAt) || 0;
+  const wClear = _clearMap(winner), oClear = _clearMap(other);
+  const otherById = new Map(otherRows.map(r => [r.id, r]));
+  return winnerRows.map(wr => {
     const or = otherById.get(wr.id);
     if(!or) return wr;
     const langs = new Set([...Object.keys(wr.translations || {}), ...Object.keys(or.translations || {})]);
     const translations = {};
     langs.forEach(l => {
-      const wv = (wr.translations || {})[l], ov = (or.translations || {})[l];
-      const wFilled = (wv || '').trim(), oFilled = (ov || '').trim();
-      translations[l] = wFilled ? wv : (oFilled ? ov : (wv !== undefined ? wv : ov));
+      const wv = (wr.translations || {})[l] || '', ov = (or.translations || {})[l] || '';
+      const wC = wClear.get(wr.id + '|' + l) || 0, oC = oClear.get(wr.id + '|' + l) || 0;
+      let val;
+      if(wv.trim() && ov.trim()) val = wv;                  // os dois preencheram → winner (mais novo)
+      else if(wv.trim()) val = (oC && oC > wUpd) ? '' : wv; // other vazio: só apaga se OTHER limpou depois do winner
+      else if(ov.trim()) val = (wC && wC > oUpd) ? '' : ov; // winner vazio: só apaga se WINNER limpou depois do other
+      else val = '';
+      translations[l] = val;
     });
     return { ...wr, translations };
   });
@@ -5239,6 +5257,7 @@ function setCampaignCell(ri, lang, value) {
   // Célula sendo ESVAZIADA → backup antes de apagar (ver setCellV).
   if(before.trim() && !String(value||'').trim()) maybeSnapshotBeforeStructuralDelete();
   item.rows[ri].translations[lang] = value;
+  _recordCellCleared('campaign', item.id, item.rows[ri].id, lang, value); // tombstone de esvaziamento
   undoRecordCell('campaign', item.id, item.rows[ri].id, lang, before, value);
   touchCampaignItem(item); // edição de conteúdo → carimba pro merge por item
   scheduleCampaignAutosave();
@@ -8047,6 +8066,7 @@ function restoreProjectContent(data, readOnly) {
   });
 
   S.rawHtml = data.html;
+  S.clearedCells = Array.isArray(data.clearedCells) ? data.clearedCells.slice() : []; // tombstones de célula esvaziada
   S.filename = data.htmlName || 'project.html';
   S.csv.name = parsedCsv.templateName || S.filename.replace(/\.html?$/i, '');
   S.csv.langs = langs;
@@ -8867,6 +8887,32 @@ function syncAllRowHeights(){
   });
 }
 function setSrcV(ri,v){S.csv.rows[ri].src=v;updatePreviewText(ri,null);scheduleAutosave();}
+// Tombstones de célula ESVAZIADA de propósito (ver mergeLooseData/clearedCells): registra o
+// esvaziamento com timestamp pra o merge saber que foi intencional e mais novo; remove quando a
+// célula volta a ter conteúdo. Guardados em S.clearedCells (avulso) / item.clearedCells (campanha).
+function _clearedListFor(surface, itemId){
+  if(surface === 'campaign'){
+    if(typeof _campaign === 'undefined' || !_campaign) return null;
+    const it = _campaign.items.find(x => x.id === itemId); if(!it) return null;
+    if(!Array.isArray(it.clearedCells)) it.clearedCells = [];
+    return it.clearedCells;
+  }
+  if(typeof S === 'undefined' || !S) return null;
+  if(!Array.isArray(S.clearedCells)) S.clearedCells = [];
+  return S.clearedCells;
+}
+function _recordCellCleared(surface, itemId, rowId, lang, value){
+  const list = _clearedListFor(surface, itemId);
+  if(!list) return;
+  const empty = !String(value || '').trim();
+  const idx = list.findIndex(c => c.id === rowId && c.lang === lang);
+  if(empty){
+    if(idx >= 0) list[idx].at = Date.now(); else list.push({ id: rowId, lang, at: Date.now() });
+  } else if(idx >= 0){
+    list.splice(idx, 1); // re-preencheu → tombstone sai
+  }
+}
+
 function setCellV(ri,l,v){
   const row=S.csv.rows[ri];
   const before = row.translations[l] || '';
@@ -8874,6 +8920,7 @@ function setCellV(ri,l,v){
   // de gravar o vazio pra o snapshot conter o conteúdo original.
   if(before.trim() && !String(v||'').trim()) maybeSnapshotBeforeStructuralDelete();
   row.translations[l]=v;
+  _recordCellCleared('loose', null, row.id, l, v); // tombstone de esvaziamento (persiste o clear)
   // Ao localizar (traduzir) uma imagem que entrou "pendente" pós-aprovação, o item foi tratado:
   // limpa o marcador. Persiste pelo scheduleAutosave (editor grava data.pendingRowIds). A
   // aprovação nunca foi resetada — o badge só existia pra sinalizar que faltava revisar.
@@ -9733,6 +9780,7 @@ function autosaveProject() {
     if(p.data.maxIdIssued > S.maxIdIssued) S.maxIdIssued = p.data.maxIdIssued;
     p.data.pendingRowIds = [...(S.pendingImgIds||[])];
     p.data.parkedLangs = { ...(S.parkedLangs||{}) };
+    p.data.clearedCells = Array.isArray(S.clearedCells) ? S.clearedCells.slice() : []; // tombstones de célula esvaziada
   }
   // NÃO grava approvalComments/approvalDoneByLang/approvalActivity/approvalDeletedIds aqui.
   // Essa função salva a cada tecla digitada numa tradução (scheduleAutosave, 150ms) e lê

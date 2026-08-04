@@ -45,16 +45,41 @@ function _buildSaveCsvFrom(name, langsInternal, rowsById, order) {
   return '﻿' + lines.join('\n');
 }
 
+// clearedCells: tombstones de célula ESVAZIADA de propósito — [{id, lang, at}] em data.clearedCells.
+// Permitem distinguir "esvaziei de propósito (recente)" de "está vazio porque nunca preenchi /
+// cache velho". Sem eles, "preenchido vence vazio" revertia todo clear intencional (bug real).
+function _clearMap(data){
+  const m = new Map();
+  ((data && data.clearedCells) || []).forEach(c => {
+    if(!c || c.id == null || c.lang == null) return;
+    const k = c.id + '|' + c.lang, at = c.at || 0;
+    if(!m.has(k) || m.get(k) < at) m.set(k, at);
+  });
+  return m;
+}
+function unionClearedCells(a, b){
+  const m = new Map();
+  [...(a || []), ...(b || [])].forEach(c => {
+    if(!c || c.id == null || c.lang == null) return;
+    const k = c.id + '|' + c.lang, at = c.at || 0;
+    if(!m.has(k) || (m.get(k).at || 0) < at) m.set(k, { id: c.id, lang: c.lang, at });
+  });
+  return [...m.values()];
+}
+
 function mergeLooseData(a, b) {
   try {
     const ad = a.data, bd = b.data;
     if(!ad || !bd || !ad.csv || !bd.csv) return null;
-    if(ad.csv === bd.csv) return null; // idêntico → nada a fundir (deixa o caminho normal seguir)
+    const sameCleared = JSON.stringify(ad.clearedCells || []) === JSON.stringify(bd.clearedCells || []);
+    if(ad.csv === bd.csv && sameCleared) return null; // idêntico → nada a fundir
     const A = _rowsFromSaveCsv(ad.csv), B = _rowsFromSaveCsv(bd.csv);
     if(!A || !B) return null;
-    const aNewer = (a.updatedAt || 0) >= (b.updatedAt || 0);
-    const newer = aNewer ? A : B, older = aNewer ? B : A;
+    const aUpd = a.updatedAt || 0, bUpd = b.updatedAt || 0;
+    const aNewer = aUpd >= bUpd;
+    const aClear = _clearMap(ad), bClear = _clearMap(bd);
     const langs = [...new Set([...A.langs, ...B.langs])];
+    const newer = aNewer ? A : B, older = aNewer ? B : A;
     const order = [...newer.order];
     older.order.forEach(id => { if(!newer.rowsById.has(id)) order.push(id); });
     const rowsById = new Map();
@@ -63,23 +88,38 @@ function mergeLooseData(a, b) {
       const src = (na && na.src) || (ol && ol.src) || '';
       const tls = {};
       langs.forEach(l => {
-        const nv = na ? (na.tls[l] || '') : '', ov = ol ? (ol.tls[l] || '') : '';
-        tls[l] = nv.trim() ? nv : (ov.trim() ? ov : (nv || ov || '')); // preenchido vence vazio; conflito → novo
+        const arow = A.rowsById.get(id), brow = B.rowsById.get(id);
+        const av = arow ? (arow.tls[l] || '') : '', bv = brow ? (brow.tls[l] || '') : '';
+        const aC = aClear.get(id + '|' + l) || 0, bC = bClear.get(id + '|' + l) || 0;
+        let val;
+        if(av.trim() && bv.trim()) val = aNewer ? av : bv;            // os dois preencheram → projeto mais novo
+        else if(av.trim()) val = (bC && bC > aUpd) ? '' : av;         // B vazio: só apaga se B LIMPOU depois de A
+        else if(bv.trim()) val = (aC && aC > bUpd) ? '' : bv;         // A vazio: só apaga se A LIMPOU depois de B
+        else val = '';
+        tls[l] = val;
       });
       rowsById.set(id, { id, src, tls });
     });
     const mergedCsv = _buildSaveCsvFrom(aNewer ? A.name : B.name, langs, rowsById, order);
-    // GUARDA: nenhuma célula preenchida em A OU B pode ficar vazia no resultado.
     const M = _rowsFromSaveCsv(mergedCsv);
     if(!M) return null;
-    const noLoss = side => [...side.rowsById.keys()].every(id =>
+    // GUARDA (relaxada p/ clear intencional): célula preenchida num lado só pode ficar vazia no
+    // resultado se o OUTRO lado a limpou de propósito com timestamp mais novo que a versão deste lado.
+    const noLoss = (side, sideUpd, otherClear) => [...side.rowsById.keys()].every(id =>
       side.langs.every(l => {
         const v = (side.rowsById.get(id).tls[l] || '');
         if(!v.trim()) return true;
         const mr = M.rowsById.get(id);
-        return mr && (mr.tls[l] || '').trim().length > 0;
+        if(mr && (mr.tls[l] || '').trim().length > 0) return true;
+        const oc = otherClear.get(id + '|' + l) || 0; // clear intencional do outro lado, mais novo?
+        return oc > sideUpd;
       }));
-    if(!noLoss(A) || !noLoss(B)) return null;
+    if(!noLoss(A, aUpd, bClear) || !noLoss(B, bUpd, aClear)) return null;
+    // clearedCells de saída = união, mantendo só os que resultaram em célula AINDA vazia (re-fill dropa).
+    const outCleared = unionClearedCells(ad.clearedCells, bd.clearedCells).filter(c => {
+      const mr = M.rowsById.get(c.id);
+      return mr && !(mr.tls[c.lang] || '').trim();
+    });
     const base = aNewer ? ad : bd;
     return {
       ...base,
@@ -88,6 +128,7 @@ function mergeLooseData(a, b) {
       html: aNewer ? ad.html : bd.html,
       comments: { ...(bd.comments || {}), ...(ad.comments || {}) },
       maxIdIssued: Math.max(ad.maxIdIssued || 0, bd.maxIdIssued || 0),
+      clearedCells: outCleared,
     };
   } catch(e) { console.warn('mergeLooseData → fallback (comportamento atual):', e); return null; }
 }
