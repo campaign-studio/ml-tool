@@ -5527,7 +5527,7 @@ function renderCampaignGrid(item) {
       <td class="rn">${ri + 1}</td>
       <td class="cid">${escHtml(row.label || row.id)}</td>
       <td class="src"><textarea rows="1" ${originEditable ? `oninput="setCampaignOrigin(${ri},this.value)"` : 'readonly'}>${escHtml(row.src)}</textarea></td>
-      ${langs.map((l, ci) => `<td class="tl tl-cell cell-nav${!(row.translations[l] || '').trim() ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}"><textarea rows="1" readonly oninput="autoH(this);setCampaignCell(${ri},'${escJsAttr(l)}',this.value)">${escHtml(row.translations[l] || '')}</textarea></td>`).join('')}
+      ${langs.map((l, ci) => translationCellTd({ ri, ci, lang: l, value: row.translations[l] || '', write: 'setCampaignCell', liveHL: false, wrapInner: false, commentBtn: '', valEsc: escHtml })).join('')}
     </tr>
   `).join('') + '</tbody>';
   table.innerHTML = colgroup + thead + tbody;

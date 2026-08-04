@@ -1541,6 +1541,26 @@ function langDisplayName(lang) {
 //   cfg.pendingImgIds— ids de imagens pendentes (S.pendingImgIds || [])
 // Os handlers inline (switchAndHL/setCellV/sendHL/autoH/highlightFromTable/delRow/
 // ackTextMismatch) e os helpers csvSourceText/cellCommentBtn/escHtml continuam GLOBAIS.
+// Célula de tradução COMPARTILHADA pelos dois grids (editor avulso e editor de campanha). É a
+// fonte ÚNICA do contrato que o controlador de grid depende: td.tl-cell.cell-nav + data-r/data-c +
+// <textarea readonly>. As diferenças legítimas de cada editor entram por opções, sem um lado mudar
+// o comportamento do outro:
+//   o.write     — nome da função de escrita ('setCellV' avulso | 'setCampaignCell' campanha)
+//   o.liveHL    — avulso destaca no preview ao focar/digitar (onfocus switchAndHL + sendHL); campanha não
+//   o.wrapInner — avulso embrulha em .tl-inner e adiciona o botão de comentário; campanha é enxuta
+//   o.commentBtn/o.valEsc — html do botão de comentário e função de escape do valor de cada contexto
+function translationCellTd(o){
+  const ll = (typeof escJsAttr === 'function') ? escJsAttr(o.lang) : o.lang;
+  const isEmpty = !(o.value || '').trim();
+  const esc = o.valEsc || (s => String(s == null ? '' : s));
+  const v = esc(o.value || '');
+  const focus = o.liveHL ? ` onfocus="switchAndHL(${o.ri},'${ll}')"` : '';
+  const hl = o.liveHL ? `;sendHL(${o.ri},'${ll}')` : '';
+  const ta = `<textarea rows="1" readonly${focus} oninput="autoH(this);${o.write}(${o.ri},'${ll}',this.value)${hl}">${v}</textarea>`;
+  const inner = o.wrapInner ? `<div class="tl-inner">${ta}${o.commentBtn || ''}</div>` : ta;
+  return `<td class="tl tl-cell cell-nav${isEmpty ? ' tl-missing' : ''}" data-r="${o.ri}" data-c="${o.ci}">${inner}</td>`;
+}
+
 function renderTranslationGridBody(cfg) {
   const langsOrdered = cfg.langs;
   return cfg.rows.map((row,ri)=>{
@@ -1582,19 +1602,12 @@ function renderTranslationGridBody(cfg) {
     // custom_attribute, context) no meio da frase, mesmo já tendo sido "limpo" só no CSV.
     const displaySrc = csvSourceText(row).replace(/</g,'&lt;').replace(/"/g,'&quot;');
     const origLang = cfg.originLang;
-    const tls = langsOrdered.map((l,ci)=>{
-      const v=(row.translations[l]||'').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-      const isEmpty = !(row.translations[l]||'').trim();
-      return `<td class="tl tl-cell cell-nav${isEmpty ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}">
-        <div class="tl-inner">
-          <textarea rows="1" readonly
-            onfocus="switchAndHL(${ri},'${l}')"
-            oninput="autoH(this);setCellV(${ri},'${l}',this.value);sendHL(${ri},'${l}')"
-          >${v}</textarea>
-          ${cellCommentBtn(ri, l, row)}
-        </div>
-      </td>`;
-    }).join('');
+    const tls = langsOrdered.map((l,ci)=> translationCellTd({
+      ri, ci, lang: l, value: row.translations[l] || '',
+      write: 'setCellV', liveHL: true, wrapInner: true,
+      commentBtn: cellCommentBtn(ri, l, row),
+      valEsc: s => String(s).replace(/</g,'&lt;').replace(/"/g,'&quot;')
+    })).join('');
     const mismatch = row._textMismatch;
     const mismatchTitle = mismatch ? `HTML: "${String(mismatch.htmlSrc).replace(/"/g,'&quot;').slice(0,150)}" — CSV said: "${String(mismatch.csvSrc).replace(/"/g,'&quot;').slice(0,150)}"` : '';
     const warnBadge = mismatch

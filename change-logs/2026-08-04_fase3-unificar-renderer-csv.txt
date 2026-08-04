@@ -1,0 +1,61 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: RECONSTRUÇÃO DA CAMADA DE SALVAMENTO — FASE 3: unificar o renderer do CSV e confirmar paridade
+      de salvamento (histórico/backup/colaboração) na área de projetos/campanha.
+
+===============================================================================
+DESCOBERTA (o diagnóstico inicial estava desatualizado neste ponto)
+===============================================================================
+A paridade de SALVAMENTO na área de campanha já estava funcionalmente COMPLETA:
+- campaignGetAll() = projGetAll().filter(kind==='campaign') → a pasta de campanha está no MESMO
+  store; _currentOpenProject() (currentProjectId = _campaign.id) resolve a pasta.
+- Botões History/Save backup na toolbar da campanha (o Save backup foi ligado na Fase 2) já
+  funcionam via _currentOpenProject.
+- computeProjectDiff/_cellsFromPayload já tratam kind==='campaign' (items[] com it.id|row.id|lang).
+- restoreProjectVersion é genérico (projGetAll + projSaveAll → mergeCampaignItems) e
+  _refreshEditorAfterRestore trata kind==='campaign' (reatribui _campaign + re-render).
+- maybeAutoSnapshot dispara com o payload da pasta inteira; a Fase 2 já melhorou a cadência.
+Ou seja: histórico, backup e colaboração simultânea (CAS+merge por-item) JÁ valem igualmente
+dentro da área de projetos. Nada a corrigir aqui.
+
+===============================================================================
+O QUE MUDOU — unificação do renderer da célula de tradução
+===============================================================================
+Os dois grids (editor avulso e editor de campanha) divergem LEGITIMAMENTE no DOM: o avulso tem
+.tl-inner + botão de comentário + coluna de deletar + badges (VML/mismatch/pending); a campanha é
+enxuta e tem a coluna Origin editável no push. Fundir os dois renderers INTEIROS num só só geraria
+condicionais espelhando os dois caminhos (sem reduzir complexidade) e mudaria o DOM de um dos lados,
+arriscando o editor avulso (caminho crítico). Então a unificação foi feita no ponto que REALMENTE
+importa: a CÉLULA de tradução, que carrega o contrato de que o controlador de grid compartilhado
+depende (td.tl-cell.cell-nav + data-r/data-c + <textarea readonly>).
+
+- Novo translationCellTd(o) (translation-engine.js): fonte ÚNICA da célula de tradução. Opções
+  cobrem as diferenças de cada editor sem um lado afetar o outro:
+    write     — 'setCellV' (avulso) | 'setCampaignCell' (campanha)
+    liveHL    — avulso destaca no preview ao focar/digitar (onfocus switchAndHL + sendHL); campanha não
+    wrapInner — avulso embrulha em .tl-inner + botão de comentário; campanha é enxuta
+    valEsc    — escape do valor de cada contexto (avulso: só < e "; campanha: escHtml)
+- renderTranslationGridBody (avulso) e renderCampaignGrid (campanha) agora montam a célula via
+  translationCellTd. O contrato de classes/atributos não pode mais divergir entre os dois.
+- A célula de IMAGEM (input.img-url) é exclusiva do avulso e segue inline (não compartilhada).
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- modules/translation-engine.js: + translationCellTd; renderTranslationGridBody usa o helper na
+  célula não-imagem.
+- index.html: renderCampaignGrid usa translationCellTd nas células de tradução.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- node --check translation-engine.js: OK. Load em localhost:3000: ZERO erros de console.
+- Saída do helper conferida por unit test nos DOIS contextos (comparada ao markup original):
+  * avulso: td.tl-cell.cell-nav + data-r/data-c, .tl-inner, onfocus switchAndHL,
+    oninput autoH+setCellV+sendHL, botão de comentário, escape só de < e ". OK.
+  * campanha: tl-missing quando vazio, sem .tl-inner, sem onfocus, oninput autoH+setCampaignCell
+    (sem sendHL), escHtml. OK.
+  Estrutura e handlers idênticos ao original dos dois lados (só o whitespace entre tags colapsou —
+  inócuo pro CSS e pro controlador de grid, que casa por classe/atributo).
+- Verificação VISUAL dos editores fica pro ambiente logado (são login-gated; não dá pra abrir aqui).
+  Por isso a unificação foi conservadora (só a célula, contrato preservado byte-a-byte nos handlers).
