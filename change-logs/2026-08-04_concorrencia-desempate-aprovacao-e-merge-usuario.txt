@@ -1,0 +1,69 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Endurecimento de concorrência achado no stress-test de 20 clientes — desempate determinístico
+      de aprovação por idioma (#3) e merge de usuário sem baseline (#4).
+
+===============================================================================
+CONTEXTO
+===============================================================================
+Depois de corrigir a sobrescrita de aprovação (Bug 1) e o convite de admin (Bug 2), rodamos uma
+simulação de 20 clientes concorrentes contra as funções reais de merge/CAS (SEM rede/escrita em
+produção). Os fixes do dia passaram. O stress adversarial apontou 4 candidatos; investigados:
+
+- #1 (colisão de id de comentário): FALSO ALARME. addApprovalComment (approval-canvas.js:891) e
+  logApprovalActivity (:1241) JÁ geram id único ('ac_'/'aa_' + Date.now() + random). O teste que
+  "reprovou" injetava ids colididos que o código real nunca produz. Sem alteração.
+- #2 (linha nova de item de campanha "some" quando o outro lado vence por updatedAt): NÃO é bug de
+  merge a corrigir. As rows do item de campanha são DERIVADAS do rawHtml (S.rawHtml = item.rawHtml),
+  e rawHtml não se funde célula-a-célula (comentário no código, index.html:3830). Unir rows do lado
+  mais velho mantendo o rawHtml do vencedor criaria LINHAS ÓRFÃS (row sem segmento de HTML) — pior
+  que o atual. "Estrutura do vencedor ganha" é intencional; a proteção correta é a TRAVA de edição,
+  não o merge. Sem alteração (mudar introduziria regressão).
+- #3 e #4: bugs reais e limpos — corrigidos abaixo.
+
+===============================================================================
+#3 — EMPATE DE TIMESTAMP EM doneByLang ERA NÃO-COMUTATIVO
+===============================================================================
+ANTES: em mergeApprovalState, o merge de approvalDoneByLang usava
+  if(!remote || (local.at||0) >= (remote.at||0)) merged = local;
+No empate de `at` (aprovar e desaprovar no MESMO milissegundo), o lado "local" (= vencedor por
+updatedAt) ganhava. Como quem é o vencedor depende da ordem de commit, o estado final de um idioma
+podia oscilar entre aprovado e {undone:true} conforme a ordem — não-comutativo.
+
+AGORA: + _pickDoneEntry(a,b), escolha DETERMINÍSTICA e independente de ordem
+(_pickDoneEntry(a,b) === _pickDoneEntry(b,a)):
+  (1) `at` mais novo vence;
+  (2) empate de `at` → o "undone" (desaprovação) vence — estado mais conservador;
+  (3) ainda empatado → desempata estável por `by`.
+O segundo laço (idiomas só no remoto) segue igual.
+
+===============================================================================
+#4 — MERGE DE USUÁRIO SEM BASELINE FAZIA mine VENCER TODO CAMPO
+===============================================================================
+ANTES: _threeWayMergeUser(base,mine,remote) com base ausente fazia
+  Object.assign({}, remote, mine)  → "mine" sobrescrevia TODOS os campos.
+Duas abas editando campos DIFERENTES do mesmo usuário sem baseline (aba que não fez pull): a última
+a gravar revertia o campo que a outra mudou.
+
+AGORA: se não há ancestral MAS a linha já existe no remoto, usa o REMOTO como base
+  if(!base) base = remote;
+Assim só sobrescreve os campos que eu de fato mudei vs o remoto e preserva o resto. Usuário novo
+(remote null) segue retornando "mine" (linha acima). Estritamente melhor ou igual ao anterior.
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- + _pickDoneEntry; mergeApprovalState usa-o no merge de approvalDoneByLang.
+- _threeWayMergeUser: base ausente + remoto existente → usa remoto como base.
+
+===============================================================================
+VERIFICAÇÃO (console, sem tocar o banco)
+===============================================================================
+- Load em localhost:3000: ZERO erros de console.
+- #3 comutatividade: aprovar vs desaprovar no mesmo ms → as 6 ordens dão o MESMO L1 (undone vence).
+- #3 stress: 100 trials × 20 clientes aprovando/desaprovando L1 com colisão de ms → estado final
+  idêntico em qualquer ordem de commit (o1, reverso, e embaralhado).
+- #4: editor único sem baseline preserva name+dept; usuário novo (remote null) → mine; dois admins
+  com campos disjuntos (remoto avança entre commits) → role E dept preservados.
+- Regressão: 20 comentários concorrentes seguem todos preservados (fix Bug 1 intacto).
+- NENHUMA escrita em produção. Teste multi-cliente real fica pro ambiente logado após redeploy.

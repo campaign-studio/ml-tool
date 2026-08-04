@@ -3442,7 +3442,12 @@ function _updateLocalUserPayload(u){
 // remoto. Sem remoto → grava o meu.
 function _threeWayMergeUser(base, mine, remote){
   if(!remote) return mine;
-  if(!base) return Object.assign({}, remote, mine);
+  // Sem ancestral confiável (aba que não fez pull) mas a linha JÁ existe no remoto: usa o REMOTO
+  // como base. Assim só sobrescrevo os campos que de fato mudei vs o remoto e preservo o resto —
+  // antes era Object.assign(remote, mine), que deixava "mine" vencer TODO campo e revertia a
+  // edição concorrente de outro admin no mesmo usuário (campo disjunto). Usuário novo (remote null)
+  // já retornou "mine" acima.
+  if(!base) base = remote;
   const out = Object.assign({}, remote);
   const keys = new Set([...Object.keys(base), ...Object.keys(mine)]);
   keys.forEach(k => {
@@ -10226,6 +10231,20 @@ async function autosaveCampaignApprovalState() {
   }
 }
 
+// Escolhe DETERMINISTICAMENTE entre duas marcas de aprovação de um idioma, independente de ordem
+// de commit (comutativo: _pickDoneEntry(a,b) === _pickDoneEntry(b,a)). Antes o empate de `at`
+// (mesmo milissegundo) era decidido pelo lado "local" = vencedor por updatedAt, então aprovar vs
+// desaprovar no mesmo ms dava resultado dependente da ordem. Regra de empate: (1) mais novo vence;
+// (2) empate → o "undone" (desaprovação) vence, estado mais conservador; (3) ainda empatado →
+// desempata estável por `by`.
+function _pickDoneEntry(a, b){
+  if(!a) return b; if(!b) return a;
+  const aa = a.at || 0, ba = b.at || 0;
+  if(aa !== ba) return aa > ba ? a : b;
+  const au = !!a.undone, bu = !!b.undone;
+  if(au !== bu) return au ? a : b;
+  return String(a.by || '') <= String(b.by || '') ? a : b;
+}
 function mergeApprovalState(remoteData, localComments, localActivity, localDoneByLang, localDeletedIds) {
   const remoteComments = Array.isArray(remoteData?.approvalComments) ? remoteData.approvalComments : [];
   const remoteActivity = Array.isArray(remoteData?.approvalActivity) ? remoteData.approvalActivity : [];
@@ -10284,7 +10303,7 @@ function mergeApprovalState(remoteData, localComments, localActivity, localDoneB
   Object.keys(localDoneByLang).forEach(lang => {
     const local = localDoneByLang[lang];
     const remote = mergedDoneByLang[lang];
-    if(!remote || (local?.at || 0) >= (remote?.at || 0)) mergedDoneByLang[lang] = local;
+    mergedDoneByLang[lang] = remote ? _pickDoneEntry(local, remote) : local;
   });
   // Idiomas que eu desfiz localmente (delete) só valem se eu desfiz DEPOIS do que está no servidor.
   Object.keys(remoteDoneByLang).forEach(lang => {
