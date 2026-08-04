@@ -1,0 +1,37 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Reconstrução da camada de salvamento — FASE 3: Presença ao vivo (Supabase Realtime Presence).
+
+===============================================================================
+O QUE FOI FEITO
+===============================================================================
+Mostra em tempo real quem MAIS está no mesmo projeto/pasta agora, como avatares (iniciais) + label
+("N pessoas aqui agora" / "Fulano está aqui") na barra do editor avulso e do editor de campanha.
+
+100% EFÊMERO — usa Supabase Realtime Presence, NÃO grava nada no banco:
+  - Não gera egress de payload (era a causa do incidente de 19GB); presença é troca leve no canal.
+  - Some sozinho quando a pessoa fecha a aba / cai a conexão — sem a "presença fantasma" que a lista
+    approvingUsers gravada no payload sofre.
+Canal próprio 'mlt-presence-v1', separado do canal de postgres_changes ('mlt-sync-v1').
+Complementa (não substitui) a trava de edição exclusiva, que continua sendo o gate.
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- Camada de presença (após sbStartRealtime): sbStartPresence, _presenceSendTrack, _recomputePresence,
+  presenceSetProject, presenceFor (dedup por e-mail; filtra a própria pessoa), _presenceBadgeHtml,
+  renderPresenceUI. Estado: _presenceChannel, _presenceState, _myPresenceProjectId.
+- Hooks: init (sbStartPresence junto do sbStartRealtime); projOpen e openCampaignEditor
+  (presenceSetProject(id) após setar currentProjectId); goToDashboard (presenceSetProject(null)).
+- UI: <span class="presence-badge"> nas duas barras (#edToolbar e a .ph-a da campanha) + CSS .presence-*.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Load em localhost sem erros de console; todas as funções definidas; 2 badges no DOM.
+- presenceFor deduplica a mesma pessoa em 2 abas (othersCount=2 de 3 metas). OK.
+- _presenceBadgeHtml/renderPresenceUI renderiza avatares (iniciais A/J), label "2 pessoas aqui
+  agora" e tooltip por pessoa. OK.
+- A prova VISUAL sobre o editor e o join/leave real entre 2 clientes ficam pro teste logado (o
+  badge fica dentro de #page5, oculto na tela de login; presence multi-cliente não dá pra simular
+  numa aba só). NENHUMA escrita em produção (presence é efêmero, sem tocar tabela).

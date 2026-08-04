@@ -1262,6 +1262,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
           </button>
           <span class="ph-t" id="campaignItemLabel">Item</span>
           <div class="ph-a">
+            <span class="presence-badge" style="display:none;"></span>
             <button class="tbtn" style="border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;" onclick="openCampaignApprovalView()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
               Approve copies
@@ -1374,6 +1375,12 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
   #vhList .vh-tag-backup{background:#ecfdf5;color:#047857;}
   #vhList .vh-tag-auto{background:#eef2ff;color:#4338ca;}
   #vhList .vh-empty{padding:24px 16px;font-size:12px;color:var(--text3);text-align:center;line-height:1.5;}
+  .presence-badge{display:inline-flex;align-items:center;gap:6px;margin-right:2px;}
+  .presence-badge .presence-avs{display:inline-flex;}
+  .presence-badge .presence-av{width:22px;height:22px;border-radius:50%;background:#6d28d9;color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;border:2px solid var(--bg,#fff);margin-left:-6px;}
+  .presence-badge .presence-av:first-child{margin-left:0;}
+  .presence-badge .presence-more{font-size:10px;font-weight:700;color:var(--text3);margin-left:2px;align-self:center;}
+  .presence-badge .presence-lbl{font-size:11px;color:var(--text3);white-space:nowrap;}
 </style>
 <div id="versionHistoryModal" class="modal-ov" style="display:none;">
   <div class="card modal-card" style="width:100%;max-width:560px;max-height:82vh;display:flex;flex-direction:column;">
@@ -1930,6 +1937,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
         <div class="ph">
           <span class="ph-t">Translations CSV</span>
           <div class="ph-a" id="edToolbar">
+            <span class="presence-badge" style="display:none;"></span>
             <button class="tbtn html" id="btnDlHtml" onclick="openHtmlModal()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
               Copy Tagged HTML
@@ -2326,7 +2334,7 @@ async function enterApp(user) {
   // NÃO revelar appBody aqui — a primeira .page.active é a page1 (New Project),
   // e ela pisca durante os awaits abaixo. O goToDashboard cuida da UI correta.
   renderProfileAvatar(user);
-  if(ghConfigured()) { setSyncDot('on'); sbStartRealtime(); } else { setSyncDot('off'); }
+  if(ghConfigured()) { setSyncDot('on'); sbStartRealtime(); sbStartPresence(); } else { setSyncDot('off'); }
   await sbPullUsers();          // mantém a lista de logins fresca e semeia a DB no primeiro uso
   await ghPullNotifications();
   renderNotifBell();
@@ -2909,6 +2917,101 @@ function sbStartRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => sbOnNotifsChanged())
     .on('postgres_changes', { event: '*', schema: 'public', table: 'users' },         () => sbOnUsersChanged())
     .subscribe();
+}
+
+/* ═══════════════════════ PRESENÇA AO VIVO (Supabase Realtime Presence) ═══════════════════════
+   Mostra, em tempo real, quem MAIS está no mesmo projeto agora. 100% EFÊMERO — nada é gravado no
+   banco (não gera egress de payload, e some sozinho quando a pessoa fecha a aba/cai a conexão, sem
+   a "presença fantasma" que a lista approvingUsers no payload sofre). Canal próprio, separado do de
+   postgres_changes. Complementa a trava de edição (que continua sendo o gate exclusivo). */
+let _presenceChannel = null;
+let _presenceState = {};          // projectId -> [{email,name,at}]
+let _myPresenceProjectId = null;  // em qual projeto ESTOU agora (null = fora de editor)
+
+function sbStartPresence(){
+  const sb = sbClient();
+  if(!sb || _presenceChannel) return;
+  const me = authCurrentUser();
+  if(!me) return;
+  _presenceChannel = sb.channel('mlt-presence-v1', { config: { presence: { key: me.email.toLowerCase() } } });
+  _presenceChannel
+    .on('presence', { event: 'sync' },  () => _recomputePresence())
+    .on('presence', { event: 'join' },  () => _recomputePresence())
+    .on('presence', { event: 'leave' }, () => _recomputePresence())
+    .subscribe(async (status) => { if(status === 'SUBSCRIBED') await _presenceSendTrack(); });
+}
+
+async function _presenceSendTrack(){
+  if(!_presenceChannel) return;
+  const me = authCurrentUser();
+  if(!me) return;
+  try{
+    await _presenceChannel.track({
+      email: me.email,
+      name: (typeof authorName === 'function' ? authorName(me.email) : me.email),
+      projectId: _myPresenceProjectId,
+      at: Date.now()
+    });
+  }catch(e){}
+}
+
+function _recomputePresence(){
+  const map = {};
+  try{
+    const state = _presenceChannel ? _presenceChannel.presenceState() : {};
+    Object.keys(state).forEach(k => {
+      (state[k] || []).forEach(m => {
+        if(!m || !m.projectId) return;
+        (map[m.projectId] = map[m.projectId] || []).push({ email: m.email, name: m.name, at: m.at });
+      });
+    });
+  }catch(e){}
+  _presenceState = map;
+  renderPresenceUI();
+}
+
+// Declara em qual projeto estou agora (null = saí do editor). Efêmero.
+function presenceSetProject(projectId){
+  _myPresenceProjectId = projectId || null;
+  renderPresenceUI(); // atualiza o badge pro projeto novo já, sem esperar o próximo sync
+  if(!_presenceChannel){ sbStartPresence(); return; }
+  _presenceSendTrack();
+}
+
+// Outras pessoas (não eu) presentes no projeto, deduplicadas por e-mail (mesma pessoa em 2 abas conta 1).
+function presenceFor(projectId){
+  const me = authCurrentUser();
+  const mine = me ? (me.email || '').toLowerCase() : '';
+  const seen = new Set(); const out = [];
+  (_presenceState[projectId] || []).forEach(u => {
+    const e = (u.email || '').toLowerCase();
+    if(!e || e === mine || seen.has(e)) return;
+    seen.add(e); out.push(u);
+  });
+  return out;
+}
+
+function _presenceBadgeHtml(others){
+  const avatars = others.slice(0,5).map(u => {
+    const nm = (u.name || u.email || '?') + '';
+    const init = (nm.trim()[0] || '?').toUpperCase();
+    return `<span class="presence-av" title="${escHtml(nm)} está aqui agora">${escHtml(init)}</span>`;
+  }).join('');
+  const extra = others.length > 5 ? `<span class="presence-more">+${others.length-5}</span>` : '';
+  const label = others.length === 1
+    ? `${escHtml(others[0].name || others[0].email)} está aqui`
+    : `${others.length} pessoas aqui agora`;
+  return `<span class="presence-avs">${avatars}${extra}</span><span class="presence-lbl">${label}</span>`;
+}
+
+function renderPresenceUI(){
+  const pid = currentProjectId;
+  const others = pid ? presenceFor(pid) : [];
+  const html = others.length ? _presenceBadgeHtml(others) : '';
+  document.querySelectorAll('.presence-badge').forEach(el => {
+    el.innerHTML = html;
+    el.style.display = others.length ? '' : 'none';
+  });
 }
 
 async function sbOnUsersChanged() {
@@ -3826,6 +3929,7 @@ function releaseAllMyApprovingPresence() {
 }
 
 async function goToDashboard() {
+  presenceSetProject(null); // saí do editor — deixo de aparecer como presente em qualquer projeto
   // Mesmo problema que o beforeunload já resolve pra fechar/recarregar a aba, só que pra
   // navegação DENTRO do app: se uma ação recente agendou um autosave (ex: subir um CSV pra
   // atualizar traduções via applyCsvToEditor, que chama scheduleAutosave()) e a pessoa clica
@@ -4340,6 +4444,7 @@ async function openCampaignEditor(id) {
     const isOwner = me && p.owner && p.owner.toLowerCase() === me.email.toLowerCase();
     _approverMode = !!(me && !isOwner && (p.approvers || []).some(e => e.toLowerCase() === me.email.toLowerCase()));
     currentProjectId = p.id; // pro código de aprovação (notificações/lock) resolver o projeto certo
+    presenceSetProject(p.id); // presença ao vivo — anuncia que estou nesta pasta agora
     document.getElementById('campaignScreenTitle').textContent = p.name;
     renderCampaignTabs();
     renderCampaignMain();
@@ -6110,6 +6215,7 @@ async function projOpen(id, btn) {
 
   currentProjectId = id;
   _lockTakeoverShown = false;
+  presenceSetProject(id); // presença ao vivo — anuncia que estou neste projeto agora
 
   if(p.data && p.data.html && p.data.csv) {
     document.getElementById('dashboardScreen').style.display = 'none';
