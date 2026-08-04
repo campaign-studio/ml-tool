@@ -67,6 +67,11 @@
       },
       sync: {
         mergeNotice: '✓ Synced — a teammate was editing at the same time, so their changes were merged in.'
+      },
+      undo: {
+        skipped: 'Skipped — that change was modified by someone else since you made it.',
+        nothing: 'Nothing to undo.',
+        nothingRedo: 'Nothing to redo.'
       }
     }
   };

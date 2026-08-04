@@ -1,0 +1,36 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Undo/redo (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y) no grid de tradução.
+
+O QUE FOI FEITO
+- Camada de undo IMEDIATA, LOCAL e POR-SESSÃO, complementando o histórico de versões.
+- Pilha em memória (máx 200), só com as SUAS ações desta aba (impossível desfazer ação de outra
+  pessoa). Zera ao abrir projeto/pasta e ao voltar pro dashboard (undo é por-projeto).
+- Registro nas escritas de célula já existentes: setCellV (avulso) e setCampaignCell (campanha)
+  gravam {before, after} antes de sobrescrever (no-op quando before===after; nova edição limpa o redo).
+- Aplicação passa pelo MESMO caminho de save (autosave -> merge/CAS) => consistente com colaboração.
+- GUARDA ANTI-CLOBBER (pergunta 2 do plano): um passo de undo só aplica se o valor ATUAL da célula
+  ainda for o que VOCÊ colocou (curVal===after); se outra pessoa mudou depois, o passo é PULADO
+  (toast "Skipped — that change was modified by someone else…"), nunca sobrescreve o trabalho dela.
+  Redo é simétrico (curVal===before).
+- RESTAURAR versão entra como UMA entrada de undo (edge case 1): Ctrl+Z desfaz a restauração inteira
+  (reaplica o estado pré-restore via projSaveAll, também não-destrutivo); redo reaplica a versão.
+- Atalhos globais: Ctrl/Cmd+Z = undo; Ctrl/Cmd+Shift+Z e Ctrl+Y = redo. NÃO sequestra o undo nativo
+  quando o foco está num campo de texto editável (inclui a célula do grid em modo EDIÇÃO) — só age
+  em modo navegação / célula readonly.
+
+ARQUIVOS (index.html + modules/strings.js)
+- _undoStack/_redoStack, undoRecordCell, undoRecordRestore, undoClear, _undoCurrentCellValue,
+  _undoApplyCell, _undoApplyRestore, undoAction, redoAction + listener global de keydown.
+- setCellV/setCampaignCell: capturam before + undoRecordCell.
+- restoreProjectVersion: undoRecordRestore(before, after).
+- undoClear() em projOpen, openCampaignEditor, goToDashboard.
+- strings.js: undo.skipped/nothing/nothingRedo.
+
+VERIFICAÇÃO
+- Load sem erros de console. Núcleo da pilha testado: push, no-op (before===after) ignorado, redo
+  limpo em nova edição, clear, undo/redo em pilha vazia é no-op seguro, keydown Ctrl+Z não lança.
+- A aplicação na célula depende de S/_campaign léxicos (não instanciáveis headless deslogado);
+  espelha setCellV/setCampaignCell já provados e a guarda anti-clobber é comparação direta.
+  Fluxo real (digitar -> Ctrl+Z -> Ctrl+Shift+Z; anti-clobber com 2 usuários) = teste logado.
+- Sem escrita em produção.

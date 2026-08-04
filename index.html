@@ -3904,9 +3904,12 @@ async function restoreProjectVersion(versionId){
   await snapshotProjectVersion(projects[idx], 'backup', t('versionHistory.beforeRestoreLabel'));
   // Preserva a trava/aprovação atuais e força updatedAt novo pra vencer o merge por projeto.
   const cur = projects[idx];
-  projects[idx] = { ...payload, id: payload.id, updatedAt: Date.now(),
-                    lockedBy: cur.lockedBy, lockedAt: cur.lockedAt, approvingUsers: cur.approvingUsers };
+  const beforePayload = JSON.parse(JSON.stringify(cur)); // pro Ctrl+Z desfazer a restauração inteira
+  const restored = { ...payload, id: payload.id, updatedAt: Date.now(),
+                     lockedBy: cur.lockedBy, lockedAt: cur.lockedAt, approvingUsers: cur.approvingUsers };
+  projects[idx] = restored;
   await projSaveAll(projects);
+  undoRecordRestore(payload.id, beforePayload, JSON.parse(JSON.stringify(restored)));
   return true;
 }
 
@@ -4134,6 +4137,7 @@ function releaseAllMyApprovingPresence() {
 
 async function goToDashboard() {
   presenceSetProject(null); // saí do editor — deixo de aparecer como presente em qualquer projeto
+  undoClear();              // saí do editor — zera a pilha de undo desta sessão de edição
   // Mesmo problema que o beforeunload já resolve pra fechar/recarregar a aba, só que pra
   // navegação DENTRO do app: se uma ação recente agendou um autosave (ex: subir um CSV pra
   // atualizar traduções via applyCsvToEditor, que chama scheduleAutosave()) e a pessoa clica
@@ -4649,6 +4653,7 @@ async function openCampaignEditor(id) {
     _approverMode = !!(me && !isOwner && (p.approvers || []).some(e => e.toLowerCase() === me.email.toLowerCase()));
     currentProjectId = p.id; // pro código de aprovação (notificações/lock) resolver o projeto certo
     presenceSetProject(p.id); // presença ao vivo — anuncia que estou nesta pasta agora
+    undoClear();              // undo é por-pasta: começa limpo ao abrir
     document.getElementById('campaignScreenTitle').textContent = p.name;
     renderCampaignTabs();
     renderCampaignMain();
@@ -5096,7 +5101,9 @@ function setCampaignOrigin(ri, value) {
 function setCampaignCell(ri, lang, value) {
   const item = _campaign.items[_campaignItemIndex];
   if(!item || !item.rows[ri]) return;
+  const before = item.rows[ri].translations[lang] || '';
   item.rows[ri].translations[lang] = value;
+  undoRecordCell('campaign', item.id, item.rows[ri].id, lang, before, value);
   touchCampaignItem(item); // edição de conteúdo → carimba pro merge por item
   scheduleCampaignAutosave();
   updateCampaignPreviewCell(item, item.rows[ri], lang);
@@ -6420,6 +6427,7 @@ async function projOpen(id, btn) {
   currentProjectId = id;
   _lockTakeoverShown = false;
   presenceSetProject(id); // presença ao vivo — anuncia que estou neste projeto agora
+  undoClear();             // undo é por-projeto: começa limpo ao abrir
 
   if(p.data && p.data.html && p.data.csv) {
     document.getElementById('dashboardScreen').style.display = 'none';
@@ -8718,6 +8726,7 @@ function syncAllRowHeights(){
 function setSrcV(ri,v){S.csv.rows[ri].src=v;updatePreviewText(ri,null);scheduleAutosave();}
 function setCellV(ri,l,v){
   const row=S.csv.rows[ri];
+  const before = row.translations[l] || '';
   row.translations[l]=v;
   // Ao localizar (traduzir) uma imagem que entrou "pendente" pós-aprovação, o item foi tratado:
   // limpa o marcador. Persiste pelo scheduleAutosave (editor grava data.pendingRowIds). A
@@ -8725,9 +8734,135 @@ function setCellV(ri,l,v){
   if(S.pendingImgIds && S.pendingImgIds.includes(row.id) && (v||'').trim()){
     S.pendingImgIds = S.pendingImgIds.filter(id => id !== row.id);
   }
+  undoRecordCell('loose', null, row.id, l, before, v);
   updatePreviewText(ri,l);
   scheduleAutosave();
 }
+
+/* ═══════════════════════ UNDO / REDO (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y) ═══════════════════════
+   Camada IMEDIATA, LOCAL e POR-SESSÃO — complementa (não substitui) o histórico de versões.
+   Só as SUAS ações desta aba entram na pilha (nunca dá pra desfazer ação de outra pessoa). Cada
+   passo passa pela MESMA gravação (autosave -> merge/CAS), então é consistente com a colaboração.
+   Guarda ANTI-CLOBBER: um undo só aplica se o valor ATUAL da célula ainda for o que VOCÊ colocou
+   (curVal === after); se outra pessoa mudou depois, o passo é pulado (não sobrescreve o trabalho
+   dela). Redo é simétrico (curVal === before). Restaurar versão entra como UMA entrada (Ctrl+Z
+   desfaz a restauração inteira). */
+const _undoStack = [];
+const _redoStack = [];
+let _undoBusy = false;
+
+function undoRecordCell(surface, itemId, rowId, lang, before, after){
+  if((before || '') === (after || '')) return;
+  _undoStack.push({ kind:'cell', surface, itemId, rowId, lang, before: before || '', after: after || '' });
+  if(_undoStack.length > 200) _undoStack.shift();
+  _redoStack.length = 0; // qualquer edição nova invalida o redo
+}
+function undoRecordRestore(projectId, beforePayload, afterPayload){
+  _undoStack.push({ kind:'restore', projectId, beforePayload, afterPayload });
+  if(_undoStack.length > 200) _undoStack.shift();
+  _redoStack.length = 0;
+}
+function undoClear(){ _undoStack.length = 0; _redoStack.length = 0; }
+
+function _undoCurrentCellValue(e){
+  if(e.surface === 'loose'){
+    if(typeof S === 'undefined' || !S || !S.csv) return null;
+    const r = S.csv.rows.find(r => r.id === e.rowId); if(!r) return null;
+    return r.translations[e.lang] || '';
+  } else {
+    if(typeof _campaign === 'undefined' || !_campaign) return null;
+    const it = _campaign.items.find(x => x.id === e.itemId); if(!it) return null;
+    const r = it.rows.find(r => r.id === e.rowId); if(!r) return null;
+    return r.translations[e.lang] || '';
+  }
+}
+
+// Aplica um valor DIRETO na célula (modelo + DOM se visível + preview + autosave) SEM registrar
+// nova entrada de undo (não chama setCellV/setCampaignCell).
+function _undoApplyCell(e, value){
+  if(e.surface === 'loose'){
+    if(typeof S === 'undefined' || !S || !S.csv) return false;
+    const ri = S.csv.rows.findIndex(r => r.id === e.rowId); if(ri < 0) return false;
+    S.csv.rows[ri].translations[e.lang] = value;
+    const c = gridLangs().indexOf(e.lang);
+    const td = c >= 0 ? gridCellEl(ri, c) : null;
+    if(td){ const f = gridField(td); if(f) f.value = value; td.classList.toggle('tl-missing', !String(value || '').trim()); }
+    updatePreviewText(ri, e.lang);
+    scheduleAutosave();
+    return true;
+  } else {
+    if(typeof _campaign === 'undefined' || !_campaign) return false;
+    const it = _campaign.items.find(x => x.id === e.itemId); if(!it) return false;
+    const rj = it.rows.findIndex(r => r.id === e.rowId); if(rj < 0) return false;
+    it.rows[rj].translations[e.lang] = value;
+    touchCampaignItem(it);
+    const activeItem = _campaign.items[_campaignItemIndex];
+    if(activeItem && activeItem.id === e.itemId){
+      try{ const sr = S && S.csv && S.csv.rows.find(r => r.id === e.rowId); if(sr) sr.translations[e.lang] = value; }catch(_){}
+      const c = gridLangs().indexOf(e.lang);
+      const td = c >= 0 ? gridCellEl(rj, c) : null;
+      if(td){ const f = gridField(td); if(f) f.value = value; }
+      updateCampaignPreviewCell(it, it.rows[rj], e.lang);
+    }
+    scheduleCampaignAutosave();
+    return true;
+  }
+}
+
+async function _undoApplyRestore(payload){
+  const projects = projGetAll();
+  const idx = projects.findIndex(p => p.id === payload.id);
+  if(idx < 0) return false;
+  const cur = projects[idx];
+  projects[idx] = { ...payload, id: payload.id, updatedAt: Date.now(),
+                    lockedBy: cur.lockedBy, lockedAt: cur.lockedAt, approvingUsers: cur.approvingUsers };
+  await projSaveAll(projects);
+  _refreshEditorAfterRestore(projGetAll().find(p => p.id === payload.id));
+  return true;
+}
+
+async function undoAction(){
+  if(_undoBusy) return; _undoBusy = true;
+  try{
+    while(_undoStack.length){
+      const e = _undoStack.pop();
+      if(e.kind === 'restore'){ _redoStack.push(e); await _undoApplyRestore(e.beforePayload); return; }
+      const curVal = _undoCurrentCellValue(e);
+      if(curVal === null) continue;                    // alvo não está mais aberto — pula
+      if(curVal !== e.after){ showMergeNotice(t('undo.skipped')); continue; } // mudado por outro — não clobber
+      if(_undoApplyCell(e, e.before)){ _redoStack.push(e); return; }
+    }
+  } finally { _undoBusy = false; }
+}
+
+async function redoAction(){
+  if(_undoBusy) return; _undoBusy = true;
+  try{
+    while(_redoStack.length){
+      const e = _redoStack.pop();
+      if(e.kind === 'restore'){ _undoStack.push(e); await _undoApplyRestore(e.afterPayload); return; }
+      const curVal = _undoCurrentCellValue(e);
+      if(curVal === null) continue;
+      if(curVal !== e.before){ showMergeNotice(t('undo.skipped')); continue; }
+      if(_undoApplyCell(e, e.after)){ _undoStack.push(e); return; }
+    }
+  } finally { _undoBusy = false; }
+}
+
+// Atalhos globais. Não sequestra o undo NATIVO de um campo de texto editável (inclui a célula do
+// grid em modo EDIÇÃO, que é um textarea editável) — só age quando o foco NÃO está num campo
+// editável (ex: grid em modo navegação, célula readonly).
+document.addEventListener('keydown', function(e){
+  if(!(e.ctrlKey || e.metaKey)) return;
+  const k = (e.key || '').toLowerCase();
+  if(k !== 'z' && k !== 'y') return;
+  if(!currentProjectId) return; // só dentro de um editor
+  const ae = document.activeElement;
+  if(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA') && !ae.readOnly) return; // deixa nativo
+  const redo = (k === 'y') || e.shiftKey;
+  e.preventDefault();
+  if(redo) redoAction(); else undoAction();
+});
 
 /* ═══════════ NAVEGAÇÃO/SELEÇÃO/COLAR ESTILO PLANILHA (grid de tradução) ═══════════
    Camada leve (sem lib) sobre a tabela já existente. Só atua nas COLUNAS DE IDIOMA
