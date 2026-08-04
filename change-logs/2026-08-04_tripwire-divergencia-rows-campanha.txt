@@ -1,0 +1,54 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Tripwire de defesa em profundidade para divergência de estrutura de rows em item de campanha
+      (o "#2" do stress-test) — hoje NÃO-realizável pela UI, endurecido pro futuro.
+
+===============================================================================
+DIAGNÓSTICO (por que #2 não é um bug ativo)
+===============================================================================
+O stress-test apontou "linha nova de item de campanha some por merge concorrente" porque
+mergeItemRows itera só as rows do vencedor (winnerRows). Investigação a fundo do fluxo de campanha:
+
+- Campanha NÃO tem trava (openCampaignEditor não chama projOpen/projIsLocked nem grava lockedBy) —
+  é intencional: colaboração por-item + aprovação em união, concorrência resolvida no merge.
+- Porém NÃO existe caminho na UI pra ADICIONAR uma row a um item de campanha EXISTENTE: as rows são
+  derivadas do rawHtml só na CRIAÇÃO do item (addItem), com ids únicos, e daí são imutáveis.
+  applyCsvToCampaignItem só preenche traduções de rows existentes (erro se não casar);
+  performSaveTaggedHtmlEdit troca rawHtml mas NÃO re-extrai rows; não há add-row no grid.
+- Itens novos têm ids únicos → mergeCampaignItems os preserva por UNIÃO por id (nunca sobrescreve).
+
+Conclusão: como winner e other de um item casado sempre têm o MESMO conjunto de ids, o merge
+por-célula de mergeItemRows é correto e a "perda" é não-realizável hoje. O risco é LATENTE: no dia
+em que alguma feature mutar rows de item existente (add-row, re-tag que re-extraia rows, migração),
+abre-se uma janela de perda SILENCIOSA — e o histórico não recupera de forma confiável (restore de
+campanha resolve por item.updatedAt, então a row restaurada pode ser descartada de novo).
+
+===============================================================================
+O QUE MUDOU — tripwire não-destrutivo em mergeItemRows
+===============================================================================
+- mergeItemRows agora calcula onlyInOther = rows presentes só no lado perdedor (ids que o vencedor
+  não tem). Se houver, emite console.warn CLARO (itemId + ids). Hoje NUNCA dispara (invariante
+  "rows imutáveis após criação"); serve de alarme pro dia em que a invariante quebrar.
+- NÃO anexa as rows órfãs ao vencedor de propósito: costurá-las num rawHtml que não as contém
+  criaria row sem correspondência (bug pior). E NÃO dispara snapshot/DB de dentro de uma função de
+  merge pura (efeito colateral em caminho quente = perigoso). O tratamento consciente (notice de
+  conflito + snapshot de backup) fica pra quando a feature de mutar rows existir.
+- Comportamento de merge INALTERADO no uso real (row-sets iguais → sem warn, mesmo resultado).
+
+Trava por pasta foi AVALIADA e DESCARTADA: contraria o design colaborativo da campanha (dois
+usuários editando itens diferentes ao mesmo tempo é intencional).
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- mergeItemRows: guarda o resultado em `merged`, calcula onlyInOther e emite console.warn tripwire
+  antes de retornar. Sem mudança de comportamento no caminho normal.
+
+===============================================================================
+VERIFICAÇÃO (console, sem tocar o banco)
+===============================================================================
+- Load em localhost:3000: ZERO erros de console.
+- Caso NORMAL (mesmos ids nos dois lados): sem warn; célula pt-BR preenchida do vencedor mantida. OK.
+- Caso DIVERGENTE (sintético: other tem r2 que winner não tem): warn dispara; r2 NÃO é anexada
+  (sem row órfã); nRows do vencedor preservado. OK.
+- NENHUMA escrita em produção.

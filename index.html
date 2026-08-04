@@ -3867,7 +3867,8 @@ function mergeItemRows(winner, other) {
   const wUpd = (winner && winner.updatedAt) || 0, oUpd = (other && other.updatedAt) || 0;
   const wClear = _clearMap(winner), oClear = _clearMap(other);
   const otherById = new Map(otherRows.map(r => [r.id, r]));
-  return winnerRows.map(wr => {
+  const winnerIds = new Set(winnerRows.map(r => r.id));
+  const merged = winnerRows.map(wr => {
     const or = otherById.get(wr.id);
     if(!or) return wr;
     const langs = new Set([...Object.keys(wr.translations || {}), ...Object.keys(or.translations || {})]);
@@ -3884,6 +3885,21 @@ function mergeItemRows(winner, other) {
     });
     return { ...wr, translations };
   });
+  // TRIPWIRE (defesa em profundidade, hoje NUNCA dispara): as rows de um item são fixadas na
+  // criação (ids únicos) e são imutáveis — não há caminho na UI pra adicionar row a um item
+  // existente. Por isso winner e other sempre têm o MESMO conjunto de ids e este merge por-célula
+  // é correto. Se algum dia uma feature passar a mutar rows (add-row, re-tag que re-extraia rows),
+  // rows presentes só no perdedor sumiriam SILENCIOSAMENTE aqui. NÃO anexamos as órfãs (criariam
+  // row sem correspondência no rawHtml do vencedor = bug pior); alarmamos pra isso ser tratado
+  // conscientemente (ex: notice de conflito + snapshot) na hora que a invariante mudar.
+  const onlyInOther = otherRows.filter(r => !winnerIds.has(r.id));
+  if(onlyInOther.length){
+    console.warn('[mergeItemRows] divergência de estrutura de rows num item de campanha — ' +
+      onlyInOther.length + ' row(s) só no lado mais antigo seriam descartadas. Invariante "rows ' +
+      'imutáveis após criação" quebrou; tratar conflito antes de confiar neste merge.',
+      { itemId: (winner && winner.id) || (other && other.id), ids: onlyInOther.map(r => r.id) });
+  }
+  return merged;
 }
 
 // Aprovação sempre fundida (união via mergeApprovalState) — devolve só os 4 campos de aprovação.
