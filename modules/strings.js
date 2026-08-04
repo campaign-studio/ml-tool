@@ -41,6 +41,7 @@
         backupFailed: 'Couldn’t save the backup.',
         defaultBackupLabel: 'Manual backup',
         beforeRestoreLabel: 'Before restoring',
+        beforeDeleteLabel: 'Before deleting',
         viewChanges: 'View changes',
         back: '← Back',
         restoreThisVersion: 'Restore this version',
@@ -72,6 +73,21 @@
         skipped: 'Skipped — that change was modified by someone else since you made it.',
         nothing: 'Nothing to undo.',
         nothingRedo: 'Nothing to redo.'
+      },
+      deleted: {
+        title: 'Recently deleted',
+        button: 'Recently deleted',
+        loading: 'Loading…',
+        unavailable: 'Recently deleted is unavailable (the project_versions table hasn’t been created in the database yet).',
+        empty: 'Nothing here. Deleted projects and folders that have a backup show up here so you can restore them.',
+        intro: 'Projects and folders you deleted. Each was backed up right before deletion — restore brings it back.',
+        restore: 'Restore',
+        restoring: 'Restoring…',
+        kindFolder: 'Folder',
+        kindProject: 'Project',
+        deletedAt: 'Last backup: {when}',
+        restored: 'Restored. It’s back on your dashboard.',
+        restoreFailed: 'Couldn’t restore this item.'
       }
     }
   };

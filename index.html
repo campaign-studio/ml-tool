@@ -1045,6 +1045,10 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
         <h1 class="dash-title">Dashboard</h1>
         <span id="dashSyncStatus" class="dash-sync"></span>
       </div>
+      <button class="tbtn" onclick="openDeletedItems()" title="Recently deleted — restore a deleted project or folder" style="margin-left:auto;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M3 6l1.5 2M21 6l-1.5 2"/></svg>
+        <span data-i18n="deleted.button">Recently deleted</span>
+      </button>
     </div>
 
     <!-- TAB: PROJECTS -->
@@ -1417,6 +1421,21 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
       <button class="hm-close" onclick="closeVersionHistory()" style="position:static;">&times;</button>
     </div>
     <div id="vhList" style="flex:1;overflow:auto;padding:8px 12px;"></div>
+  </div>
+</div>
+
+<!-- ═══════════ RECENTLY DELETED MODAL ═══════════ -->
+<div id="deletedItemsModal" class="modal-ov" style="display:none;">
+  <div class="card modal-card" style="width:100%;max-width:560px;max-height:82vh;display:flex;flex-direction:column;position:relative;">
+    <div id="delBusyOverlay" style="display:none;position:absolute;inset:0;background:rgba(255,255,255,.88);z-index:5;flex-direction:column;align-items:center;justify-content:center;gap:10px;border-radius:inherit;">
+      <div class="move-spinner"></div>
+      <div id="delBusyLabel" style="font-size:12px;font-weight:600;color:var(--text2);"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border);">
+      <div style="flex:1;font-size:14px;font-weight:700;" data-i18n="deleted.title">Recently deleted</div>
+      <button class="hm-close" onclick="closeDeletedItems()" style="position:static;">&times;</button>
+    </div>
+    <div id="delList" style="flex:1;overflow:auto;padding:8px 12px;"></div>
   </div>
 </div>
 
@@ -2658,6 +2677,24 @@ async function markProjectDeleted(id) {
     if(error) throw error;
   } catch(e) {
     console.warn('Supabase sync (push tombstone) error — rode a migration de deleted_project_ids:', e);
+  }
+}
+
+// Remove o tombstone de um projeto (local + remoto) — usado ao RESTAURAR um projeto/pasta
+// deletado. Sem isso, mergeProjectsForSave filtraria o restaurado (isProjectRecentlyDeleted) e
+// o push re-emitiria o DELETE, apagando de novo o que acabou de ser recuperado.
+async function unmarkProjectDeleted(id) {
+  delete _deletedProjectIdsMap[id];
+  _issuedProjectDeletes.delete(id);
+  _saveDeletedProjectIdsLocal();
+  _saveIssuedProjectDeletesLocal();
+  const sb = sbClient();
+  if(!sb) return;
+  try {
+    const { error } = await withTimeout(sb.from('deleted_project_ids').delete().eq('id', id), 8000, 'unmark tombstone');
+    if(error) throw error;
+  } catch(e) {
+    console.warn('Supabase sync (unmark tombstone) error:', e);
   }
 }
 
@@ -4074,6 +4111,98 @@ async function saveManualBackup(){
   }
 }
 
+/* ═══════════════════════ RECENTLY DELETED (restaurar projeto/pasta deletado) ═══════════════════════
+   Todo delete grava um snapshot 'Before deleting' em project_versions ANTES de apagar. Como as linhas
+   de project_versions não são removidas junto com o projeto, dá pra listar aqui os que têm backup mas
+   já não existem mais (deletados) e recriá-los a partir do último snapshot. */
+// Lista projetos/pastas que têm snapshot mas não estão mais vivos (= deletados, restauráveis).
+async function listDeletedProjects(){
+  const sb = sbClient();
+  if(!sb || _versionsTableMissing) return [];
+  try{
+    // Seleciona campos LEVES (nunca o payload inteiro — evita egress) — nome/kind vêm do JSON.
+    const { data, error } = await withTimeout(
+      sb.from('project_versions').select('project_id, created_at, pname:payload->>name, pkind:payload->>kind').order('created_at', { ascending:false }).limit(2000),
+      8000, 'list deleted');
+    if(error){ if(_isMissingVersionsTable(error)) _versionsTableMissing = true; return []; }
+    const live = new Set(projGetAll().map(p => p.id));
+    const seen = new Map(); // project_id -> linha mais recente (a query já vem desc por created_at)
+    (data || []).forEach(r => { if(!seen.has(r.project_id)) seen.set(r.project_id, r); });
+    return [...seen.values()].filter(r => !live.has(r.project_id));
+  }catch(e){ if(_isMissingVersionsTable(e)) _versionsTableMissing = true; return []; }
+}
+
+// Recria um projeto/pasta deletado a partir do snapshot mais recente.
+async function restoreDeletedProject(projectId){
+  const sb = sbClient();
+  if(!sb) return false;
+  try{
+    const { data, error } = await withTimeout(
+      sb.from('project_versions').select('payload').eq('project_id', projectId).order('created_at', { ascending:false }).limit(1).maybeSingle(),
+      8000, 'fetch deleted payload');
+    if(error || !data || !data.payload) return false;
+    const payload = data.payload;
+    await unmarkProjectDeleted(projectId); // tira o tombstone ANTES de salvar
+    const projects = projGetAll();
+    if(!projects.find(p => p.id === projectId)){
+      projects.push({ ...payload, id: projectId, updatedAt: Date.now() });
+    }
+    await projSaveAll(projects);
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ─── UI do modal Recently deleted ─── */
+async function openDeletedItems(){
+  const ov = document.getElementById('deletedItemsModal');
+  const list = document.getElementById('delList');
+  list.innerHTML = '<div class="vh-empty">' + escHtml(t('deleted.loading')) + '</div>';
+  ov.style.display = 'flex';
+  if(_versionsTableMissing){ list.innerHTML = '<div class="vh-empty">' + escHtml(t('deleted.unavailable')) + '</div>'; return; }
+  renderDeletedList(await listDeletedProjects());
+}
+function closeDeletedItems(){ document.getElementById('deletedItemsModal').style.display = 'none'; }
+
+function renderDeletedList(items){
+  const list = document.getElementById('delList');
+  if(!items || !items.length){ list.innerHTML = '<div class="vh-empty">' + escHtml(t('deleted.empty')) + '</div>'; return; }
+  let html = '<div class="df-intro">' + escHtml(t('deleted.intro')) + '</div>';
+  html += items.map(it => {
+    const isFolder = it.pkind === 'campaign';
+    const kind = isFolder ? t('deleted.kindFolder') : t('deleted.kindProject');
+    const tag = '<span class="vh-tag ' + (isFolder ? 'vh-tag-auto' : 'vh-tag-backup') + '">' + escHtml(kind) + '</span>';
+    const name = it.pname ? escHtml(it.pname) : escHtml(it.project_id);
+    return '<div class="vh-item">'
+      + '<div class="vh-item-main">'
+      +   '<div class="vh-item-top">' + tag + '<span class="vh-time">' + name + '</span></div>'
+      +   '<div class="vh-author">' + escHtml(t('deleted.deletedAt', { when: _vhFmtTime(it.created_at) })) + '</div>'
+      + '</div>'
+      + '<button class="tbtn tbtn-primary" onclick="onRestoreDeleted(\'' + escJsAttr(it.project_id) + '\')">' + escHtml(t('deleted.restore')) + '</button>'
+      + '</div>';
+  }).join('');
+  list.innerHTML = html;
+}
+
+function setDelBusy(on){
+  const ov = document.getElementById('delBusyOverlay'); if(!ov) return;
+  if(on){ const lb = document.getElementById('delBusyLabel'); if(lb) lb.textContent = t('deleted.restoring'); ov.style.display = 'flex'; }
+  else ov.style.display = 'none';
+}
+
+async function onRestoreDeleted(projectId){
+  setDelBusy(true);
+  let ok = false;
+  try{ ok = await restoreDeletedProject(projectId); }catch(e){ ok = false; }
+  setDelBusy(false);
+  if(ok){
+    renderDeletedList(await listDeletedProjects()); // some da lista
+    if(typeof renderDashboard === 'function') renderDashboard();
+    showMergeNotice(t('deleted.restored'));
+  } else {
+    alert(t('deleted.restoreFailed'));
+  }
+}
+
 function projIsLocked(p) {
   if(!p.lockedBy) return false;
   if(Date.now() - (p.lockedAt || 0) > LOCK_TIMEOUT_MS) return false; // trava expirada
@@ -4572,6 +4701,8 @@ async function confirmCampaignDelete() {
   const id = _pendingDeleteId;
   if(!id) return;
   if(ghConfigured()) await withTimeout(ghPullProjects(), 8000, 'ghPullProjects');
+  // Backup ANTES de deletar — restaurável em "Recently deleted".
+  try{ const _pd = projGetAll().find(x => x.id === id); if(_pd) await snapshotProjectVersion(_pd, 'backup', t('versionHistory.beforeDeleteLabel')); }catch(e){}
   await withTimeout(markProjectDeleted(id), 8000, 'markProjectDeleted');
   await withTimeout(deleteNotifsForProject(id), 8000, 'deleteNotifsForProject');
   const projects = projGetAll().filter(p => p.id !== id);
@@ -5288,6 +5419,9 @@ async function confirmContentItemDelete() {
   // Tombstone do item: exclusão é EXPLÍCITA, pra o merge de união (mergeCampaignItems) não
   // ressuscitar este item a partir de uma cópia velha de outra aba/pessoa.
   const removed = _campaign.items[i];
+  // Backup ANTES de remover o item — a pasta continua viva, então isto fica restaurável pela
+  // tela de Histórico (o snapshot guarda a pasta inteira, com o item, imediatamente antes).
+  try{ await snapshotProjectVersion(_campaign, 'backup', t('versionHistory.beforeDeleteLabel')); }catch(e){}
   _campaign.deletedItemIds = (_campaign.deletedItemIds || []).concat([{ id: removed.id, at: Date.now() }]);
   _campaign.items.splice(i, 1);
   if(_campaignItemIndex === i) { _campaignItemIndex = -1; _campaignViewMode = 'gallery'; }
@@ -6529,6 +6663,8 @@ async function confirmProjDelete() {
   const id = _pendingDeleteId;
   if(!id) return;
   if(ghConfigured()) await withTimeout(ghPullProjects(), 8000, 'ghPullProjects'); // ver comentário em confirmAssignFolder
+  // Backup ANTES de deletar — deletar também vai pro histórico, restaurável em "Recently deleted".
+  try{ const _pd = projGetAll().find(x => x.id === id); if(_pd) await snapshotProjectVersion(_pd, 'backup', t('versionHistory.beforeDeleteLabel')); }catch(e){}
   await withTimeout(markProjectDeleted(id), 8000, 'markProjectDeleted');
   await withTimeout(deleteNotifsForProject(id), 8000, 'deleteNotifsForProject');
   let projects = projGetAll();
@@ -6791,6 +6927,8 @@ async function confirmDeleteFolder() {
     const projects = projGetAll();
     const folder = projects.find(p => p.id === folderId && p.kind === 'campaign');
     if(!folder) { closeDeleteFolderModal(); renderDashboard(); return; }
+    // Backup ANTES de deletar a pasta — restaurável em "Recently deleted".
+    try{ await snapshotProjectVersion(folder, 'backup', t('versionHistory.beforeDeleteLabel')); }catch(e){}
 
     if(scope === 'folderonly') {
       // Preserva os e-mails como avulsos (in-app/push somem com a pasta). Trava anti-perda:

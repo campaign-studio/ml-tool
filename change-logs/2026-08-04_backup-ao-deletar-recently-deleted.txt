@@ -1,0 +1,37 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Deletar também vai pro backup — snapshot antes de deletar + tela "Recently deleted".
+
+O QUE FOI FEITO
+1) Snapshot ANTES de deletar (rótulo "Before deleting", kind='backup', nunca podado) em TODOS os
+   fluxos de exclusão:
+   - Projeto avulso (confirmProjDelete)
+   - Pasta/campanha (confirmCampaignDelete e confirmDeleteFolder)
+   - Item de conteúdo dentro de uma pasta (confirmContentItemDelete) — snapshot da pasta inteira
+     antes de remover o item (a pasta segue viva, então isto é restaurável pela tela de Histórico).
+   Garante que deletar nunca perde nada: o estado pré-exclusão fica em project_versions.
+
+2) Tela "Recently deleted" (botão no cabeçalho do Dashboard):
+   - listDeletedProjects(): lista project_ids que têm snapshot mas não estão mais vivos (= deletados).
+     Seleciona campos LEVES (project_id, created_at, nome e kind via payload->>name / payload->>kind —
+     NUNCA o payload inteiro, pra não gerar egress), dedupe por project_id (linha mais recente).
+   - restoreDeletedProject(): busca o snapshot mais recente, REMOVE o tombstone (unmarkProjectDeleted:
+     local + linha em deleted_project_ids) e recria o projeto via projSaveAll (entra pelo CAS como
+     insert). Sem o unmark, mergeProjectsForSave filtraria o restaurado e o push re-emitiria o delete.
+   - Modal com lista (Folder/Project, nome, data do último backup) + botão Restore + overlay "Restoring…".
+
+NÃO precisa de migração nova (reusa project_versions e deleted_project_ids). Toda a UI em inglês via
+strings.js (deleted.* e versionHistory.beforeDeleteLabel).
+
+ARQUIVOS
+- modules/strings.js: versionHistory.beforeDeleteLabel + seção deleted.*
+- index.html: unmarkProjectDeleted; listDeletedProjects/restoreDeletedProject; openDeletedItems/
+  closeDeletedItems/renderDeletedList/setDelBusy/onRestoreDeleted; snapshot nos 4 fluxos de delete;
+  modal #deletedItemsModal + botão no .dash-head.
+
+VERIFICAÇÃO
+- Load sem erros de console. Funções definidas; modal + botão presentes.
+- READ-ONLY no banco real confirmou que o select payload->>name / payload->>kind funciona (retornou
+  nomes reais); dedupe por project_id ok. renderDeletedList mock: 2 linhas, tags Folder/Project, Restore.
+- O fluxo real de deletar->aparecer em Recently deleted->Restore (que escreve) fica pro teste logado.
+  NENHUMA escrita em produção nesta verificação.
