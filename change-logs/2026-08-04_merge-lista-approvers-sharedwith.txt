@@ -1,0 +1,48 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Perda de concessão concorrente — approvers/sharedWith fundidos como conjunto 3-way por
+      elemento (antes eram LWW de lista inteira).
+
+===============================================================================
+SINTOMA (achado na simulação de 5 pessoas + concessões concorrentes)
+===============================================================================
+Dois admins adicionando approvers DIFERENTES ao MESMO projeto ao mesmo tempo (X adiciona ana,
+Y adiciona bob, ambos partindo de [orig]) → resultado ficava [orig, bob] e "ana" SUMIA.
+Mesmo problema valeria para sharedWith (compartilhar projeto).
+
+===============================================================================
+CAUSA-RAIZ
+===============================================================================
+approvers e sharedWith são campos do CORPO do projeto. Em _reconcileBodyScalars, quando os DOIS
+lados mudam um campo vs o ancestral, a regra era "mantém base (updatedAt mais novo)" — ou seja,
+a lista inteira do lado mais novo vencia e a adição do outro admin era descartada. É o mesmo
+padrão do Bug 1 (aprovação por LWW), agora na lista de concessão de acesso — e cai no cenário
+real "conceder admin/approver" (same-project, disparado pela UI).
+
+===============================================================================
+CORREÇÃO — fusão 3-way POR ELEMENTO (add ganha, remoção respeitada)
+===============================================================================
+- + _BODY_MERGE_SET_LIST = {'approvers','sharedWith'}.
+- + _mergeSetList(anc, a, b): para cada e-mail, mantém se — estava no ancestral: só fica se AMBOS
+  mantiveram (remoção de qualquer lado vale); — NÃO estava no ancestral: entra se QUALQUER lado
+  adicionou. Devolve undefined se não for lista (cai no default seguro = mantém base).
+- _reconcileBodyScalars: no caso "os dois mudaram" E o campo é lista de e-mails, aplica _mergeSetList
+  em vez de LWW. Os demais casos (só um mudou / nenhum / campo não-lista) seguem idênticos.
+
+Só roda quando há ancestral confiável (_syncedPayloadJson) — sem ele, _reconcileBodyScalars já
+devolvia base (fallback seguro inalterado).
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- + _BODY_MERGE_SET_LIST, _mergeSetList; _reconcileBodyScalars trata listas de e-mail por conjunto.
+
+===============================================================================
+VERIFICAÇÃO (console, sem tocar o banco)
+===============================================================================
+- Load em localhost:3000: ZERO erros de console.
+- dois admins add ana/bob (base [orig]) → [orig, ana, bob] (antes perdia ana). OK.
+- remoção respeitada: X remove ana + Y add bob → ana sai, bob entra. OK.
+- só um lado muda → adição preservada (caminho normal, inalterado). OK.
+- 5 admins add approvers distintos concorrentes → todos os 5 + orig preservados. OK.
+- NENHUMA escrita em produção. Teste multi-cliente real fica pro ambiente logado após redeploy.

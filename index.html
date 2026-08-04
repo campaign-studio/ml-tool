@@ -2805,6 +2805,22 @@ const _BODY_MERGE_SKIP = new Set(['items','deletedItemIds','data','clearedCells'
 // que esta aba sincronizou, _syncedPayloadJson), aplicamos só as mudanças que exatamente UM lado
 // fez vs o ancestral — respeitando também remoções. Sem ancestral confiável → devolve base (LWW,
 // comportamento atual).
+// Campos de LISTA que são conjuntos de e-mails: quando os dois lados mudam, não pode ser LWW da
+// lista inteira (perderia a concessão de um dos admins). Fusão 3-way POR ELEMENTO: um e-mail entra
+// se foi ADICIONADO por qualquer lado; e só sai se estava no ancestral e foi REMOVIDO (por qualquer
+// lado). Assim dois admins adicionando approvers diferentes coexistem, e remoções continuam valendo.
+const _BODY_MERGE_SET_LIST = new Set(['approvers','sharedWith']);
+function _mergeSetList(anc, a, b){
+  if(!Array.isArray(a) || !Array.isArray(b)) return undefined; // não-lista → deixa o chamador decidir
+  const A = new Set(anc || []), X = new Set(a), Y = new Set(b);
+  const seen = new Set(), out = [];
+  [...(anc || []), ...a, ...b].forEach(e => {
+    if(seen.has(e)) return; seen.add(e);
+    const keep = A.has(e) ? (X.has(e) && Y.has(e)) : (X.has(e) || Y.has(e));
+    if(keep) out.push(e);
+  });
+  return out;
+}
 function _reconcileBodyScalars(local, remote, base, ancestor){
   if(!ancestor) return base;
   const out = Object.assign({}, base);
@@ -2815,7 +2831,12 @@ function _reconcileBodyScalars(local, remote, base, ancestor){
     const localChanged = lC !== aC, remoteChanged = rC !== aC;
     if(localChanged && !remoteChanged){ if(!(k in local)) delete out[k]; else out[k] = local[k]; }
     else if(remoteChanged && !localChanged){ if(!(k in remote)) delete out[k]; else out[k] = remote[k]; }
-    // os dois mudaram (ou nenhum) → mantém base (lado de updatedAt mais novo).
+    else if(localChanged && remoteChanged && _BODY_MERGE_SET_LIST.has(k)){
+      // os dois mudaram uma lista de e-mails → une por elemento (add ganha, remoção respeitada)
+      const merged = _mergeSetList(ancestor[k], local[k], remote[k]);
+      if(merged !== undefined) out[k] = merged; // não-lista cai no default (mantém base)
+    }
+    // os dois mudaram (não-lista) ou nenhum → mantém base (lado de updatedAt mais novo).
   });
   return out;
 }
