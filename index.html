@@ -2654,6 +2654,118 @@ function isProjectRecentlyDeleted(id) {
 // que acabou de ser salva (só reaparecendo se a pessoa editasse de novo).
 let _pendingProjectsPush = null;
 
+/* ═══════════════════════ CAS / OPTIMISTIC LOCKING (coluna projects.rev) ═══════════════════════
+   Cada linha tem um rev (int). Todo save de uma linha é um UPDATE ... WHERE rev = <esperado> —
+   se outra pessoa gravou entre a nossa leitura e a nossa escrita, o rev já não bate, o UPDATE
+   afeta 0 linhas (o WHERE é atômico no Postgres) e a gente RE-LÊ o remoto, RE-MESCLA e tenta de
+   novo. Fecha a janela em que o upsert em massa antigo podia sobrescrever uma escrita concorrente
+   que esta aba ainda não tinha visto. Degrada gracioso: se a coluna rev ainda não existir (42703),
+   _casDisabled liga e volta pro upsert em massa antigo.
+
+   Detecção de "mudou": comparação CANÔNICA (chaves ordenadas) — o jsonb do Postgres reordena as
+   chaves, então comparar JSON.stringify cru marcaria tudo como mudado e geraria ping-pong de
+   rewrites entre abas. _canonJson normaliza a ordem, então só o que MUDOU DE VERDADE é reescrito. */
+let _casDisabled = false;
+const _projectRev = {};          // id -> último rev conhecido do banco
+const _syncedPayloadJson = {};   // id -> _canonJson do que já está confirmado no banco (baseline)
+
+function _canonJson(v){
+  if(v === null || typeof v !== 'object') return JSON.stringify(v);
+  if(Array.isArray(v)) return '[' + v.map(_canonJson).join(',') + ']';
+  const keys = Object.keys(v).sort();
+  return '{' + keys.map(k => JSON.stringify(k) + ':' + _canonJson(v[k])).join(',') + '}';
+}
+
+function _isMissingRevColumn(e){
+  const m = ((e && (e.code || e.message)) || '') + '';
+  return m.includes('42703') || /column .*\brev\b.* does not exist/i.test(m);
+}
+function _isDupKey(e){
+  const m = ((e && (e.code || e.message)) || '') + '';
+  return m.includes('23505') || /duplicate key/i.test(m);
+}
+
+// Mescla local + remoto usando a MESMA lógica por-par do save normal (o corpo do map de
+// mergeProjectsForSave), mas DIRETO entre os dois — não via projGetAll(), que mesclaria cada
+// um contra o localStorage e ignoraria o outro. Não perde conteúdo de nenhum lado: corpo do
+// projeto = quem tem updatedAt maior; itens de campanha = união por id; CSV avulso = célula a
+// célula (não-vazia vence). Igual ao loop de mergeProjectsForSave, com local no papel de "p"
+// (o que está salvando) e remote no papel de "other".
+function mergeTwoProjects(local, remote){
+  if(!remote) return local;
+  if(!local) return remote;
+  try{
+    const mine = local.updatedAt || 0, theirs = remote.updatedAt || 0;
+    const base = theirs > mine ? remote : local;
+    if(base.kind === 'campaign' || local.kind === 'campaign' || remote.kind === 'campaign'){
+      return { ...base, items: mergeCampaignItems(local, remote), deletedItemIds: unionDeletedItemIds(local, remote) };
+    }
+    if(local.data && remote.data && local.data.csv && remote.data.csv){
+      const md = mergeLooseData(local, remote);
+      if(md) return { ...base, data: md };
+    }
+    return base;
+  }catch(e){ return local; }
+}
+
+// Atualiza o cache local com o que foi REALMENTE gravado no banco (o merge pode ter trazido
+// conteúdo do remoto), pra local e banco ficarem iguais e o próximo push não reescrever à toa.
+function _updateLocalProjectPayload(merged){
+  try{
+    const all = projGetAll();
+    const i = all.findIndex(x => x && x.id === merged.id);
+    if(i >= 0){ all[i] = merged; projSaveAllLocal(all); }
+  }catch(e){}
+}
+
+async function _plainUpsertProject(sb, p){
+  const { error } = await withTimeout(sb.from('projects').upsert([{ id: p.id, payload: p, updated_at: new Date().toISOString() }]), 8000, 'upsert '+p.id);
+  if(error) throw error;
+  _syncedPayloadJson[p.id] = _canonJson(p);
+}
+
+// Grava UMA linha com compare-and-swap no rev. Re-tenta em conflito (re-lê + re-mescla).
+async function casWriteProject(sb, p, tries){
+  tries = tries || 0;
+  if(_casDisabled) return _plainUpsertProject(sb, p);
+  const sel = await withTimeout(sb.from('projects').select('payload,rev').eq('id', p.id).maybeSingle(), 8000, 'cas read '+p.id);
+  if(sel.error){
+    if(_isMissingRevColumn(sel.error)){ _casDisabled = true; return _plainUpsertProject(sb, p); }
+    throw sel.error;
+  }
+  const nowIso = new Date().toISOString();
+  const cur = sel.data;
+  if(!cur){
+    const ins = await withTimeout(sb.from('projects').insert({ id: p.id, payload: p, rev: 0, updated_at: nowIso }), 8000, 'cas insert '+p.id);
+    if(ins.error){
+      if(_isMissingRevColumn(ins.error)){ _casDisabled = true; return _plainUpsertProject(sb, p); }
+      if(_isDupKey(ins.error)) return casWriteProject(sb, p, tries+1); // corrida: já existe → vira update
+      throw ins.error;
+    }
+    _projectRev[p.id] = 0; _syncedPayloadJson[p.id] = _canonJson(p);
+    return;
+  }
+  const expected = cur.rev || 0;
+  const merged = mergeTwoProjects(p, cur.payload);
+  const upd = await withTimeout(
+    sb.from('projects').update({ payload: merged, rev: expected + 1, updated_at: nowIso }).eq('id', p.id).eq('rev', expected).select('rev'),
+    8000, 'cas update '+p.id);
+  if(upd.error){
+    if(_isMissingRevColumn(upd.error)){ _casDisabled = true; return _plainUpsertProject(sb, p); }
+    throw upd.error;
+  }
+  if(!upd.data || !upd.data.length){
+    // CONFLITO: o rev mudou entre o read e o write. Re-tenta com o merge atual (já inclui as
+    // nossas mudanças); o próximo read pega o remoto mais novo e mescla de novo.
+    if(tries >= 5) throw new Error('CAS: conflitos demais em '+p.id);
+    return casWriteProject(sb, merged, tries + 1);
+  }
+  const newRev = (upd.data[0] && upd.data[0].rev != null) ? upd.data[0].rev : expected + 1;
+  _projectRev[p.id] = newRev;
+  _syncedPayloadJson[p.id] = _canonJson(merged);
+  _updateLocalProjectPayload(merged);
+}
+
 async function ghMergeAndPushProjects(localProjects) {
   projSaveAllLocal(localProjects);
   const sb = sbClient();
@@ -2673,11 +2785,21 @@ async function ghMergeAndPushProjects(localProjects) {
       // Sem isso, updated_at ficava CONGELADO na criação, e o pull incremental (.gt('updated_at'))
       // nunca trazia as edições dos outros → compartilhar não propagava, ninguém via o CSV do outro,
       // e o merge local rodava contra cache velho, permitindo sobrescrita. (Bug de produção real.)
-      const nowIso = new Date().toISOString();
-      const rows = localProjects.filter(p => !isProjectRecentlyDeleted(p.id)).map(p => ({ id: p.id, payload: p, updated_at: nowIso }));
-      if(rows.length) {
-        const { error } = await withTimeout(sb.from('projects').upsert(rows), 8000, 'upsert projects');
-        if(error) throw error;
+      const writable = localProjects.filter(p => !isProjectRecentlyDeleted(p.id));
+      if(_casDisabled){
+        // Fallback (coluna rev ausente): upsert em massa, como era antes.
+        const nowIso = new Date().toISOString();
+        const rows = writable.map(p => ({ id: p.id, payload: p, updated_at: nowIso }));
+        if(rows.length){
+          const { error } = await withTimeout(sb.from('projects').upsert(rows), 8000, 'upsert projects');
+          if(error) throw error;
+        }
+      } else {
+        // CAS: só grava as linhas que MUDARAM de verdade (comparação canônica vs baseline),
+        // cada uma com compare-and-swap no rev. Se a coluna rev não existir, casWriteProject
+        // liga _casDisabled e cai no upsert simples — as demais deste laço também.
+        const changed = writable.filter(p => _canonJson(p) !== _syncedPayloadJson[p.id]);
+        for(const p of changed){ await casWriteProject(sb, p); }
       }
       // Só manda o DELETE pra quem esta aba ainda não mandou — sem isso, cada save
       // reprocessava TODO o histórico de tombstones (até 90 dias, de qualquer projeto
@@ -2749,6 +2871,10 @@ async function ghPullProjects() {
     // acima (que só cobre o push ainda em voo, não a defasagem de leitura logo depois).
     const merged = mergeProjectsForSave(projects);
     localStorage.setItem(PROJ_KEY, JSON.stringify(merged));
+    // Baseline do CAS: registra o que o banco tem AGORA pra cada linha recebida, pra o próximo
+    // push só reescrever o que mudou de verdade. Canônico (chaves ordenadas) porque o jsonb
+    // reordena as chaves; sem isso tudo pareceria "mudado" e viraria ping-pong entre abas.
+    for(const r of dataRows){ if(r && r.payload && r.id != null) _syncedPayloadJson[r.id] = _canonJson(r.payload); }
     // Cursor = MAIOR updated_at REALMENTE recebido (mesmo domínio da coluna), menos uma margem
     // de segurança — em vez do relógio LOCAL desta aba (pullStartedAt), que não é comparável ao
     // updated_at que outros clientes gravam. A margem re-busca a última janela de mudanças (barato,

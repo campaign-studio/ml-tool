@@ -1,0 +1,61 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Reconstrução da camada de salvamento — FASE 2: CAS / optimistic locking por linha (rev).
+
+===============================================================================
+O QUE FOI FEITO
+===============================================================================
+Nova coluna projects.rev (int). O save de uma linha deixou de ser upsert em massa cego e passou
+a ser compare-and-swap:
+  UPDATE projects SET payload=?, rev=<esperado>+1, updated_at=now() WHERE id=? AND rev=<esperado>
+Se outra pessoa gravou entre a nossa leitura e a nossa escrita, o rev já não bate, o UPDATE afeta
+0 linhas (o WHERE é atômico no Postgres) e o cliente RE-LÊ o remoto, RE-MESCLA e tenta de novo
+(até 5x). Fecha a janela em que o upsert em massa podia sobrescrever uma escrita concorrente que
+esta aba ainda não tinha visto.
+
+Detecção de "mudou de verdade" (pra não reescrever/rev-churnar linhas iguais):
+  - _canonJson(obj): serialização CANÔNICA (chaves ordenadas recursivamente). Necessária porque o
+    jsonb do Postgres reordena as chaves — comparar JSON.stringify cru marcaria TODA linha como
+    "mudada" e geraria ping-pong de rewrites entre abas (cada rewrite bumpa rev -> notifica outras
+    -> outras reescrevem...). Com canônico, só o conteúdo realmente diferente é reescrito.
+  - Baseline _syncedPayloadJson[id]: semeada no pull (a partir do payload remoto) e a cada escrita
+    bem-sucedida. O push só faz CAS nas linhas cujo _canonJson difere da baseline.
+
+Merge par-a-par direto (mergeTwoProjects): CORREÇÃO importante — a 1a versão reusava
+mergeProjectsForSave([remote, local]), mas essa função mescla cada item do array contra o
+localStorage (projGetAll()), NÃO os dois entre si, então o merge do CAS ficava errado (o teste com
+mock pegou: a edição concorrente era perdida). Agora mergeTwoProjects replica DIRETO o corpo do
+loop de mergeProjectsForSave entre os dois payloads: corpo por updatedAt; itens de campanha por
+UNIÃO (mergeCampaignItems); CSV avulso célula-a-célula (mergeLooseData). Sem localStorage no meio.
+
+Degradação graciosa: se a coluna rev ainda não existir (42703), _casDisabled liga na hora e o push
+volta pro upsert em massa antigo — nada quebra antes da migração rodar.
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- index.html:
+  * Estado/helpers (antes de ghMergeAndPushProjects): _casDisabled, _projectRev, _syncedPayloadJson,
+    _canonJson, _isMissingRevColumn, _isDupKey, mergeTwoProjects, _updateLocalProjectPayload,
+    _plainUpsertProject, casWriteProject.
+  * ghMergeAndPushProjects: seção de escrita agora é CAS por linha mudada (com fallback em massa).
+  * ghPullProjects: semeia _syncedPayloadJson (baseline canônica) por linha recebida.
+- migrations/2026-08-04_projects_rev_cas.sql (RODAR MANUALMENTE): alter table add column rev.
+
+===============================================================================
+AÇÃO NECESSÁRIA DO USUÁRIO
+===============================================================================
+Rodar migrations/2026-08-04_projects_rev_cas.sql no Supabase. Antes de rodar, o app funciona
+normal (fallback em massa). Depois de rodar, o CAS entra em ação automaticamente.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Load em localhost sem erros de console.
+- Máquina de estados do CAS testada com sb MOCK (sem tocar produção):
+  * _canonJson ignora ordem de chaves (equal) e detecta diferença real (diff). OK.
+  * Conflito concorrente (rev bumpado entre read e write) -> 0 linhas -> re-lê -> re-mescla ->
+    retry -> rev converge 0->2. OK.
+  * Campanha: concorrente ADICIONA item B enquanto eu edito item A sem saber do B -> resultado
+    final tem A (minha edição, updatedAt vence) E B (não sumiu). bothSurvived/ok = true. OK.
+- NENHUMA escrita em produção nesta verificação. Fluxo real 2-usuários fica pro teste logado.
