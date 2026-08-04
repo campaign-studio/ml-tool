@@ -1298,7 +1298,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
               Edit Tagged HTML
             </button>
-            <button class="tbtn" onclick="openVersionHistory()" data-i18n-title="versionHistory.historyBtnTitle" title="Version history — restore an earlier point or save a backup"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg><span data-i18n="versionHistory.historyBtn">History</span></button>
+            <button class="tbtn" onclick="openVersionHistory()" data-i18n-title="versionHistory.historyBtnTitle" title="Version history — restore an earlier point or save a backup"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg><span data-i18n="versionHistory.historyBtn">History</span></button><button class="tbtn" onclick="saveManualBackup()" data-i18n-title="versionHistory.saveBackupBtnTitle" title="Save a backup — mark a restore point you can always come back to"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><span data-i18n="versionHistory.saveBackupBtn">Save backup</span></button>
           </div>
         </div>
         <div class="tscroll" style="flex:1;">
@@ -2004,7 +2004,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
               Edit Tagged HTML
             </button>
-            <button class="tbtn" onclick="openVersionHistory()" data-i18n-title="versionHistory.historyBtnTitle" title="Version history — restore an earlier point or save a backup"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg><span data-i18n="versionHistory.historyBtn">History</span></button>
+            <button class="tbtn" onclick="openVersionHistory()" data-i18n-title="versionHistory.historyBtnTitle" title="Version history — restore an earlier point or save a backup"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg><span data-i18n="versionHistory.historyBtn">History</span></button><button class="tbtn" onclick="saveManualBackup()" data-i18n-title="versionHistory.saveBackupBtnTitle" title="Save a backup — mark a restore point you can always come back to"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><span data-i18n="versionHistory.saveBackupBtn">Save backup</span></button>
             <div class="dl-dropdown-wrap">
               <button class="tbtn csv" onclick="event.stopPropagation();toggleDlDropdown()">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
@@ -3889,16 +3889,23 @@ function projSaveAll(projects) {
 }
 
 /* ═══════════════════════ HISTÓRICO DE VERSÕES (tabela project_versions) ═══════════════════════
-   Snapshots do payload INTEIRO do projeto. kind='auto' é coalescido no save (no máx 1 por
-   projeto a cada AUTO_SNAPSHOT_WINDOW_MS); kind='backup' é manual e sempre grava. Degrada de
-   forma graciosa: se a tabela ainda não existir (42P01) ou der erro, a feature some sem quebrar
-   nada do resto. Restaurar reusa o MESMO merge de save (não sobrescreve trabalho concorrente:
-   traz de volta o que a versão tinha, sem apagar célula preenchida mais nova de outra pessoa). */
-const AUTO_SNAPSHOT_WINDOW_MS = 5 * 60 * 1000; // coalescência do auto-snapshot por projeto
+   Snapshots do payload INTEIRO do projeto (nunca diff acumulado). Duas camadas de timing:
+   - Autosave do estado atual: debounce ~1,5s (AUTOSAVE_DEBOUNCE_MS).
+   - Snapshot de histórico (kind='auto'): a cada ~60s de PAUSA natural (AUTO_SNAPSHOT_IDLE_MS) OU
+     forçado a cada 5min de edição CONTÍNUA (AUTO_SNAPSHOT_MAX_STREAK_MS), e SÓ se o conteúdo mudou
+     de fato desde o último snapshot (dedup por _contentCanon — nunca grava snapshot idêntico).
+   kind='backup' é manual e sempre grava. Degrada de forma graciosa: se a tabela não existir (42P01)
+   a feature some sem quebrar nada. Restaurar reusa o MESMO merge de save (não sobrescreve trabalho
+   concorrente). */
+const AUTO_SNAPSHOT_IDLE_MS = 60 * 1000;       // pausa natural: 60s sem mudança → grava snapshot
+const AUTO_SNAPSHOT_MAX_STREAK_MS = 5 * 60 * 1000; // edição contínua sem pausa: força snapshot a cada 5min
 const AUTO_SNAPSHOT_KEEP = 30;                 // qtd de autos/segurança mantidos por projeto (além do TTL)
 const AUTO_SNAPSHOT_TTL_DAYS = 14;             // autos/segurança mais velhos que isso são podados
 let _versionsTableMissing = false;             // trava após o 1º 42P01 pra não martelar o banco
 const _lastAutoSnapAt = {};                    // projectId -> ms do último auto-snapshot desta aba
+const _lastAutoSnapCanon = {};                 // projectId -> _contentCanon do último snapshot (dedup)
+const _snapStreakStart = {};                   // projectId -> quando começou a rajada ainda não snapshotada
+let _snapIdleTimer = null;                     // timer da pausa de 60s (um por vez, pro projeto aberto)
 
 function _isMissingVersionsTable(e){
   const m = ((e && (e.code || e.message)) || '') + '';
@@ -3919,20 +3926,80 @@ async function snapshotProjectVersion(project, kind, label){
     };
     const { error } = await withTimeout(sb.from('project_versions').insert(row), 8000, 'insert version');
     if(error){ if(_isMissingVersionsTable(error)) _versionsTableMissing = true; else console.warn('snapshot version error', error); return false; }
-    if(row.kind === 'auto') _lastAutoSnapAt[project.id] = Date.now();
+    if(row.kind === 'auto'){
+      _lastAutoSnapAt[project.id] = Date.now();
+      // Baseline de dedup: qualquer auto-snapshot (inclusive o da rede de segurança) atualiza o
+      // conteúdo "já snapshotado", pra o próximo maybeAutoSnapshot não gravar idêntico.
+      _lastAutoSnapCanon[project.id] = _contentCanon(project);
+    }
     pruneProjectVersions(project.id); // fire-and-forget
     return true;
   }catch(e){ if(_isMissingVersionsTable(e)) _versionsTableMissing = true; return false; }
 }
 
-// Chamado após um push bem-sucedido. Coalesce: só grava auto se o último desta aba pro projeto
-// foi há mais de AUTO_SNAPSHOT_WINDOW_MS (evita 1 snapshot por tecla).
+// Resolve o projeto aberto AGORA (avulso ou pasta de campanha) — usado pelo timer de pausa, que
+// dispara depois e precisa do estado mais fresco.
+function _snapshotTarget(){
+  if(typeof _campaign !== 'undefined' && _campaign && _campaign.id) return _campaign;
+  return _currentOpenProject();
+}
+
+// Grava o snapshot agora e zera o ciclo (rajada + timer de pausa). Marca o canon ANTES do await
+// pra corridas concorrentes não duplicarem.
+// Sair do editor é uma pausa natural: se há um snapshot pendente (rajada ou timer de 60s em curso)
+// e o conteúdo mudou desde o último, grava JÁ — pra não perder o ponto de histórico ao sair antes
+// dos 60s. Chamado no goToDashboard.
+function _flushPendingAutoSnapshot(){
+  const t = _snapshotTarget();
+  if(!t){ if(_snapIdleTimer){ clearTimeout(_snapIdleTimer); _snapIdleTimer = null; } return; }
+  const pending = _snapIdleTimer || _snapStreakStart[t.id];
+  if(pending && _contentCanon(t) !== _lastAutoSnapCanon[t.id]) _commitAutoSnapshot(t);
+  else if(_snapIdleTimer){ clearTimeout(_snapIdleTimer); _snapIdleTimer = null; }
+}
+
+async function _commitAutoSnapshot(project){
+  if(!project || !project.id || _versionsTableMissing) return;
+  if(_snapIdleTimer){ clearTimeout(_snapIdleTimer); _snapIdleTimer = null; }
+  delete _snapStreakStart[project.id];
+  _lastAutoSnapCanon[project.id] = _contentCanon(project);
+  await snapshotProjectVersion(project, 'auto', null);
+}
+
+// Chamado após CADA push bem-sucedido do projeto aberto (camada 2 do salvamento). Regra:
+// - dedup: se o conteúdo é idêntico ao último snapshot, não faz nada (nunca grava snapshot igual);
+// - edição CONTÍNUA: se a rajada de mudanças já dura >= 5min, grava na hora (não perde granularidade);
+// - pausa NATURAL: senão, (re)agenda um timer de 60s; se ninguém mexer nesses 60s, grava o snapshot.
 async function maybeAutoSnapshot(project){
   if(!project || !project.id || _versionsTableMissing) return;
-  const last = _lastAutoSnapAt[project.id] || 0;
-  if(Date.now() - last < AUTO_SNAPSHOT_WINDOW_MS) return;
-  _lastAutoSnapAt[project.id] = Date.now(); // marca já, pra corridas concorrentes não duplicarem
-  await snapshotProjectVersion(project, 'auto', null);
+  const id = project.id;
+  const canon = _contentCanon(project);
+
+  // Nada mudou desde o último snapshot → dedup: cancela qualquer pausa pendente e sai.
+  if(canon === _lastAutoSnapCanon[id]){
+    if(_snapIdleTimer){ clearTimeout(_snapIdleTimer); _snapIdleTimer = null; }
+    delete _snapStreakStart[id];
+    return;
+  }
+
+  // Conteúdo mudou. Começa/continua a rajada.
+  if(!_snapStreakStart[id]) _snapStreakStart[id] = Date.now();
+
+  // Edição contínua há >= 5min sem snapshot → grava já.
+  if(Date.now() - _snapStreakStart[id] >= AUTO_SNAPSHOT_MAX_STREAK_MS){
+    await _commitAutoSnapshot(project);
+    return;
+  }
+
+  // Senão: agenda/reinicia a pausa de 60s. Ao disparar, snapshota o estado MAIS FRESCO do projeto
+  // aberto (re-resolve), e só se ainda houver mudança vs o último snapshot.
+  if(_snapIdleTimer) clearTimeout(_snapIdleTimer);
+  _snapIdleTimer = setTimeout(() => {
+    _snapIdleTimer = null;
+    const fresh = _snapshotTarget();
+    if(fresh && fresh.id === id && _contentCanon(fresh) !== _lastAutoSnapCanon[id]){
+      _commitAutoSnapshot(fresh);
+    }
+  }, AUTO_SNAPSHOT_IDLE_MS);
 }
 
 async function pruneProjectVersions(projectId){
@@ -4227,7 +4294,7 @@ async function saveManualBackup(){
   const p = _currentOpenProject();
   if(!p){ uiNotify(t('versionHistory.openToBackup'), {type:'info'}); return; }
   if(_versionsTableMissing){ uiNotify(t('versionHistory.backupUnavailable'), {type:'warning'}); return; }
-  const label = prompt(t('versionHistory.backupPrompt'), '');
+  const label = await uiPrompt(t('versionHistory.backupPrompt'), { title: t('versionHistory.saveBackupBtn') });
   if(label === null) return; // cancelou
   const ok = await snapshotProjectVersion(p, 'backup', label.trim() || t('versionHistory.defaultBackupLabel'));
   if(ok){
@@ -4402,6 +4469,7 @@ function releaseAllMyApprovingPresence() {
 
 async function goToDashboard() {
   try{ _flushSafetySnap(); }catch(e){} // saindo do editor: grava o ponto de restore pendente da rajada
+  try{ _flushPendingAutoSnapshot(); }catch(e){} // sair é pausa natural: fecha o snapshot de histórico pendente
   presenceSetProject(null); // saí do editor — deixo de aparecer como presente em qualquer projeto
   undoClear();              // saí do editor — zera a pilha de undo desta sessão de edição
   // Mesmo problema que o beforeunload já resolve pra fechar/recarregar a aba, só que pra
@@ -5050,10 +5118,9 @@ async function saveCampaignProject() {
 let _campaignAutosaveTimer = null;
 function scheduleCampaignAutosave() {
   clearTimeout(_campaignAutosaveTimer);
-  // 150ms em vez de 600ms — "instantâneo" o suficiente pra não perder edição nenhuma se a
-  // pessoa fechar a aba rápido, mas ainda junta as teclas de uma mesma rajada de digitação
-  // (salvar a cada tecla individual seria desperdício de escrita sem ganho perceptível).
-  _campaignAutosaveTimer = setTimeout(saveCampaignProject, 150);
+  // Mesma política do editor solto (AUTOSAVE_DEBOUNCE_MS ~1,5s): junta a rajada de digitação e só
+  // grava na pausa. Fechar a aba/trocar de item no meio faz flush imediato (não perde edição).
+  _campaignAutosaveTimer = setTimeout(saveCampaignProject, AUTOSAVE_DEBOUNCE_MS);
 }
 
 // A barra de cima mostra os 3 TIPOS (Email/In-app/Push) — clicar num tipo mostra
@@ -9902,12 +9969,16 @@ function insertMention(name) {
 }
 
 
-// Salva automaticamente as traduções enquanto a pessoa edita (com debounce pra não travar a
-// digitação) — 150ms em vez de 600ms, pra salvar praticamente ao vivo sem gravar a cada tecla.
+// Autosave do ESTADO ATUAL por debounce: salva ~1,5s DEPOIS que a pessoa para de editar (o timer
+// reinicia a cada alteração). Evita gravar no meio de uma edição incompleta e evita bater no banco
+// a cada tecla. A perda dos últimos caracteres ao fechar/navegar é coberta pelo flush imediato
+// (beforeunload / goToDashboard / troca de item). É a camada 1 (autosave); a camada 2 é o snapshot
+// de histórico (a cada 60s, só se mudou — ver maybeAutoSnapshot).
+const AUTOSAVE_DEBOUNCE_MS = 1500;
 let _autosaveTimer = null;
 function scheduleAutosave() {
   clearTimeout(_autosaveTimer);
-  _autosaveTimer = setTimeout(autosaveProject, 150);
+  _autosaveTimer = setTimeout(autosaveProject, AUTOSAVE_DEBOUNCE_MS);
 }
 
 // Salva imediatamente (sem esperar o debounce) se a pessoa fechar/recarregar a aba

@@ -23,6 +23,7 @@
         historyBtnTitle: 'Version history — restore an earlier point or save a backup',
         modalTitle: 'Version history',
         saveBackupBtn: 'Save backup',
+        saveBackupBtnTitle: 'Save a backup — mark a restore point you can always come back to',
         loading: 'Loading…',
         unavailable: 'History unavailable (the project_versions table hasn’t been created in the database yet).',
         empty: 'No versions saved yet. Every time you save, an automatic version is kept (at most one every 5 minutes); use “Save backup” to mark an important point.',

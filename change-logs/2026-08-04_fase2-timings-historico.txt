@@ -1,0 +1,64 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: RECONSTRUÇÃO DA CAMADA DE SALVAMENTO — FASE 2: timings das duas camadas (autosave x snapshot)
+      alinhados à spec + botão "Save backup" na toolbar do CSV.
+
+===============================================================================
+1) AUTOSAVE DO ESTADO ATUAL — debounce ~1,5s (era 150ms)
+===============================================================================
+- AUTOSAVE_DEBOUNCE_MS = 1500. scheduleAutosave (avulso) e scheduleCampaignAutosave (campanha) agora
+  usam essa constante. Continua sendo debounce (reinicia a cada alteração): salva ~1,5s depois que a
+  pessoa PARA de editar. Menos escrita no banco e não grava no meio de edição incompleta.
+- A perda dos últimos caracteres ao fechar/navegar segue coberta pelo flush imediato já existente
+  (beforeunload / goToDashboard / troca de item de campanha) — nada muda nesse ponto.
+- Approval autosave (600ms) foi mantido — é outra camada (comentários/status), não conteúdo.
+
+===============================================================================
+2) SNAPSHOT DE HISTÓRICO — 60s de pausa OU 5min contínuos, com dedup por conteúdo (era: 1 a cada 5min)
+===============================================================================
+ANTES: maybeAutoSnapshot só gateava por tempo (AUTO_SNAPSHOT_WINDOW_MS = 5min); sem dedup de
+conteúdo (podia gravar snapshot idêntico ao anterior).
+
+AGORA:
+- AUTO_SNAPSHOT_IDLE_MS = 60s (pausa natural) e AUTO_SNAPSHOT_MAX_STREAK_MS = 5min (edição contínua).
+- Dedup por conteúdo via _contentCanon (ignora trava/presença): se o conteúdo é idêntico ao último
+  snapshot, NÃO grava (e cancela qualquer pausa pendente). Nunca cria snapshot igual ao anterior.
+- Regra do maybeAutoSnapshot (chamado a cada push do projeto aberto):
+  * conteúdo == último snapshot  -> dedup, não faz nada;
+  * conteúdo mudou e a rajada já dura >= 5min -> grava JÁ (não perde granularidade em sessão longa);
+  * senão -> (re)agenda timer de 60s; se ninguém mexer nesses 60s, grava o estado mais fresco.
+- _commitAutoSnapshot zera o ciclo (rajada + timer) e marca o canon antes do await (anti-corrida).
+- snapshotProjectVersion passou a marcar _lastAutoSnapCanon em todo auto-snapshot (inclui a rede de
+  segurança), pra o dedup ficar consistente entre todas as fontes.
+- _flushPendingAutoSnapshot: sair pro Dashboard é pausa natural -> fecha o snapshot pendente na
+  hora (não perde o ponto de histórico se a pessoa sai antes dos 60s). Chamado no goToDashboard.
+- Snapshot segue sendo o ESTADO COMPLETO (payload inteiro), nunca diff acumulado.
+
+===============================================================================
+3) BOTÃO "SAVE BACKUP" NA TOOLBAR DO CSV (antes só dentro do modal de Histórico)
+===============================================================================
+- Botão "Save backup" adicionado ao lado do "History" nas DUAS toolbars (editor avulso e editor de
+  campanha), chamando saveManualBackup() direto. O botão dentro do modal continua existindo.
+- Nova string versionHistory.saveBackupBtnTitle (tooltip).
+- saveManualBackup agora usa uiPrompt (pop-up padrão) em vez do prompt() nativo do navegador.
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- index.html: AUTOSAVE_DEBOUNCE_MS; scheduleAutosave/scheduleCampaignAutosave; bloco de constantes de
+  snapshot (IDLE/STREAK + _lastAutoSnapCanon/_snapStreakStart/_snapIdleTimer); maybeAutoSnapshot
+  reescrito + _commitAutoSnapshot/_snapshotTarget/_flushPendingAutoSnapshot; snapshotProjectVersion
+  (marca canon); goToDashboard (flush); 2 botões Save backup nas toolbars; saveManualBackup (uiPrompt).
+- modules/strings.js: versionHistory.saveBackupBtnTitle.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Load em localhost:3000: ZERO erros de console. Constantes conferidas (1500/60000/300000); funções
+  definidas; 2 botões History + 3 botões "Save backup" no DOM (2 toolbars + 1 no modal).
+- Lógica de snapshot testada com snapshotProjectVersion STUBADO (sem tocar o banco):
+  * conteúdo novo -> não grava na hora, arma timer de 60s, inicia rajada. OK.
+  * conteúdo idêntico -> dedup, não grava, cancela pausa. OK.
+  * rajada >= 5min -> grava na hora (kind auto). OK.
+- NENHUMA escrita em produção (stub restaurado ao fim). Teste do fluxo real (digitar e ver o ponto
+  aparecer após 60s) fica pro ambiente logado após redeploy.
