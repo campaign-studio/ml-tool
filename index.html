@@ -2789,20 +2789,50 @@ function _isDupKey(e){
 // projeto = quem tem updatedAt maior; itens de campanha = união por id; CSV avulso = célula a
 // célula (não-vazia vence). Igual ao loop de mergeProjectsForSave, com local no papel de "p"
 // (o que está salvando) e remote no papel de "other".
+// Campos do CORPO que NÃO entram no merge 3-way por-campo (têm tratamento próprio: itens/tombstones
+// de campanha e data.csv via mergeCampaignItems/mergeLooseData; metadados voláteis de trava/presença;
+// updatedAt/rev que são carimbos de controle).
+const _BODY_MERGE_SKIP = new Set(['items','deletedItemIds','data','clearedCells','lockedBy','lockedAt','lockSessionId','approvingUsers','updatedAt','rev']);
+
+// Reconciliação 3-WAY POR CAMPO dos escalares do corpo (name, sharedWith, approvers, folder,
+// parkedLangs, pendingRowIds, ...). Sem isso, base=lado mais novo levava TODOS os campos, e uma
+// edição independente de um campo no lado mais velho se perdia. Com o ancestral (o último payload
+// que esta aba sincronizou, _syncedPayloadJson), aplicamos só as mudanças que exatamente UM lado
+// fez vs o ancestral — respeitando também remoções. Sem ancestral confiável → devolve base (LWW,
+// comportamento atual).
+function _reconcileBodyScalars(local, remote, base, ancestor){
+  if(!ancestor) return base;
+  const out = Object.assign({}, base);
+  const keys = new Set([...Object.keys(local || {}), ...Object.keys(remote || {})]);
+  keys.forEach(k => {
+    if(_BODY_MERGE_SKIP.has(k)) return;
+    const aC = _canonJson(ancestor[k]), lC = _canonJson(local[k]), rC = _canonJson(remote[k]);
+    const localChanged = lC !== aC, remoteChanged = rC !== aC;
+    if(localChanged && !remoteChanged){ if(!(k in local)) delete out[k]; else out[k] = local[k]; }
+    else if(remoteChanged && !localChanged){ if(!(k in remote)) delete out[k]; else out[k] = remote[k]; }
+    // os dois mudaram (ou nenhum) → mantém base (lado de updatedAt mais novo).
+  });
+  return out;
+}
+
 function mergeTwoProjects(local, remote){
   if(!remote) return local;
   if(!local) return remote;
   try{
     const mine = local.updatedAt || 0, theirs = remote.updatedAt || 0;
     const base = theirs > mine ? remote : local;
+    let ancestor = null;
+    try{ if(local.id && _syncedPayloadJson[local.id]) ancestor = JSON.parse(_syncedPayloadJson[local.id]); }catch(e){}
+    let result;
     if(base.kind === 'campaign' || local.kind === 'campaign' || remote.kind === 'campaign'){
-      return { ...base, items: mergeCampaignItems(local, remote), deletedItemIds: unionDeletedItemIds(local, remote) };
-    }
-    if(local.data && remote.data && local.data.csv && remote.data.csv){
+      result = { ...base, items: mergeCampaignItems(local, remote), deletedItemIds: unionDeletedItemIds(local, remote) };
+    } else if(local.data && remote.data && local.data.csv && remote.data.csv){
       const md = mergeLooseData(local, remote);
-      if(md) return { ...base, data: md };
+      result = md ? { ...base, data: md } : base;
+    } else {
+      result = base;
     }
-    return base;
+    return _reconcileBodyScalars(local, remote, result, ancestor);
   }catch(e){ return local; }
 }
 

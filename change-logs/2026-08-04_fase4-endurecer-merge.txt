@@ -1,0 +1,55 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: RECONSTRUÇÃO DA CAMADA DE SALVAMENTO — FASE 4: endurecer o merge (corpo do projeto por-campo).
+
+===============================================================================
+#3 — Campos escalares do corpo eram last-write-wins de DOCUMENTO inteiro
+===============================================================================
+ANTES: em mergeTwoProjects, base = lado com updatedAt mais novo, e o resultado herdava TODOS os
+campos do corpo de base (name, sharedWith, approvers, folder, parkedLangs, pendingRowIds, ...). Uma
+edição independente de um desses campos no lado "mais velho" era perdida (ex: um admin renomeia
+enquanto outro compartilha; o de updatedAt menor perde a sua mudança).
+
+AGORA — merge 3-WAY POR CAMPO usando o baseline já existente como ancestral:
+- _syncedPayloadJson[id] (último payload que esta aba sincronizou) é o ANCESTRAL comum.
+- _reconcileBodyScalars(local, remote, base, ancestor): pra cada campo do corpo, aplica só as
+  mudanças que EXATAMENTE UM lado fez vs o ancestral (respeitando remoções). Se os dois mudaram (ou
+  nenhum), mantém base (updatedAt mais novo). Sem ancestral confiável → devolve base (LWW, igual
+  ao comportamento atual — fallback seguro).
+- _BODY_MERGE_SKIP exclui o que tem tratamento próprio: items/deletedItemIds (campanha),
+  data/clearedCells (mergeLooseData), metadados voláteis (lockedBy/lockedAt/lockSessionId/
+  approvingUsers) e carimbos (updatedAt/rev).
+- Aplicado em mergeTwoProjects (caminho do CAS: mine x remote, onde o ancestral é confiável). O
+  mergeProjectsForSave (local x cache local) segue como estava — não é o vetor de concorrência.
+
+===============================================================================
+#4 e #5 — avaliados; mantidos por decisão (com racional)
+===============================================================================
+#4 mergeLooseData devolve null em ambiguidade → cai no corpo por updatedAt: a função já é
+   conservadora de propósito (guarda noLoss). Com a Fase 4, mesmo nesse fallback os ESCALARES do
+   corpo ficam protegidos pelo merge 3-way; só o conteúdo do CSV naquele caso raro segue por
+   updatedAt. Reescrever a fusão de célula ali traria risco alto de regressão (lógica bem calibrada)
+   sem ganho claro — mantido, com o merge 3-way por cima como rede.
+#5 A trava de edição é advisory (gateia projOpen, nunca a escrita) e só para projeto avulso — é
+   INTENCIONAL: campanha depende do merge por-item (mergeCampaignItems), que é robusto a concorrência
+   sem precisar travar. A camada de escrita nunca depende da trava (CAS+merge é a garantia). Sem
+   mudança — comportamento correto por design.
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- + _BODY_MERGE_SKIP, _reconcileBodyScalars.
+- mergeTwoProjects reescrito: computa ancestral (_syncedPayloadJson), faz o merge específico
+  (campanha/loose/base) e passa por _reconcileBodyScalars no fim.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Load em localhost:3000: ZERO erros de console.
+- Teste unitário de mergeTwoProjects no console (sem tocar o banco):
+  * com ancestral: EU renomeio + OUTRO adiciona sharedWith => os DOIS preservados (name meu +
+    sharedWith do outro). OK.
+  * sem ancestral: cai no LWW (rename meu se perde) — fallback seguro preservado. OK.
+  * remoção: removo um approver do ancestral + outro renomeia => approver removido NÃO ressuscita e
+    o rename do outro é mantido. OK.
+- NENHUMA escrita em produção. Teste multi-cliente real fica pro ambiente logado após redeploy.
