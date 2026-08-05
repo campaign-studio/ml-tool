@@ -3102,7 +3102,7 @@ async function ghPullProjects() {
     // recém-feito, e sobrescrever a edição na hora, mesmo com o "await _pendingProjectsPush"
     // acima (que só cobre o push ainda em voo, não a defasagem de leitura logo depois).
     const merged = mergeProjectsForSave(projects);
-    localStorage.setItem(PROJ_KEY, JSON.stringify(merged));
+    _lsSetLarge(PROJ_KEY, JSON.stringify(merged)); // era setItem cru (estourava no Safari sem guarda)
     // Baseline do CAS: registra o que o banco tem AGORA pra cada linha recebida, pra o próximo
     // push só reescrever o que mudou de verdade. Canônico (chaves ordenadas) porque o jsonb
     // reordena as chaves; sem isso tudo pareceria "mudado" e viraria ping-pong entre abas.
@@ -3303,7 +3303,7 @@ const NOTIF_PAGE_SIZE = 10;
 let notifPage = 0;
 
 function notifGetAll() {
-  try { return JSON.parse(localStorage.getItem(NOTIF_KEY) || '[]'); }
+  try { return JSON.parse(_lsGetLarge(NOTIF_KEY) || '[]'); }
   catch(e){ return []; }
 }
 
@@ -3312,12 +3312,7 @@ function notifSaveAll(notifs) {
   // notificações nunca são deletadas (só acumulam), e sem isso um QuotaExceededError aqui
   // impediria até a linha de baixo (sbPushNotifs) de rodar — perdendo a notificação local E
   // remota, em silêncio.
-  try {
-    localStorage.setItem(NOTIF_KEY, JSON.stringify(notifs));
-  } catch(e) {
-    console.warn('localStorage (notifications) write failed — quota exceeded? O sync com o Supabase ainda é tentado.', e);
-    warnLocalStorageWriteFailed();
-  }
+  _lsSetLarge(NOTIF_KEY, JSON.stringify(notifs)); // comprime + trata quota + avisa
   sbPushNotifs(notifs); // sincroniza com o Supabase em segundo plano
 }
 
@@ -3616,7 +3611,7 @@ async function ghPullNotifications() {
     const { data, error } = await sb.from('notifications').select('id,payload');
     if(error) throw error;
     const notifs = (data || []).map(r => r.payload).filter(Boolean);
-    localStorage.setItem(NOTIF_KEY, JSON.stringify(notifs));
+    _lsSetLarge(NOTIF_KEY, JSON.stringify(notifs));
     return true;
   } catch(e) {
     console.warn('Supabase sync (pull notifications) error:', e);
@@ -3805,8 +3800,164 @@ function notifGoPage(p) {
   renderNotifPanel();
 }
 
+/* ═══════════ COMPRESSÃO DO CACHE LOCAL (localStorage) ═══════════
+   O catálogo de projetos guarda HTML+CSV completos de vários idiomas — o blob chegou a ~4,7MB, e
+   o localStorage do Safari conta em UTF-16 (2 bytes/char) com teto de ~5MB. Resultado: no Safari
+   QUALQUER escrita estourava QuotaExceededError e o app "não funcionava" (falha de sync), enquanto
+   no Chrome havia folga. Comprimimos os blobs grandes (projetos, notificações) com LZString
+   (UTF-16-safe, sem dependência externa/CDN) antes de gravar: 2,4M chars de texto repetitivo caem
+   pra ~1/3–1/4, com folga enorme. Leitura detecta o prefixo e descomprime; formato ANTIGO (não
+   comprimido) segue sendo lido normalmente (migração preguiçosa: passa a comprimir no 1º save). */
+var LZString = (function(){
+  var f = String.fromCharCode;
+  function _compress(uncompressed, bitsPerChar, getCharFromInt){
+    if(uncompressed == null) return "";
+    var i, value, context_dictionary = {}, context_dictionaryToCreate = {}, context_c = "",
+      context_wc = "", context_w = "", context_enlargeIn = 2, context_dictSize = 3, context_numBits = 2,
+      context_data = [], context_data_val = 0, context_data_position = 0, ii;
+    for(ii = 0; ii < uncompressed.length; ii += 1){
+      context_c = uncompressed.charAt(ii);
+      if(!Object.prototype.hasOwnProperty.call(context_dictionary, context_c)){
+        context_dictionary[context_c] = context_dictSize++; context_dictionaryToCreate[context_c] = true;
+      }
+      context_wc = context_w + context_c;
+      if(Object.prototype.hasOwnProperty.call(context_dictionary, context_wc)){ context_w = context_wc; }
+      else {
+        if(Object.prototype.hasOwnProperty.call(context_dictionaryToCreate, context_w)){
+          if(context_w.charCodeAt(0) < 256){
+            for(i = 0; i < context_numBits; i++){ context_data_val = (context_data_val << 1);
+              if(context_data_position == bitsPerChar - 1){ context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } }
+            value = context_w.charCodeAt(0);
+            for(i = 0; i < 8; i++){ context_data_val = (context_data_val << 1) | (value & 1);
+              if(context_data_position == bitsPerChar - 1){ context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = value >> 1; }
+          } else {
+            value = 1;
+            for(i = 0; i < context_numBits; i++){ context_data_val = (context_data_val << 1) | value;
+              if(context_data_position == bitsPerChar - 1){ context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = 0; }
+            value = context_w.charCodeAt(0);
+            for(i = 0; i < 16; i++){ context_data_val = (context_data_val << 1) | (value & 1);
+              if(context_data_position == bitsPerChar - 1){ context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = value >> 1; }
+          }
+          context_enlargeIn--; if(context_enlargeIn == 0){ context_enlargeIn = Math.pow(2, context_numBits); context_numBits++; }
+          delete context_dictionaryToCreate[context_w];
+        } else {
+          value = context_dictionary[context_w];
+          for(i = 0; i < context_numBits; i++){ context_data_val = (context_data_val << 1) | (value & 1);
+            if(context_data_position == bitsPerChar - 1){ context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = value >> 1; }
+        }
+        context_enlargeIn--; if(context_enlargeIn == 0){ context_enlargeIn = Math.pow(2, context_numBits); context_numBits++; }
+        context_dictionary[context_wc] = context_dictSize++; context_w = String(context_c);
+      }
+    }
+    if(context_w !== ""){
+      if(Object.prototype.hasOwnProperty.call(context_dictionaryToCreate, context_w)){
+        if(context_w.charCodeAt(0) < 256){
+          for(i = 0; i < context_numBits; i++){ context_data_val = (context_data_val << 1);
+            if(context_data_position == bitsPerChar - 1){ context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } }
+          value = context_w.charCodeAt(0);
+          for(i = 0; i < 8; i++){ context_data_val = (context_data_val << 1) | (value & 1);
+            if(context_data_position == bitsPerChar - 1){ context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = value >> 1; }
+        } else {
+          value = 1;
+          for(i = 0; i < context_numBits; i++){ context_data_val = (context_data_val << 1) | value;
+            if(context_data_position == bitsPerChar - 1){ context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = 0; }
+          value = context_w.charCodeAt(0);
+          for(i = 0; i < 16; i++){ context_data_val = (context_data_val << 1) | (value & 1);
+            if(context_data_position == bitsPerChar - 1){ context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = value >> 1; }
+        }
+        context_enlargeIn--; if(context_enlargeIn == 0){ context_enlargeIn = Math.pow(2, context_numBits); context_numBits++; }
+        delete context_dictionaryToCreate[context_w];
+      } else {
+        value = context_dictionary[context_w];
+        for(i = 0; i < context_numBits; i++){ context_data_val = (context_data_val << 1) | (value & 1);
+          if(context_data_position == bitsPerChar - 1){ context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = value >> 1; }
+      }
+      context_enlargeIn--; if(context_enlargeIn == 0){ context_enlargeIn = Math.pow(2, context_numBits); context_numBits++; }
+    }
+    value = 2;
+    for(i = 0; i < context_numBits; i++){ context_data_val = (context_data_val << 1) | (value & 1);
+      if(context_data_position == bitsPerChar - 1){ context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = value >> 1; }
+    while(true){ context_data_val = (context_data_val << 1);
+      if(context_data_position == bitsPerChar - 1){ context_data.push(getCharFromInt(context_data_val)); break; } else { context_data_position++; } }
+    return context_data.join('');
+  }
+  function _decompress(length, resetValue, getNextValue){
+    var dictionary = [], next, enlargeIn = 4, dictSize = 4, numBits = 3, entry = "", result = [],
+      i, w, bits, resb, maxpower, power, c, data = { val: getNextValue(0), position: resetValue, index: 1 };
+    for(i = 0; i < 3; i += 1){ dictionary[i] = i; }
+    bits = 0; maxpower = Math.pow(2, 2); power = 1;
+    while(power != maxpower){ resb = data.val & data.position; data.position >>= 1;
+      if(data.position == 0){ data.position = resetValue; data.val = getNextValue(data.index++); }
+      bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; }
+    switch(next = bits){
+      case 0: bits = 0; maxpower = Math.pow(2, 8); power = 1;
+        while(power != maxpower){ resb = data.val & data.position; data.position >>= 1;
+          if(data.position == 0){ data.position = resetValue; data.val = getNextValue(data.index++); }
+          bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; }
+        c = f(bits); break;
+      case 1: bits = 0; maxpower = Math.pow(2, 16); power = 1;
+        while(power != maxpower){ resb = data.val & data.position; data.position >>= 1;
+          if(data.position == 0){ data.position = resetValue; data.val = getNextValue(data.index++); }
+          bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; }
+        c = f(bits); break;
+      case 2: return "";
+    }
+    dictionary[3] = c; w = c; result.push(c);
+    while(true){
+      if(data.index > length){ return ""; }
+      bits = 0; maxpower = Math.pow(2, numBits); power = 1;
+      while(power != maxpower){ resb = data.val & data.position; data.position >>= 1;
+        if(data.position == 0){ data.position = resetValue; data.val = getNextValue(data.index++); }
+        bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; }
+      switch(c = bits){
+        case 0: bits = 0; maxpower = Math.pow(2, 8); power = 1;
+          while(power != maxpower){ resb = data.val & data.position; data.position >>= 1;
+            if(data.position == 0){ data.position = resetValue; data.val = getNextValue(data.index++); }
+            bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; }
+          dictionary[dictSize++] = f(bits); c = dictSize - 1; enlargeIn--; break;
+        case 1: bits = 0; maxpower = Math.pow(2, 16); power = 1;
+          while(power != maxpower){ resb = data.val & data.position; data.position >>= 1;
+            if(data.position == 0){ data.position = resetValue; data.val = getNextValue(data.index++); }
+            bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; }
+          dictionary[dictSize++] = f(bits); c = dictSize - 1; enlargeIn--; break;
+        case 2: return result.join('');
+      }
+      if(enlargeIn == 0){ enlargeIn = Math.pow(2, numBits); numBits++; }
+      if(dictionary[c]){ entry = dictionary[c]; }
+      else { if(c === dictSize){ entry = w + w.charAt(0); } else { return null; } }
+      result.push(entry);
+      dictionary[dictSize++] = w + entry.charAt(0); enlargeIn--; w = entry;
+      if(enlargeIn == 0){ enlargeIn = Math.pow(2, numBits); numBits++; }
+    }
+  }
+  return {
+    compressToUTF16: function(input){ if(input == null) return ""; return _compress(input, 15, function(a){ return f(a + 32); }) + " "; },
+    decompressFromUTF16: function(compressed){ if(compressed == null) return ""; if(compressed == "") return null; return _decompress(compressed.length, 16384, function(index){ return compressed.charCodeAt(index) - 32; }); }
+  };
+})();
+
+const _LS_LZ_PREFIX = 'LZ1'; // marca de blob comprimido (char de controle: nunca aparece em JSON)
+function _lsSetLarge(key, str){
+  try { localStorage.setItem(key, _LS_LZ_PREFIX + LZString.compressToUTF16(str)); return true; }
+  catch(e){
+    console.warn('localStorage write failed ('+key+') — quota/erro; o sync com o Supabase ainda é tentado.', e);
+    try { warnLocalStorageWriteFailed(); } catch(_){}
+    return false;
+  }
+}
+function _lsGetLarge(key){
+  var raw = null;
+  try { raw = localStorage.getItem(key); } catch(e){ return null; }
+  if(raw == null) return null;
+  if(raw.charCodeAt(0) === 1 && raw.slice(0, _LS_LZ_PREFIX.length) === _LS_LZ_PREFIX){
+    try { return LZString.decompressFromUTF16(raw.slice(_LS_LZ_PREFIX.length)); }
+    catch(e){ console.warn('decompress falhou ('+key+') — cache local ignorado.', e); return null; }
+  }
+  return raw; // formato ANTIGO não comprimido — compatibilidade retroativa
+}
+
 function projGetAll() {
-  try { return JSON.parse(localStorage.getItem(PROJ_KEY) || '[]'); }
+  try { return JSON.parse(_lsGetLarge(PROJ_KEY) || '[]'); }
   catch(e){ return []; }
 }
 
@@ -3855,12 +4006,7 @@ function projSaveAllLocal(projects) {
   // já era o pior caso de qualquer erro de rede tratado no resto do arquivo), mas o save
   // continua e ainda tenta ir pro Supabase. O aviso agora é VISÍVEL (toast), não só console —
   // uma falha de save que a pessoa nunca fica sabendo é pior que uma falha barulhenta.
-  try {
-    localStorage.setItem(PROJ_KEY, JSON.stringify(projects));
-  } catch(e) {
-    console.warn('localStorage (projects) write failed — quota exceeded? O sync com o Supabase ainda é tentado.', e);
-    warnLocalStorageWriteFailed();
-  }
+  _lsSetLarge(PROJ_KEY, JSON.stringify(projects)); // comprime + trata quota + avisa (ver _lsSetLarge)
 }
 
 // Faz merge POR PROJETO (usando updatedAt) contra o que está no localStorage agora, em vez

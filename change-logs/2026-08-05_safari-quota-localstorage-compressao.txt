@@ -1,0 +1,62 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-05
+Tema: Safari "failed sync"/projetos não funcionam — localStorage estourando a cota. Cache local
+      passa a ser COMPRIMIDO (LZString), derrubando ~4,7MB pra ~0,55MB.
+
+===============================================================================
+DIAGNÓSTICO (funciona no Chrome, falha no Safari)
+===============================================================================
+Relato: no Safari o app dá "failed sync" e os projetos não funcionam; no Chrome, tudo certo.
+(Um convite de compartilhamento "não ficava" — sintoma do mesmo problema: nada salvava.)
+
+Medição do localStorage (dados reais de produção): mlt_projects_v1 = 4,68MB, total = 4,96MB.
+O localStorage do Safari conta em UTF-16 (2 bytes/char) com teto de ~5MB. Estava ENCOSTADO no
+teto → no Safari QUALQUER escrita (setItem de projetos/notificações) estourava QuotaExceededError,
+travando o save inteiro; no Chrome havia folga. Confirmado que o sync funciona no Chromium (o teste
+real com Postgres desta sessão escreveu sem problema) — logo, específico do Safari, não do merge.
+(Também é um limite de ESCALA: usuários de Chrome bater­iam na mesma parede conforme os projetos
+crescem — o Safari só chegou primeiro.)
+
+===============================================================================
+CORREÇÃO — compressão dos blobs grandes do localStorage
+===============================================================================
+- + LZString inline (compressToUTF16/decompressFromUTF16 — UTF-16-safe pra localStorage, domínio
+  público, SEM dependência externa/CDN). ~2KB.
+- + _lsSetLarge(key,str): comprime, grava com prefixo-marca (LZ1), e em falha
+  (QuotaExceededError ou outro) chama warnLocalStorageWriteFailed() e devolve false — nunca perde
+  em silêncio.
+- + _lsGetLarge(key): detecta o prefixo e descomprime; valor SEM prefixo (formato antigo) é
+  devolvido cru → compatibilidade retroativa. Migração PREGUIÇOSA: passa a comprimir no 1º save
+  (o setItem do valor comprimido, menor, SUBSTITUI o valor antigo grande → cabe mesmo num Safari
+  já cheio, porque reduz o total).
+- Roteados por esses helpers: projGetAll / projSaveAllLocal / o write de PROJ_KEY no pull (ESTE
+  estava SEM try/catch — estourava no Safari sem tratamento) ; notifGetAll / notifSaveAll / o
+  write de NOTIF_KEY no pull.
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- + LZString, _LS_LZ_PREFIX, _lsSetLarge, _lsGetLarge (antes de projGetAll).
+- projGetAll/projSaveAllLocal, sbPullProjects (write de PROJ_KEY), notifGetAll/notifSaveAll,
+  pull de notificações → usam os helpers.
+
+===============================================================================
+VERIFICAÇÃO (browser, dados REAIS de produção; sem escrita em produção — só localStorage)
+===============================================================================
+- Load: helpers presentes, ZERO erro de JS (os 404 no console são miniaturas externas do estado
+  logado anterior, sem relação).
+- ROUND-TRIP do blob real (2.452.437 chars): descomprimir(comprimir(x)) === x, byte a byte.
+  Redução: 4,68MB → 0,55MB (8,56×).
+- Casos-limite: vazio, [], {}, unicode/acentos/日本語/emoji, aspas, \n\t, e 1 projeto real — todos
+  round-trip idêntico.
+- Compatibilidade: valor ANTIGO (não comprimido) é lido e parseado normalmente.
+- Ciclo REAL (projSaveAllLocal→projGetAll): grava comprimido ( prefix), lê de volta idêntico,
+  30 projetos. localStorage total: 4,96MB → 0,82MB (folga sob os 5MB do Safari).
+
+===============================================================================
+PENDÊNCIA RELACIONADA (Safari) — NÃO corrigida aqui
+===============================================================================
+new Date(row.updated_at/deleted_at) com timestamp de MICROSSEGUNDOS do Postgres
+(ex '...05.588342+00:00') pode virar Invalid Date em Safari ANTIGO (índices index.html:3119,
+2727, 3380, 3467) → degrada o pull incremental e os tombstones. Safari recente parseia ok. Fica
+como hardening opcional (truncar a fração pra 3 casas antes do new Date).
