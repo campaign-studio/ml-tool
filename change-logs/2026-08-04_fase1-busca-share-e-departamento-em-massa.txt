@@ -1,0 +1,85 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: COMPARTILHAMENTO POR TIME — FASE 1: busca no modal de share + atribuição de departamento
+      em massa na lista de Membros (+ endurecimento do dashSetUserDept).
+
+===============================================================================
+NOTA DE SEQUÊNCIA
+===============================================================================
+O plano original punha o SELETOR DE TIME nesta fase. Ele foi movido pra Fase 2, junto com a ação
+de compartilhar em lote — não faz sentido publicar um controle visível que ainda não faz nada.
+A Fase 1 entrega só o que funciona sozinho e já é útil de imediato.
+
+===============================================================================
+1) BUSCA POR NOME/E-MAIL NO MODAL DE SHARE
+===============================================================================
+O brief pedia pra "manter a busca como já existe hoje" — mas ela NÃO existia: openShareModal
+renderizava a lista INTEIRA de usuários da org, sem filtro (não escalava, e vai piorar quando o
+share por time trouxer mais gente pra lista).
+
+- Campo #shareSearch adicionado no CABEÇALHO do modal, de propósito FORA do #shareUserList: a
+  lista é re-renderizada a cada mudança de papel, e o campo ali sobrevive ao re-render.
+- + _shareFilterRows(q): filtro puro-DOM (nenhum re-render → o campo não perde o foco a cada
+  tecla). Esconde linhas que não casam, esconde rótulo de seção que ficou vazio, esconde o
+  "Everyone already has access" durante a busca e mostra "No one matches that search.".
+  Não mexe nas contagens reais das seções.
+- Cada .share-row ganhou data-search="nome e-mail" (minúsculo).
+- openShareModal(id, keepFilter): re-render interno (após salvar um papel) passa keepFilter=true
+  e o filtro é reaplicado; abrir pelo card do dashboard limpa a busca.
+
+===============================================================================
+2) ATRIBUIÇÃO DE DEPARTAMENTO EM MASSA (lista de Membros)
+===============================================================================
+Necessária porque o departamento deixou de ser decorativo — ele vai governar o compartilhamento
+por time — e hoje NENHUM usuário tem departamento. Atribuir de um em um numa base inteira era
+inviável, e o recurso da Fase 2 nasceria com todos os times vazios.
+
+- Checkbox .member-pick em cada card de membro (dashUserCardHtml).
+- Barra #dashBulkBar no topo da lista, oculta até haver alguém marcado: contador "N selected",
+  select de departamento, "Apply department" e "Clear".
+- + _dashPickChanged, dashBulkClearPick, dashBulkSetDept.
+- dashBulkSetDept faz UMA escrita pro lote inteiro (não um authSaveUsers por pessoa): ou todos
+  entram ou nenhum. Em falha, restaura o array anterior e mostra erro — nunca fica meio-salvo.
+
+===============================================================================
+3) dashSetUserDept ENDURECIDO
+===============================================================================
+Era fire-and-forget (authSaveUsers sem await, sem tratamento de erro) — mesma classe do bug do
+convite. Como o departamento passou a ter função, um dept que "salvou" só na tela viraria um time
+com gente faltando na hora de compartilhar. Agora: guard _roleBusy + overlay, await withTimeout,
+rollback do array anterior em falha e uiNotify(type:'error') pedindo pra tentar de novo.
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- Modal de share: + input #shareSearch no cabeçalho.
+- openShareModal: + param keepFilter, + searchKey/data-search nas linhas, + #shareNoResults,
+  classe .share-empty-note, reaplica o filtro no fim.
+- + _shareFilterRows.
+- setMemberRole: re-render interno agora passa keepFilter=true.
+- dashUserCardHtml: + checkbox .member-pick.
+- renderDashUserList: + barra #dashBulkBar.
+- dashSetUserDept reescrito; + _dashPickChanged, dashBulkClearPick, dashBulkSetDept.
+
+===============================================================================
+VERIFICAÇÃO (browser local, sbClient NEUTRALIZADO — ZERO produção)
+===============================================================================
+- Load em localhost:3000: ZERO erros de console. Projetos e usuários restaurados ao fim.
+- Busca: todas as linhas com data-search; filtro por NOME deixa só quem casa; filtro por E-MAIL
+  completo deixa 1; termo inexistente → 0 linhas + aviso "No one matches that search"; limpar
+  volta todas e esconde o aviso. OK.
+- Persistência do filtro: texto sobrevive ao re-render interno (keepFilter=true) e é reaplicado;
+  abrir do zero limpa o campo. OK.
+- Massa: 1 checkbox por usuário; marcar 2 mostra a barra com "2 selected"; aplicar com sucesso
+  grava nos 2 e avisa "User Growth applied to 2 members."; com falha de banco o departamento
+  fica INALTERADO e o erro é exibido. OK.
+- Prova VISUAL do modal fica pro ambiente logado: o app é login-gated e o overlay de login cobre
+  a tela no preview (o modal existe e mede 1398x874 no DOM, com a busca e as seções corretas).
+- NENHUMA escrita em produção.
+
+===============================================================================
+PRÓXIMA FASE
+===============================================================================
+Fase 2 — seletor de time (departamento) com contagem e desabilitado quando 0 + ação de
+compartilhar em lote: ATÔMICA (uma mutação, uma escrita), dedupe, nunca rebaixa quem já é
+approver, pula você e o dono, resumo "X added, Y already had access". Vínculo é CÓPIA (snapshot).

@@ -1540,6 +1540,11 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
         <button class="btn-back" onclick="closeShareModal()" style="padding:4px 10px;">Close</button>
       </div>
       <p class="sub" style="margin:0 0 4px;font-size:12px;">Editors can translate and edit copy. Approvers only review and comment.</p>
+      <!-- Fica FORA do #shareUserList de propósito: a lista é re-renderizada a cada mudança de
+           papel, e o campo aqui preserva o texto digitado (o filtro é reaplicado no fim). -->
+      <input id="shareSearch" type="text" placeholder="Search by name or email…" autocomplete="off"
+             oninput="_shareFilterRows(this.value)"
+             style="width:100%;margin:8px 0 0;font-size:12px;font-family:var(--sans);color:var(--text1);border:1px solid var(--border-s);border-radius:8px;padding:7px 10px;background:var(--surface);">
     </div>
     <div id="shareUserList" style="padding:0 28px 24px;overflow-y:auto;"></div>
   </div>
@@ -6180,6 +6185,9 @@ function dlItemCSV() {
 function dashUserCardHtml(u, me, deptOptions) {
   return `
     <div class="member-row" data-email="${(u.email||'').replace(/"/g,'&quot;')}">
+      <input type="checkbox" class="member-pick" data-email="${(u.email||'').replace(/"/g,'&quot;')}"
+        onchange="_dashPickChanged()" onclick="event.stopPropagation()" title="Select for bulk department change"
+        style="cursor:pointer;flex-shrink:0;margin:0 2px 0 0;">
       <span class="person-dot" style="background:${avColorForEmail(u.email)}" title="${u.email}"></span>
       <div style="flex:1;min-width:0;">
         <input class="member-name-input" value="${(u.name||'').replace(/"/g,'&quot;')}" placeholder="Add a name…"
@@ -6217,7 +6225,17 @@ function renderDashUserList() {
   const showSuper = isSuperadmin(me.role) || groups.superadmin.length > 0;
   const sections = [['superadmin', 'Superadmins'], ['admin', 'Admins'], ['member', 'Members']]
     .filter(([role]) => role === 'superadmin' ? showSuper : true);
-  list.innerHTML = sections.map(([role, label]) => {
+  // Barra de ação em massa: aparece só quando há alguém marcado. Necessária porque o
+  // departamento passou a ter função (governa o compartilhamento por time) e atribuir de
+  // um em um numa base inteira era inviável.
+  const bulkBar = `
+    <div id="dashBulkBar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;margin-bottom:10px;border:1px solid var(--border-s);border-radius:8px;background:var(--surface);">
+      <span id="dashBulkCount" style="font-size:12px;color:var(--text2);font-weight:600;">0 selected</span>
+      <select id="dashBulkDept" class="dept-select" style="margin-top:0;">${deptOptions('')}</select>
+      <button class="btn-back" style="padding:3px 10px;" onclick="dashBulkSetDept()">Apply department</button>
+      <button class="btn-back" style="padding:3px 10px;" onclick="dashBulkClearPick()">Clear</button>
+    </div>`;
+  list.innerHTML = bulkBar + sections.map(([role, label]) => {
     const arr = groups[role];
     const body = arr.length
       ? arr.map(u => dashUserCardHtml(u, me, deptOptions)).join('')
@@ -6263,14 +6281,73 @@ async function dashRenameUser(email, newName) {
   authSaveUsers(users);
 }
 
+// AGUARDA a confirmação do banco (era fire-and-forget). O departamento deixou de ser um
+// rótulo decorativo — ele governa o compartilhamento por time, então um dept que "salvou"
+// só na tela viraria um time com gente faltando na hora de compartilhar.
 async function dashSetUserDept(email, dept) {
-  await dashPullUsersIfPossible();
-  const users = authGetUsers();
-  const u = users.find(x => x.email.toLowerCase() === email.toLowerCase());
-  if(!u) return;
-  u.department = dept || null;
-  authSaveUsers(users);
-  renderDashUserList();
+  if(_roleBusy) return;
+  setRoleBusy(true, 'Updating department…');
+  let before = null;
+  try {
+    await dashPullUsersIfPossible();
+    const users = authGetUsers();
+    before = JSON.stringify(users);
+    const u = users.find(x => x.email.toLowerCase() === email.toLowerCase());
+    if(!u) return;
+    u.department = dept || null;
+    await withTimeout(authSaveUsers(users), 8000, 'authSaveUsers (set department)');
+  } catch(e) {
+    console.warn('Set department failed:', e);
+    if(before) { try { localStorage.setItem(AUTH_USERS_KEY, before); } catch(_) {} }
+    uiNotify('Could not update the department. Nothing was changed — please try again.', { type: 'error' });
+  } finally {
+    setRoleBusy(false);
+    renderDashUserList();
+  }
+}
+
+// ── Atribuição de departamento EM MASSA (lista de Membros) ────────────────────────────────
+function _dashPickChanged() {
+  const list = document.getElementById('dashUserList');
+  if(!list) return;
+  const n = list.querySelectorAll('.member-pick:checked').length;
+  const bar = document.getElementById('dashBulkBar');
+  const cnt = document.getElementById('dashBulkCount');
+  if(bar) bar.style.display = n ? 'flex' : 'none';
+  if(cnt) cnt.textContent = n + ' selected';
+}
+function dashBulkClearPick() {
+  document.querySelectorAll('#dashUserList .member-pick:checked').forEach(c => { c.checked = false; });
+  _dashPickChanged();
+}
+// UMA escrita pro lote inteiro (não é um authSaveUsers por pessoa): ou todos entram, ou
+// nenhum — e em falha o array anterior é restaurado, nunca fica meio-salvo só na tela.
+async function dashBulkSetDept() {
+  const emails = [...document.querySelectorAll('#dashUserList .member-pick:checked')].map(c => c.getAttribute('data-email'));
+  if(!emails.length) return;
+  if(_roleBusy) return;
+  const dept = (document.getElementById('dashBulkDept') || {}).value || '';
+  setRoleBusy(true, 'Updating departments…');
+  let before = null;
+  try {
+    await dashPullUsersIfPossible();
+    const users = authGetUsers();
+    before = JSON.stringify(users);
+    const pick = new Set(emails.map(e => (e || '').toLowerCase()));
+    let n = 0;
+    users.forEach(u => { if(pick.has((u.email || '').toLowerCase())) { u.department = dept || null; n++; } });
+    if(!n) return;
+    await withTimeout(authSaveUsers(users), 8000, 'authSaveUsers (bulk department)');
+    const label = dept ? ((DEPARTMENTS.find(d => d.key === dept) || {}).label || dept) : 'No department';
+    uiNotify(`${label} applied to ${n} member${n === 1 ? '' : 's'}.`, { type: 'success' });
+  } catch(e) {
+    console.warn('Bulk department update failed:', e);
+    if(before) { try { localStorage.setItem(AUTH_USERS_KEY, before); } catch(_) {} }
+    uiNotify('Could not update the departments. Nothing was changed — please try again.', { type: 'error' });
+  } finally {
+    setRoleBusy(false);
+    renderDashUserList();
+  }
 }
 
 // ── Estado de BLOQUEIO da troca de papel (mesmo padrão do "move to folder") ───────────────────
@@ -7671,11 +7748,15 @@ async function saveRenameProjectModal() {
 // dois) — antes eram duas checkboxes empilhadas (acesso + approver-se-tiver-acesso),
 // o que deixava a hierarquia confusa. Agora é 1 controle por pessoa: sem acesso,
 // Editor ou Approver, deixando claro quem faz o quê de relance.
-function openShareModal(id) {
+// keepFilter: true nos re-renders internos (após salvar um papel), pra não apagar o que a
+// pessoa digitou na busca. Ao abrir o modal pelo card do dashboard vem falso → busca limpa.
+function openShareModal(id, keepFilter) {
   const projects = projGetAll();
   const p = projects.find(x => x.id === id);
   if(!p) return;
   document.getElementById('shareModalTitle').textContent = 'Share: ' + p.name;
+  const searchEl = document.getElementById('shareSearch');
+  if(searchEl && !keepFilter) searchEl.value = '';
   const me = authCurrentUser();
   const allUsers = authGetUsers().filter(u => u.email.toLowerCase() !== me.email.toLowerCase());
   const list = document.getElementById('shareUserList');
@@ -7691,6 +7772,9 @@ function openShareModal(id) {
     : null;
   const esc = s => String(s || '').replace(/</g, '&lt;');
   const initials = u => (authorName(u.email) || u.email).split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  // Chave de busca da linha (nome + e-mail, minúsculo) — o filtro é puro DOM, sem re-render,
+  // pra não perder o foco do campo a cada tecla.
+  const searchKey = u => `${authorName(u.email) || ''} ${u.email || ''}`.toLowerCase().replace(/"/g, '&quot;');
 
   const withAccess = allUsers.filter(u => roleOf(u));
   const withoutAccess = allUsers.filter(u => !roleOf(u));
@@ -7702,7 +7786,7 @@ function openShareModal(id) {
   const accessRow = u => {
     const role = roleOf(u);
     return `
-      <div class="share-row" id="${rowId(u)}">
+      <div class="share-row" id="${rowId(u)}" data-search="${searchKey(u)}">
         <div class="share-avatar" style="background:${avColorForEmail(u.email)}">${initials(u)}</div>
         <div class="share-identity">
           <div class="share-identity-name">${esc(authorName(u.email))} <span class="role-badge ${u.role}">${u.role}</span>${u.department ? departmentTagHtml(u.department) : ''}</div>
@@ -7720,7 +7804,7 @@ function openShareModal(id) {
       </div>`;
   };
   const addRow = u => `
-      <div class="share-row" id="${rowId(u)}">
+      <div class="share-row" id="${rowId(u)}" data-search="${searchKey(u)}">
         <div class="share-avatar" style="background:${avColorForEmail(u.email)}">${initials(u)}</div>
         <div class="share-identity">
           <div class="share-identity-name">${esc(authorName(u.email))} <span class="role-badge ${u.role}">${u.role}</span>${u.department ? departmentTagHtml(u.department) : ''}</div>
@@ -7740,9 +7824,38 @@ function openShareModal(id) {
   list.innerHTML = `
     ${withAccess.length ? `<div class="share-section-label">Has access<span class="share-count-pill">${withAccess.length}</span></div>${withAccess.map(accessRow).join('')}` : ''}
     <div class="share-section-label">Add people</div>
-    ${withoutAccess.length ? withoutAccess.map(addRow).join('') : `<div class="empty-state" style="padding:18px 16px;"><p>Everyone already has access.</p></div>`}
+    ${withoutAccess.length ? withoutAccess.map(addRow).join('') : `<div class="empty-state share-empty-note" style="padding:18px 16px;"><p>Everyone already has access.</p></div>`}
+    <div id="shareNoResults" class="empty-state" style="display:none;padding:18px 16px;"><p>No one matches that search.</p></div>
   `;
   document.getElementById('shareModal').style.display = 'flex';
+  // Reaplica o filtro (o campo vive fora desta lista e sobrevive ao re-render).
+  if(searchEl && searchEl.value) _shareFilterRows(searchEl.value);
+}
+
+// Filtro puro-DOM da lista de compartilhamento: esconde linhas que não casam, esconde rótulos
+// de seção que ficaram vazios e mostra um "nada encontrado". Não re-renderiza (o campo mantém
+// o foco a cada tecla) e não mexe nas contagens reais das seções.
+function _shareFilterRows(q) {
+  q = (q || '').trim().toLowerCase();
+  const list = document.getElementById('shareUserList');
+  if(!list) return;
+  let shown = 0;
+  list.querySelectorAll('.share-row').forEach(r => {
+    const hit = !q || (r.getAttribute('data-search') || '').includes(q);
+    r.style.display = hit ? '' : 'none';
+    if(hit) shown++;
+  });
+  list.querySelectorAll('.share-section-label').forEach(lbl => {
+    let n = 0;
+    for(let el = lbl.nextElementSibling; el && !el.classList.contains('share-section-label'); el = el.nextElementSibling) {
+      if(el.classList.contains('share-row') && el.style.display !== 'none') n++;
+    }
+    lbl.style.display = n ? '' : 'none';
+  });
+  // "Everyone already has access" não faz sentido enquanto se busca
+  list.querySelectorAll('.share-empty-note').forEach(el => { el.style.display = q ? 'none' : ''; });
+  const empty = document.getElementById('shareNoResults');
+  if(empty) empty.style.display = (q && shown === 0) ? '' : 'none';
 }
 
 // Concede/troca/revoga o papel de alguém num projeto. role: 'editor' | 'approver' | null.
@@ -7830,7 +7943,8 @@ async function setMemberRole(projId, email, role, rowId) {
   } finally {
     _shareBusy = false;
     // Re-render SEMPRE (inclusive em erro): reflete o estado real e mata o "Saving…".
-    if(rerender) { try { openShareModal(projId); } catch(_) {} }
+    // keepFilter=true — não apaga a busca que a pessoa digitou.
+    if(rerender) { try { openShareModal(projId, true); } catch(_) {} }
   }
 }
 
