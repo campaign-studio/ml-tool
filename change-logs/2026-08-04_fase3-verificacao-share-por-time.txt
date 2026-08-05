@@ -1,0 +1,58 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: COMPARTILHAMENTO POR TIME — FASE 3: verificação consolidada de concorrência + falha de rede.
+      (Só verificação — nenhuma mudança de código nesta fase.)
+
+===============================================================================
+OBJETIVO
+===============================================================================
+Fechar a feature de compartilhamento por time exercitando a INTERAÇÃO entre as três fases sob
+concorrência: o share por time (Fase 2) passando pelo pipeline de save real com o merge de
+conjunto de approvers/sharedWith (validado antes) e a garantia estrita de banco (Fase 0).
+Rodado com os 18 usuários REAIS da base (só leitura: User Growth 12, Campaign Studio 1 elegível,
+L1on 3), mutando apenas um projeto de teste, sbClient neutralizado, estado restaurado ao fim.
+
+===============================================================================
+BLOCO A — CONCORRÊNCIA NO PIPELINE REAL (mergeProjectsForSave + _reconcileBodyScalars)
+Dois clientes partindo do MESMO ancestral (sharedWith=[]), commit intercalado.
+===============================================================================
+A1  Dois TIMES diferentes em paralelo (outro admin concede Campaign Studio; eu concedo User Growth)
+    → UNIÃO: os 13 (CS ∪ UG) presentes, nenhum lado perdido. OK.
+A2  MESMO time concedido pelos dois lados → IDEMPOTENTE: 12, sem duplicata. OK.
+A3  TIME (editor) x ACESSO INDIVIDUAL (approver) em paralelo: o vip já approver individual +
+    eu concedo UG inteiro como editor → vip CONTINUA approver (não rebaixado), UG todo com acesso,
+    approvers = só o vip. OK.
+A4  TIME x EDIÇÃO DE CONTEÚDO em paralelo: remoto concedeu CS; eu concedo UG e traduzo pt-BR
+    → CS preservado, UG adicionado, E a tradução 'Olá' preservada (set-merge do corpo + merge de
+    célula do CSV convivendo). OK.
+
+===============================================================================
+BLOCO B — shareWithTeam PONTA-A-PONTA (banco mockado — DB "funciona"/"falha")
+===============================================================================
+B5  Sucesso: shareWithTeam concede User Growth inteiro numa escrita → 12 concedidos,
+    "Shared with User Growth — 12 added." OK.
+B6  Falha de REDE (push lança): NINGUÉM entra (rollback), erro exibido
+    "Could not share with User Growth. Nothing was saved — please try adding again." OK.
+B7  Grava mas banco NÃO confirma (verify false): rollback TOTAL, nenhum parcial, erro exibido. OK.
+
+Atomicidade reconfirmada: como é uma escrita só pro array sharedWith, B6/B7 nunca deixam
+"compartilhamento parcial" — ou os 12 ou nenhum.
+
+===============================================================================
+VERIFICAÇÃO (browser local, sbClient NEUTRALIZADO — ZERO produção)
+===============================================================================
+- Todos os 7 sub-testes: PASSOU. Projetos e _syncedPayloadJson restaurados; store idêntico ao
+  original ao fim (nenhum projeto de teste vazado).
+- Bloco A rodou sobre mergeProjectsForSave (função pura) — sem rede. Bloco B mockou
+  ghMergeAndPushProjects/_verifyShareInDb (o push real nunca foi chamado).
+- NENHUMA escrita em produção (sbClient()===null).
+- O teste multi-cliente REAL (2 pessoas logadas escrevendo no Supabase ao mesmo tempo) continua
+  sendo o único que exercita o CAS do Postgres de fato — recomendado fazer UMA vez, com supervisão,
+  num projeto descartável, pra fechar a última ponta com confiança total.
+
+===============================================================================
+STATUS DA FEATURE "COMPARTILHAR POR TIME"
+===============================================================================
+Fase 0 (garantia de banco) + Fase 1 (busca + departamento em massa) + Fase 2 (seletor de time +
+lote atômico) + Fase 3 (verificação) — COMPLETAS. Decisões honradas: vínculo é CÓPIA (snapshot);
+lista de departamentos mantida como está (Marketing, User Growth, Campaign Studio, L1on).
