@@ -1,0 +1,74 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: COMPARTILHAMENTO POR TIME — FASE 2: seletor de time (departamento) + compartilhamento em
+      lote ATÔMICO no modal "Share with your team".
+
+===============================================================================
+CORREÇÃO DE UM DIAGNÓSTICO ANTERIOR
+===============================================================================
+Na fase de plano eu afirmei que "nenhum usuário tem departamento" e que o recurso nasceria inerte.
+ERRADO — aquilo veio da constante de usuários-semente (AUTH_DEFAULT_USERS) e de uma base local
+vazia. Na PRODUÇÃO os departamentos estão preenchidos (conferido em leitura, no ambiente logado):
+  User Growth 12 · L1on 3 · Campaign Studio 2 · sem departamento 1 · Marketing 0 — total 18.
+Ou seja, o recurso nasce útil no dia 1. E o edge case "time vazio" é REAL desde já (Marketing 0),
+não hipotético.
+
+===============================================================================
+O QUE ENTROU
+===============================================================================
+1) SELETOR DE TIME no topo do modal (#shareTeamBlock):
+   - Um <select> de departamento com CONTAGEM real e opção DESABILITADA quando não há ninguém
+     ("Marketing · no one yet"). A contagem é de quem seria de fato considerado: a lista já exclui
+     VOCÊ, e o DONO do projeto é descontado (ele tem acesso por definição) — por isso "Campaign
+     Studio · 1 person" quando o time tem 2 e você é o dono.
+   - Um <select> de papel (Editor | Approver), coerente com o controle por pessoa.
+   - Botão "Share" + spinner próprio; tudo desabilitado durante a gravação (.share-team-ctl).
+   - Aviso explícito embaixo: "Adds everyone in the team right now. People who join the team later
+     won't get access automatically." — o vínculo é CÓPIA (snapshot), decisão travada com o autor.
+   - Durante uma BUSCA o bloco de times some (buscar é procurar UMA pessoa). O rótulo do bloco é
+     excluído da lógica de "esconde seção vazia" (ele não tem .share-row abaixo).
+
+2) shareWithTeam(projId) — as regras que o fluxo garante:
+   - CÓPIA, não vínculo vivo.
+   - NUNCA rebaixa: quem já tem acesso é PULADO e o papel atual dele fica intocado. É isso que
+     resolve o "não duplicar/conflitar" com um acesso individual concedido antes.
+   - Pula você e o dono.
+   - ATOMICIDADE: UMA mutação + UMA escrita pro lote inteiro. "Compartilhamento parcial" (só
+     algumas pessoas do time salvas) é ESTRUTURALMENTE impossível — sharedWith é um array de um
+     único registro. Ou o banco confirma todos, ou nada é gravado e a mudança local é desfeita.
+     (Por isso NÃO existe laço de uma escrita por pessoa — era o erro a evitar.)
+   - Reusa a garantia da Fase 0: _saveShareOrRollback + verificação relendo a linha no banco.
+   - Resumo honesto: "Shared with User Growth — 11 added, 1 already had access."
+   - Notificar é secundário: roda DEPOIS do save confirmado, em try/catch, e uma falha ali não
+     derruba o compartilhamento.
+
+3) _verifyShareInDb agora aceita LISTA de e-mails (no lote, exige TODOS confirmados pelo banco).
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- _verifyShareInDb: aceita e-mail único ou array.
+- openShareModal: + cálculo de contagem por time (teamSize) e bloco #shareTeamBlock.
+- _shareFilterRows: ignora o rótulo do bloco de times; esconde o bloco durante a busca.
+- _shareSetBusy: também desabilita .share-team-ctl.
+- + shareWithTeam(projId).
+
+===============================================================================
+VERIFICAÇÃO (browser local, sbClient NEUTRALIZADO — ZERO produção)
+===============================================================================
+Rodado com os 18 usuários REAIS da base (leitura), mutando só um projeto de teste, restaurado ao fim.
+- Load: 15 recursos, ZERO com erro. (Os 404 no console eram resíduo do load anterior — miniaturas
+  externas do dashboard logado, sem relação com estas mudanças.)
+- Opções renderizadas: "Marketing · no one yet" DESABILITADA; "User Growth · 12 people";
+  "Campaign Studio · 1 person"; "L1on · 3 people". OK.
+- Editor: 12 adicionados, NENHUM em approvers, e você não entra na lista. OK.
+- Approver: os 12 entram nos DOIS arrays (sharedWith e approvers). OK.
+- Não rebaixa: um do time já approver + share como editor => ele CONTINUA approver, e a mensagem
+  fica "11 added, 1 already had access". OK.
+- Time vazio: "Marketing has no one to add." e nada gravado. OK.
+- Todos já têm acesso: "Everyone in User Growth already has access.", sem escrita. OK.
+- ATOMICIDADE: com o push falhando, NINGUÉM entra (rollback) e o erro é exibido —
+  "Could not share with User Growth. Nothing was saved — please try adding again." OK.
+- NENHUMA escrita em produção (sbClient()===null antes de cada teste).
+- Conferência VISUAL do bloco de times fica pro ambiente logado (o app é login-gated e a sessão é
+  só em memória, então recarregar pra pegar o código novo desloga).

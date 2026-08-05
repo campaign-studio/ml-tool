@@ -4048,16 +4048,19 @@ function projSaveAllStrict(projects) {
   return ghMergeAndPushProjects(merged, { strict: true });
 }
 
-// Confirmação vinda do BANCO (não do nosso otimismo): o e-mail está mesmo em sharedWith?
-async function _verifyShareInDb(projId, email, expectAccess) {
+// Confirmação vinda do BANCO (não do nosso otimismo): o(s) e-mail(s) está(ão) mesmo em sharedWith?
+// Aceita um e-mail ou uma LISTA (share por time) — no lote, exige TODOS confirmados.
+async function _verifyShareInDb(projId, emailOrEmails, expectAccess) {
   const sb = sbClient();
   if(!sb) return false;
+  const wanted = (Array.isArray(emailOrEmails) ? emailOrEmails : [emailOrEmails]).map(e => (e || '').toLowerCase());
+  if(!wanted.length) return false;
   try {
     const { data, error } = await withTimeout(
       sb.from('projects').select('payload').eq('id', projId).maybeSingle(), 8000, 'verify share ' + projId);
     if(error || !data || !data.payload) return false;
-    const has = ((data.payload.sharedWith) || []).some(e => (e || '').toLowerCase() === (email || '').toLowerCase());
-    return expectAccess ? has : !has;
+    const have = new Set(((data.payload.sharedWith) || []).map(e => (e || '').toLowerCase()));
+    return expectAccess ? wanted.every(e => have.has(e)) : wanted.every(e => !have.has(e));
   } catch(e) { return false; }
 }
 
@@ -7782,6 +7785,39 @@ function openShareModal(id, keepFilter) {
   // Quando não pode remover, o ✕ some (o guard em setMemberRole também bloqueia por baixo).
   const canRemove = canRemoveFromProject(p);
 
+  // TIMES (departamentos). A contagem é de quem SERIA de fato considerado: allUsers já exclui
+  // você, e tiramos o dono (que já tem acesso por definição). Time sem ninguém → opção
+  // desabilitada. O vínculo é uma CÓPIA: concede a quem está no time AGORA; quem entrar depois
+  // NÃO ganha acesso retroativo (por isso o aviso embaixo do controle).
+  const ownerEmail = (p.owner || '').toLowerCase();
+  const teamSize = key => allUsers.filter(u => (u.department || '') === key && (u.email || '').toLowerCase() !== ownerEmail).length;
+  const teamOpts = DEPARTMENTS.map(d => {
+    const n = teamSize(d.key);
+    return `<option value="${d.key}"${n ? '' : ' disabled'}>${d.label} · ${n ? `${n} ${n === 1 ? 'person' : 'people'}` : 'no one yet'}</option>`;
+  }).join('');
+  const teamBlock = `
+    <div id="shareTeamBlock">
+      <div class="share-section-label">Share with a team</div>
+      <div style="display:flex;align-items:center;gap:8px;padding:2px 0 4px;">
+        <select id="shareTeamSelect" class="share-role-select share-team-ctl" style="flex:1;min-width:0;">
+          <option value="" selected disabled>Choose a team…</option>
+          ${teamOpts}
+        </select>
+        <select id="shareTeamRole" class="share-role-select share-team-ctl">
+          <option value="editor" selected>Editor</option>
+          <option value="approver">Approver</option>
+        </select>
+        <button id="shareTeamBtn" class="btn-back share-team-ctl" style="padding:4px 12px;white-space:nowrap;" onclick="shareWithTeam('${id}')">Share</button>
+        <span class="share-saving" id="shareTeamSaving" style="display:none;font-size:11px;color:var(--text3);align-items:center;gap:6px;white-space:nowrap;">
+          <span style="width:11px;height:11px;border-radius:50%;border:1.5px solid var(--border-s);border-top-color:var(--text2);animation:btnSpin .6s linear infinite;flex-shrink:0;"></span>
+          Saving…
+        </span>
+      </div>
+      <div style="font-size:11px;color:var(--text3);padding:0 2px 10px;line-height:1.4;">
+        Adds everyone in the team right now. People who join the team later won't get access automatically.
+      </div>
+    </div>`;
+
   const rowId = u => 'shareRow-' + u.email.replace(/[^a-zA-Z0-9]/g, '_');
   const accessRow = u => {
     const role = roleOf(u);
@@ -7822,6 +7858,7 @@ function openShareModal(id, keepFilter) {
       </div>`;
 
   list.innerHTML = `
+    ${teamBlock}
     ${withAccess.length ? `<div class="share-section-label">Has access<span class="share-count-pill">${withAccess.length}</span></div>${withAccess.map(accessRow).join('')}` : ''}
     <div class="share-section-label">Add people</div>
     ${withoutAccess.length ? withoutAccess.map(addRow).join('') : `<div class="empty-state share-empty-note" style="padding:18px 16px;"><p>Everyone already has access.</p></div>`}
@@ -7846,12 +7883,16 @@ function _shareFilterRows(q) {
     if(hit) shown++;
   });
   list.querySelectorAll('.share-section-label').forEach(lbl => {
+    if(lbl.closest('#shareTeamBlock')) return; // o bloco de times não tem .share-row abaixo
     let n = 0;
     for(let el = lbl.nextElementSibling; el && !el.classList.contains('share-section-label'); el = el.nextElementSibling) {
       if(el.classList.contains('share-row') && el.style.display !== 'none') n++;
     }
     lbl.style.display = n ? '' : 'none';
   });
+  // Buscar é procurar UMA pessoa — o bloco de times sai da frente enquanto há filtro.
+  const teamBlock = document.getElementById('shareTeamBlock');
+  if(teamBlock) teamBlock.style.display = q ? 'none' : '';
   // "Everyone already has access" não faz sentido enquanto se busca
   list.querySelectorAll('.share-empty-note').forEach(el => { el.style.display = q ? 'none' : ''; });
   const empty = document.getElementById('shareNoResults');
@@ -7871,6 +7912,7 @@ function _shareSetBusy(on, rowEl) {
   if(list) {
     list.querySelectorAll('.share-role-select').forEach(s => { s.disabled = on; });
     list.querySelectorAll('.share-remove-btn').forEach(b => { b.disabled = on; });
+    list.querySelectorAll('.share-team-ctl').forEach(c => { c.disabled = on; }); // seletor de time + botão Share
   }
   if(rowEl) {
     const sv = rowEl.querySelector('.share-saving'); if(sv) sv.style.display = on ? 'inline-flex' : 'none';
@@ -7944,6 +7986,82 @@ async function setMemberRole(projId, email, role, rowId) {
     _shareBusy = false;
     // Re-render SEMPRE (inclusive em erro): reflete o estado real e mata o "Saving…".
     // keepFilter=true — não apaga a busca que a pessoa digitou.
+    if(rerender) { try { openShareModal(projId, true); } catch(_) {} }
+  }
+}
+
+/* Compartilha com um TIME inteiro (departamento). Regras que este fluxo garante:
+   - CÓPIA, não vínculo: concede a quem está no time AGORA; quem entrar depois não ganha nada.
+   - NUNCA rebaixa: quem já tem acesso é PULADO (o papel atual dele fica intocado) — é isso que
+     evita "conflito" com um acesso individual concedido antes.
+   - Pula você e o dono do projeto.
+   - UMA mutação + UMA escrita pro lote inteiro. Por isso "compartilhamento parcial" (só algumas
+     pessoas do time salvas) é ESTRUTURALMENTE impossível: sharedWith é um array de um único
+     registro. Ou o banco confirma tudo, ou nada é gravado e a mudança local é desfeita. */
+async function shareWithTeam(projId) {
+  if(_shareBusy) return;
+  const teamSel = document.getElementById('shareTeamSelect');
+  const roleSel = document.getElementById('shareTeamRole');
+  const key = teamSel ? teamSel.value : '';
+  const role = (roleSel && roleSel.value) || 'editor';
+  if(!key) { uiNotify('Choose a team first.', { type: 'warning' }); return; }
+  const teamLabel = (DEPARTMENTS.find(d => d.key === key) || {}).label || key;
+
+  _shareSetBusy(true, null);
+  const saving = document.getElementById('shareTeamSaving');
+  if(saving) saving.style.display = 'inline-flex';
+  let rerender = true;
+  try {
+    if(ghConfigured()) await ghPullProjects();
+    const projects = projGetAll();
+    const p = projects.find(x => x.id === projId);
+    if(!p) {
+      uiNotify('This project no longer exists — it may have been deleted by someone else.', { type: 'error' });
+      rerender = false; closeShareModal();
+      return;
+    }
+    if(!canShareProject(p)) { uiNotify('You do not have permission to change sharing on this project.', { type: 'error' }); return; }
+
+    const me = authCurrentUser();
+    const meEmail = ((me && me.email) || '').toLowerCase();
+    const ownerEmail = (p.owner || '').toLowerCase();
+    const team = authGetUsers().filter(u => (u.department || '') === key
+      && (u.email || '').toLowerCase() !== meEmail
+      && (u.email || '').toLowerCase() !== ownerEmail);
+    if(!team.length) { uiNotify(`${teamLabel} has no one to add.`, { type: 'warning' }); return; }
+
+    p.sharedWith = p.sharedWith || [];
+    p.approvers = p.approvers || [];
+    const hasAccess = e => p.sharedWith.some(x => (x || '').toLowerCase() === (e || '').toLowerCase());
+    const toAdd = team.filter(u => !hasAccess(u.email));
+    const already = team.length - toAdd.length;
+    if(!toAdd.length) { uiNotify(`Everyone in ${teamLabel} already has access.`, { type: 'success' }); return; }
+
+    const beforeJson = JSON.stringify(p);
+    toAdd.forEach(u => {
+      p.sharedWith.push(u.email);
+      if(role === 'approver' && !p.approvers.some(x => (x || '').toLowerCase() === u.email.toLowerCase())) p.approvers.push(u.email);
+    });
+
+    const emails = toAdd.map(u => u.email);
+    const ok = await _saveShareOrRollback(projects, projId, beforeJson, () => _verifyShareInDb(projId, emails, true));
+    if(!ok) {
+      uiNotify(`Could not share with ${teamLabel}. Nothing was saved — please try adding again.`, { type: 'error' });
+      return;
+    }
+    // Notificar é secundário: já está gravado, uma falha aqui não pode derrubar o share.
+    try {
+      toAdd.forEach(u => notifAdd(u.email, me.email, role === 'approver'
+        ? `${me.email} made you an approver on "${p.name}". Review the copies whenever you're ready.`
+        : `${me.email} shared "${p.name}" with you to edit.`));
+    } catch(_) {}
+    uiNotify(`Shared with ${teamLabel} — ${toAdd.length} added${already ? `, ${already} already had access` : ''}.`,
+             { type: 'success' });
+  } catch(e) {
+    console.warn('shareWithTeam failed:', e);
+    uiNotify('Something went wrong while sharing with the team. Nothing was saved — please try adding again.', { type: 'error' });
+  } finally {
+    _shareBusy = false;
     if(rerender) { try { openShareModal(projId, true); } catch(_) {} }
   }
 }
