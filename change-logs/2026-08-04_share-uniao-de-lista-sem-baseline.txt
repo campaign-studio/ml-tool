@@ -1,0 +1,55 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Perda de concessão concorrente (approvers/sharedWith) SEM baseline — achada no TESTE REAL com
+      Postgres. Fim do fallback LWW: sem ancestral, as listas de e-mail agora são UNIDAS.
+
+===============================================================================
+COMO FOI ACHADO (teste real com Postgres, não simulação)
+===============================================================================
+No teste multi-cliente contra o Supabase de PRODUÇÃO (linha descartável, e-mails fake, cleanup):
+- O CAS/optimistic lock funcionou (escrita com rev velho → 0 linhas; rev certo → aceita).
+- O merge de conjunto de sharedWith/approvers funcionou QUANDO a aba tinha baseline sincronizado
+  (dois clientes concorrentes → os dois e-mails preservados no banco, rev 2).
+- MAS numa rodada o pgtest-a SUMIU de verdade (o banco ficou só com pgtest-b). Causa confirmada em
+  isolamento: quando o ancestral está AUSENTE (_syncedPayloadJson[id] não existe no momento do
+  save), _reconcileBodyScalars fazia `if(!ancestor) return base` — LWW do documento inteiro,
+  descartando a adição concorrente do outro lado.
+
+Todas as simulações da sessão SETAVAM o ancestral, então nunca exercitaram esse caminho — foi o
+Postgres real que expôs. É o mesmo padrão "sem baseline → LWW" que já havia sido corrigido para a
+tabela de USUÁRIOS (_threeWayMergeUser usa o remoto como base), mas NÃO tinha sido aplicado às
+listas de e-mail do corpo do projeto.
+
+Quando o baseline pode faltar em uso real: aba salvando um projeto do qual nunca puxou baseline,
+projeto recém-aparecido/compartilhado ainda não sincronizado, etc.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+- _reconcileBodyScalars: o ramo `!ancestor` deixa de retornar `base` cru. Passa por
+  _reconcileSetListsNoAncestor(local, remote, base), que UNE local ∪ remoto (via _mergeSetList com
+  ancestral vazio) SÓ para os campos de _BODY_MERGE_SET_LIST (approvers, sharedWith). Os demais
+  escalares do corpo seguem em base (LWW) — sem ancestral não há como fazer 3-way por-campo, e só
+  as listas de acesso têm semântica de conjunto onde "nunca perder uma concessão" é o certo.
+- Racional: sem ancestral não dá pra inferir REMOÇÕES, mas preservar os dois lados é o padrão
+  seguro — perder uma concessão de acesso concorrente é pior que manter uma que talvez tenha sido
+  removida (removível de novo). Paridade com o fix da tabela de usuários.
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- + _reconcileSetListsNoAncestor; _reconcileBodyScalars usa-o no ramo sem ancestral.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+Em memória (sbClient neutralizado):
+- SEM ancestral, dois lados adicionam e-mails diferentes → UNIÃO (sharedWith e approvers). OK.
+- COM ancestral: 3-way intacto (união quando os dois adicionam; remoção por um lado continua
+  valendo e não ressuscita). OK.
+- Escalar não-lista (name) sem ancestral → segue base (LWW), NÃO é unido. OK.
+Contra o POSTGRES REAL (linha descartável, cleanup confirmado):
+- Cliente A adiciona pgtest-a; cliente B SEM baseline (ancestral apagado) adiciona pgtest-b via
+  casWriteProject real → banco final rev 2 com OS DOIS (antes perdia pgtest-a). OK.
+- Linha de teste apagada, _syncedPayloadJson/_projectRev limpos, localStorage restaurado (30
+  projetos reais intactos). Load: 17 recursos, ZERO erro.

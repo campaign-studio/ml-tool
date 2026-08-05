@@ -2844,8 +2844,24 @@ function _merge3wayObj(anc, a, b){
   });
   return out;
 }
+// Sem ancestral, ainda UNE as listas de e-mail (approvers/sharedWith) local ∪ remoto — nunca LWW.
+// Sem ancestral não dá pra inferir REMOÇÕES, mas preservar os dois lados é o padrão seguro: perder
+// uma concessão de acesso concorrente é pior que manter uma que talvez tenha sido removida (removível
+// de novo). Fecha a perda real achada no teste com Postgres (dois admins compartilhando ao mesmo
+// tempo numa aba sem baseline sincronizado). Paridade com o fix de usuários (_threeWayMergeUser).
+function _reconcileSetListsNoAncestor(local, remote, base){
+  const out = Object.assign({}, base);
+  _BODY_MERGE_SET_LIST.forEach(k => {
+    const lv = local && local[k], rv = remote && remote[k];
+    if(Array.isArray(lv) || Array.isArray(rv)){
+      const merged = _mergeSetList([], Array.isArray(lv) ? lv : [], Array.isArray(rv) ? rv : []);
+      if(merged !== undefined) out[k] = merged;
+    }
+  });
+  return out;
+}
 function _reconcileBodyScalars(local, remote, base, ancestor){
-  if(!ancestor) return base;
+  if(!ancestor) return _reconcileSetListsNoAncestor(local, remote, base);
   const out = Object.assign({}, base);
   const keys = new Set([...Object.keys(local || {}), ...Object.keys(remote || {})]);
   keys.forEach(k => {
