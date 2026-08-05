@@ -1,0 +1,76 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: COMPARTILHAMENTO POR TIME — FASE 0: garantia de salvamento no banco ("ou grava, ou não
+      aconteceu"). Fundação exigida antes de construir o share por time.
+
+===============================================================================
+PROBLEMA (o share JÁ falhava em silêncio, não era só uma trava preventiva)
+===============================================================================
+setMemberRole (o único mutador de compartilhamento, usado tanto pra adicionar quanto pra trocar
+papel e remover) tinha 4 defeitos encadeados:
+1) Descartava o retorno de projSaveAll e esperava a global _pendingProjectsPush no lugar. Quando
+   sbClient() é null, ghMergeAndPushProjects retorna ANTES de setar essa global — o await virava
+   no-op e o compartilhamento ficava só no localStorage, sem aviso.
+2) O erro de gravação era engolido pelo catch interno do push (que faz console.warn + setSyncDot),
+   então a pushPromise RESOLVIA COM SUCESSO mesmo com o banco fora. O catch(e){} do chamador era
+   estruturalmente inalcançável.
+3) Nenhum rollback: a mutação de p.sharedWith/p.approvers já tinha ido pro localStorage, e o
+   re-render mostrava a pessoa em "Has access". A tela afirmava um acesso que o banco não tinha.
+4) `if(!p) return;` precoce (projeto deletado por outra pessoa entre o pull e o find) saía DEPOIS
+   de ligar o "Saving…", sem finally — a linha ficava presa em "Saving…" pra sempre.
+Bônus: sem guard de reentrância, dava pra disparar N trocas em paralelo (cada uma com seu
+pull+merge+push). E leaveSharedProject tinha exatamente o mesmo fire-and-forget.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+- ghMergeAndPushProjects(localProjects, opts): novo opts.strict. Em strict, (a) `!sb` passa a ser
+  FALHA (não há como confirmar → não pode fingir sucesso), (b) o erro do push é guardado em
+  pushError e RELANÇADO no fim, e (c) o showSyncWarning genérico é suprimido (o chamador mostra um
+  erro específico). CRÍTICO: a pushPromise continua NUNCA rejeitando — o throw acontece só no fim
+  da função externa. Assim os vários `await _pendingProjectsPush` espalhados pelo app seguem
+  funcionando exatamente como antes. Sem strict, comportamento 100% inalterado.
+- + projSaveAllStrict(projects): igual ao projSaveAll, mas a promise REJEITA se o banco não confirmar.
+- + _verifyShareInDb(projId, email, expectAccess): relê a linha no banco e confere se o e-mail está
+  (ou não) em sharedWith. É a confirmação vinda do BACKEND, não do nosso otimismo. Custo
+  irrelevante: compartilhar é ação rara (não é autosave).
+- + _saveShareOrRollback(projects, projId, beforeJson, verify): salva com withTimeout, verifica e,
+  em QUALQUER falha, restaura o projeto ao estado anterior no cache local. Devolve true só se o
+  banco confirmou.
+- setMemberRole reescrito: guard _shareBusy (+ _shareSetBusy, que também desabilita os outros
+  selects/botões enquanto grava), try/catch/finally, snapshot beforeJson, save com verificação e
+  rollback, e uiNotify(type:'error') — que EXIGE clique, no padrão de pop-up definido hoje — com a
+  mensagem pedindo pra tentar de novo. O re-render agora acontece SEMPRE no finally (mata o
+  "Saving…" travado, inclusive nos returns precoces).
+- leaveSharedProject: mesma garantia (antes a pessoa "saía" na tela e continuava com acesso no banco).
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- ghMergeAndPushProjects: + opts.strict, pushError, throw no fim.
+- + projSaveAllStrict, _verifyShareInDb, _saveShareOrRollback (logo após projSaveAll).
+- + _shareBusy, _shareSetBusy; setMemberRole reescrito.
+- leaveSharedProject: usa _saveShareOrRollback.
+
+===============================================================================
+VERIFICAÇÃO (browser local, sbClient NEUTRALIZADO — ZERO produção)
+===============================================================================
+- Load em localhost:3000: ZERO erros de console. Store snapshotado e RESTAURADO ao fim.
+- strict lança quando não há banco; NÃO-strict continua sem lançar (nenhuma regressão no autosave). OK.
+- Sucesso (banco confirma): acesso concedido, nenhum pop-up de erro. OK.
+- Falha de gravação (push lança): acesso NÃO fica, rollback aplicado, erro exibido —
+  "Could not share with bob@x.com. Nothing was saved — please try adding again." OK.
+- Grava mas banco NÃO confirma (verify false): nem sharedWith nem approvers ficam; erro exibido. OK.
+- Reentrância: 2 cliques simultâneos → apenas 1 push. OK.
+- NENHUMA escrita em produção.
+
+===============================================================================
+PRÓXIMAS FASES (planejadas, não implementadas)
+===============================================================================
+Fase 1 — UI: seletor de time (departamento) com contagem e desabilitado quando 0; busca por
+  nome/e-mail no add manual; atribuição de departamento em massa na lista de Membros.
+Fase 2 — Share por time: lote ATÔMICO (uma mutação, uma escrita — falha parcial estruturalmente
+  impossível), dedupe, nunca rebaixa approver, resumo "X added, Y already had access".
+Fase 3 — Verificação + change-log.
+Decisões travadas: vínculo por time é CÓPIA (snapshot), não dinâmico; lista de departamentos fica
+como está hoje (Marketing, User Growth, Campaign Studio, L1on) — sem Branding e sem "Outros".

@@ -2963,11 +2963,17 @@ async function casWriteProject(sb, p, tries, origContentCanon){
   _updateLocalProjectPayload(merged);
 }
 
-async function ghMergeAndPushProjects(localProjects) {
+// opts.strict: usado por AÇÕES CRÍTICAS (compartilhamento) que não podem ficar "salvas" só no
+// localStorage. Em strict, a falha de gravação é PROPAGADA pro chamador (que desfaz a mudança e
+// mostra um erro específico) em vez de virar só um aviso genérico de sync. Sem strict, nada muda.
+async function ghMergeAndPushProjects(localProjects, opts) {
+  const strict = !!(opts && opts.strict);
   projSaveAllLocal(localProjects);
   const sb = sbClient();
-  if(!sb) return;
+  // Sem banco não há como confirmar nada — em strict isso é FALHA, não "salvou local e pronto".
+  if(!sb) { if(strict) throw new Error('No database connection — cannot confirm the change.'); return; }
   setSyncDot('saving'); // push começou — reflete o estado REAL da gravação (some só quando o banco confirmar)
+  let pushError = null;
   const pushPromise = (async () => {
     try {
       // Busca os tombstones mais recentes do banco ANTES de decidir o que upsertar —
@@ -3016,12 +3022,19 @@ async function ghMergeAndPushProjects(localProjects) {
     } catch(e) {
       console.warn('Supabase sync (push projects) error:', e);
       setSyncDot('error');
-      showSyncWarning();
+      pushError = e;
+      // Em strict o chamador mostra um erro ESPECÍFICO e desfaz a mudança — não empilha o
+      // aviso genérico de sync ("salvo só localmente") por cima.
+      if(!strict) showSyncWarning();
     }
   })();
+  // IMPORTANTE: pushPromise NUNCA rejeita (o catch acima absorve) — assim os vários
+  // `await _pendingProjectsPush` espalhados pelo app seguem funcionando igual. O erro é
+  // relançado só aqui no fim, e só pra quem pediu strict.
   _pendingProjectsPush = pushPromise;
   await pushPromise;
   if(_pendingProjectsPush === pushPromise) _pendingProjectsPush = null;
+  if(strict && pushError) throw pushError;
 }
 
 // Busca todos os projetos do banco e atualiza o cache local.
@@ -4014,6 +4027,51 @@ function projSaveAll(projects) {
   const merged = mergeProjectsForSave(projects);
   projSaveAllLocal(merged); // salva local imediatamente — não trava esperando o GitHub
   return ghMergeAndPushProjects(merged); // sincroniza com o GitHub em segundo plano, com merge
+}
+
+/* ── SAVE DE AÇÃO CRÍTICA (compartilhamento) — "ou grava no banco, ou não aconteceu" ──────────
+   Regra do produto: um compartilhamento NUNCA pode ficar só no localStorage parecendo salvo.
+   projSaveAll não serve aqui porque o push engole o erro e resolve como sucesso — a tela
+   confirmava acesso que o banco não tinha. Estas três peças fecham isso:
+     projSaveAllStrict   — igual ao projSaveAll, mas a promise REJEITA se o banco não confirmar.
+     _verifyShareInDb    — relê a linha no banco e confere que o e-mail está (ou não) lá.
+     _saveShareOrRollback— salva, verifica e, em QUALQUER falha, desfaz a mudança local.
+   O custo do read extra é irrelevante: compartilhar é ação rara (não é autosave). */
+function projSaveAllStrict(projects) {
+  const merged = mergeProjectsForSave(projects);
+  projSaveAllLocal(merged);
+  return ghMergeAndPushProjects(merged, { strict: true });
+}
+
+// Confirmação vinda do BANCO (não do nosso otimismo): o e-mail está mesmo em sharedWith?
+async function _verifyShareInDb(projId, email, expectAccess) {
+  const sb = sbClient();
+  if(!sb) return false;
+  try {
+    const { data, error } = await withTimeout(
+      sb.from('projects').select('payload').eq('id', projId).maybeSingle(), 8000, 'verify share ' + projId);
+    if(error || !data || !data.payload) return false;
+    const has = ((data.payload.sharedWith) || []).some(e => (e || '').toLowerCase() === (email || '').toLowerCase());
+    return expectAccess ? has : !has;
+  } catch(e) { return false; }
+}
+
+// Devolve true só se o banco confirmou. Em qualquer falha, restaura o projeto ao estado
+// anterior (beforeJson) no cache local, pra UI nunca mostrar um acesso que não existe.
+async function _saveShareOrRollback(projects, projId, beforeJson, verify) {
+  try {
+    await withTimeout(projSaveAllStrict(projects), 15000, 'share save ' + projId);
+    if(verify && !(await verify())) throw new Error('Database did not confirm the sharing change.');
+    return true;
+  } catch(e) {
+    console.warn('Share save failed — desfazendo a mudança local:', e);
+    try {
+      const all = projGetAll();
+      const i = all.findIndex(x => x && x.id === projId);
+      if(i >= 0 && beforeJson) { all[i] = JSON.parse(beforeJson); projSaveAllLocal(all); }
+    } catch(_) {}
+    return false;
+  }
 }
 
 /* ═══════════════════════ HISTÓRICO DE VERSÕES (tabela project_versions) ═══════════════════════
@@ -7047,9 +7105,14 @@ async function leaveSharedProject(id) {
   const projects = projGetAll();
   const p = projects.find(x => x.id === id);
   if(!p) return;
+  const beforeJson = JSON.stringify(p);
   p.sharedWith = (p.sharedWith || []).filter(e => e.toLowerCase() !== me.email.toLowerCase());
   p.approvers = (p.approvers || []).filter(e => e.toLowerCase() !== me.email.toLowerCase());
-  projSaveAll(projects);
+  // Mesma garantia do setMemberRole: sair só vale se o banco confirmar, senão desfaz e avisa
+  // (antes era fire-and-forget — a pessoa "saía" na tela e continuava com acesso no banco).
+  const ok = await _saveShareOrRollback(projects, id, beforeJson,
+    () => _verifyShareInDb(id, me.email, false));
+  if(!ok) uiNotify('Could not leave the project. Nothing was changed — please try again.', { type: 'error' });
   renderDashboard();
 }
 
@@ -7686,54 +7749,89 @@ function openShareModal(id) {
 // Approver sempre implica acesso (sharedWith) por baixo dos panos — é assim que o resto
 // do app (Dashboard, locks, Approval View) já distingue quem pode ver o quê — mas na UI
 // isso vira UM controle só, não duas caixinhas dependentes uma da outra.
+// Uma troca de papel por vez: sem isto dava pra disparar N linhas em paralelo (cada uma com
+// seu próprio pull+merge+push), uma corrida desnecessária numa ação que leva segundos.
+let _shareBusy = false;
+function _shareSetBusy(on, rowEl) {
+  _shareBusy = on;
+  const list = document.getElementById('shareUserList');
+  if(list) {
+    list.querySelectorAll('.share-role-select').forEach(s => { s.disabled = on; });
+    list.querySelectorAll('.share-remove-btn').forEach(b => { b.disabled = on; });
+  }
+  if(rowEl) {
+    const sv = rowEl.querySelector('.share-saving'); if(sv) sv.style.display = on ? 'inline-flex' : 'none';
+    const sel = rowEl.querySelector('.share-role-select'); if(sel) sel.style.display = on ? 'none' : '';
+    const rm = rowEl.querySelector('.share-remove-btn'); if(rm) rm.style.display = on ? 'none' : '';
+  }
+}
+
 async function setMemberRole(projId, email, role, rowId) {
   if(role === '') return; // opção placeholder ("Select role…") — não é uma escolha de verdade
-  // Mostra "Saving…" na hora — projSaveAll salva local na hora, mas o envio pra nuvem
-  // (ghMergeAndPushProjects) roda em segundo plano e pode levar alguns segundos; sem um
-  // sinal visual, a pessoa não sabia que precisava esperar antes de fechar o modal, e às
-  // vezes fechava rápido demais, achando que já tinha ido, mas ainda não tinha sincronizado.
+  if(_shareBusy) return;
+  // "Saving…" na linha + trava os outros controles: a gravação no banco leva alguns segundos e
+  // agora é AGUARDADA de verdade (o acesso só aparece na tela depois que o banco confirmou).
   const rowEl = rowId ? document.getElementById(rowId) : null;
-  if(rowEl) {
-    rowEl.querySelector('.share-saving').style.display = 'inline-flex';
-    rowEl.querySelector('.share-role-select').style.display = 'none';
-    const removeBtn = rowEl.querySelector('.share-remove-btn');
-    if(removeBtn) removeBtn.style.display = 'none';
-  }
-  if(ghConfigured()) await ghPullProjects(); // ver comentário em confirmAssignFolder
-  const projects = projGetAll();
-  const p = projects.find(x => x.id === projId);
-  if(!p) return;
-  // Guard REAL de permissão (não só esconder botão): adicionar/trocar papel exige
-  // canShareProject; remover (role null) exige canRemoveFromProject (dono/superadmin).
-  // Sem isso, um membro comum chamando setMemberRole direto pelo console passava batido.
-  const allowed = role === null ? canRemoveFromProject(p) : canShareProject(p);
-  if(!allowed) { showNotif('You do not have permission to change sharing on this project.', 'warn'); openShareModal(projId); return; }
-  p.sharedWith = p.sharedWith || [];
-  p.approvers = p.approvers || [];
-  const hadAccess = p.sharedWith.some(e => e.toLowerCase() === email.toLowerCase());
-  const hadRole = (p.approvers||[]).some(e => e.toLowerCase() === email.toLowerCase()) ? 'approver' : hadAccess ? 'editor' : null;
-
-  if(role === null) {
-    p.sharedWith = p.sharedWith.filter(e => e.toLowerCase() !== email.toLowerCase());
-    p.approvers = p.approvers.filter(e => e.toLowerCase() !== email.toLowerCase());
-  } else {
-    if(!hadAccess) p.sharedWith.push(email);
-    if(role === 'approver') {
-      if(!p.approvers.some(e => e.toLowerCase() === email.toLowerCase())) p.approvers.push(email);
-    } else {
-      p.approvers = p.approvers.filter(e => e.toLowerCase() !== email.toLowerCase());
+  _shareSetBusy(true, rowEl);
+  let rerender = true;
+  try {
+    if(ghConfigured()) await ghPullProjects(); // ver comentário em confirmAssignFolder
+    const projects = projGetAll();
+    const p = projects.find(x => x.id === projId);
+    if(!p) {
+      // Antes isto era um `return` seco ANTES de qualquer finally: a linha ficava presa em
+      // "Saving…" pra sempre, sem controles, até reabrir o modal.
+      uiNotify('This project no longer exists — it may have been deleted by someone else.', { type: 'error' });
+      rerender = false; closeShareModal();
+      return;
     }
-  }
-  projSaveAll(projects);
-  if(_pendingProjectsPush) { try { await _pendingProjectsPush; } catch(e) {} } // espera o envio pra nuvem terminar de verdade antes de tirar o "Saving…"
+    // Guard REAL de permissão (não só esconder botão): adicionar/trocar papel exige
+    // canShareProject; remover (role null) exige canRemoveFromProject (dono/superadmin).
+    // Sem isso, um membro comum chamando setMemberRole direto pelo console passava batido.
+    const allowed = role === null ? canRemoveFromProject(p) : canShareProject(p);
+    if(!allowed) { uiNotify('You do not have permission to change sharing on this project.', { type: 'error' }); return; }
 
-  if(role && role !== hadRole) {
-    const me = authCurrentUser();
-    notifAdd(email, me.email, role === 'approver'
-      ? `${me.email} made you an approver on "${p.name}". Review the copies whenever you're ready.`
-      : `${me.email} shared "${p.name}" with you to edit.`);
+    const beforeJson = JSON.stringify(p); // pra desfazer se o banco não confirmar
+    p.sharedWith = p.sharedWith || [];
+    p.approvers = p.approvers || [];
+    const hadAccess = p.sharedWith.some(e => e.toLowerCase() === email.toLowerCase());
+    const hadRole = (p.approvers||[]).some(e => e.toLowerCase() === email.toLowerCase()) ? 'approver' : hadAccess ? 'editor' : null;
+
+    if(role === null) {
+      p.sharedWith = p.sharedWith.filter(e => e.toLowerCase() !== email.toLowerCase());
+      p.approvers = p.approvers.filter(e => e.toLowerCase() !== email.toLowerCase());
+    } else {
+      if(!hadAccess) p.sharedWith.push(email);
+      if(role === 'approver') {
+        if(!p.approvers.some(e => e.toLowerCase() === email.toLowerCase())) p.approvers.push(email);
+      } else {
+        p.approvers = p.approvers.filter(e => e.toLowerCase() !== email.toLowerCase());
+      }
+    }
+
+    // Grava AGUARDANDO a confirmação do banco; se falhar, desfaz e avisa (nunca fica só local).
+    const ok = await _saveShareOrRollback(projects, projId, beforeJson,
+      () => _verifyShareInDb(projId, email, role !== null));
+    if(!ok) {
+      uiNotify(`Could not ${role === null ? 'remove access for' : 'share with'} ${email}. Nothing was saved — please try adding again.`,
+               { type: 'error' });
+      return;
+    }
+
+    if(role && role !== hadRole) {
+      const me = authCurrentUser();
+      notifAdd(email, me.email, role === 'approver'
+        ? `${me.email} made you an approver on "${p.name}". Review the copies whenever you're ready.`
+        : `${me.email} shared "${p.name}" with you to edit.`);
+    }
+  } catch(e) {
+    console.warn('setMemberRole failed:', e);
+    uiNotify('Something went wrong while updating sharing. Nothing was saved — please try adding again.', { type: 'error' });
+  } finally {
+    _shareBusy = false;
+    // Re-render SEMPRE (inclusive em erro): reflete o estado real e mata o "Saving…".
+    if(rerender) { try { openShareModal(projId); } catch(_) {} }
   }
-  openShareModal(projId); // re-renderiza já refletindo o novo papel (some com o "Saving…")
 }
 
 function closeShareModal() {
