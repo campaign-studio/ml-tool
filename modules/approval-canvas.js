@@ -888,7 +888,7 @@ function addApprovalComment(lang, xPct, yPct, text, parentId) {
   if(!me) return null;
   const mentions = extractMentions(text);
   const comment = {
-    id: 'ac_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+    id: _approvalId('ac'),
     lang, xPct: xPct ?? null, yPct: yPct ?? null, text,
     author: me.email, createdAt: Date.now(),
     parentId: parentId || null,
@@ -978,7 +978,7 @@ function renderApprovalSidebar() {
       const arr = (f.item && f.item.approvalComments) || [];
       arr.forEach(c => { if(c.lang === _avLocale) { all.push(c); frameKeyByCommentId[c.id] = f.key; } });
     });
-    const topLevel = all.filter(c => !c.parentId).sort((a, b) => b.createdAt - a.createdAt);
+    const topLevel = all.filter(c => !c.parentId).sort((a, b) => (b.createdAt - a.createdAt) || String(a.id).localeCompare(String(b.id)));
     const repliesByParent = new Map();
     all.forEach(r => {
       if(!r.parentId) return;
@@ -1006,7 +1006,7 @@ function renderApprovalSidebar() {
   }
 
   const all = S.approvalComments;
-  const topLevel = all.filter(c => !c.parentId).sort((a, b) => b.createdAt - a.createdAt);
+  const topLevel = all.filter(c => !c.parentId).sort((a, b) => (b.createdAt - a.createdAt) || String(a.id).localeCompare(String(b.id)));
   // Agrupa as respostas por parentId numa única passada por `all` — antes, renderApprovalThreadCard
   // fazia um all.filter() (varredura completa de TODOS os comentários) pra CADA comentário de
   // topo, um O(topLevel × all) que cresce em dobro com o total de comentários acumulados no
@@ -1042,7 +1042,7 @@ function renderApprovalThreadCard(c, replies) {
   const isOwner = isCurrentProjectOwner();
   const resolved = c.resolvedBy && c.resolvedBy.length > 0;
   const iVerified = !!(me && c.resolvedBy.includes(me.email.toLowerCase()));
-  replies = replies.slice().sort((a, b) => a.createdAt - b.createdAt);
+  replies = replies.slice().sort((a, b) => (a.createdAt - b.createdAt) || String(a.id).localeCompare(String(b.id)));
   const verifyBtn = !isAuthor
     ? `<button class="av-verify-btn ${iVerified ? 'checked' : ''}" onclick="event.stopPropagation();toggleApprovalVerify('${c.id}')">✓ ${iVerified ? 'Verified' : 'Verify'}</button>`
     : '';
@@ -1238,7 +1238,7 @@ function logApprovalActivity(type, lang, rowId) {
   const me = authCurrentUser();
   if(!me) return;
   S.approvalActivity.unshift({
-    id: 'aa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+    id: _approvalId('aa'),
     type, lang, rowId: rowId || null,
     by: me.email, at: Date.now()
   });

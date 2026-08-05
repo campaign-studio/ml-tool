@@ -1,0 +1,60 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-04
+Tema: Dois achados do approver-concurrency-fuzzer (F1 e F2) — id de comentário/atividade resistente
+      a colisão e ordem determinística do feed/threads de aprovação.
+
+===============================================================================
+F1 — COLISÃO DE ID COLAPSAVA DOIS COMENTÁRIOS/ATIVIDADES (perda latente, ~1e-6)
+===============================================================================
+O merge concorrente une comentários e atividades de aprovação POR id (mergeApprovalState, união
+num Map por c.id / a.id). O id era 'ac_'/'aa_' + Date.now() + 5 chars base36 → entropia do sufixo
+~36^5 (60,5M). Dois itens criados no MESMO milissegundo com o mesmo sufixo aleatório geravam o
+MESMO id, e a união colapsava os dois em UM (perda + resultado dependente da ordem). Probabilidade
+num lote de 20 no mesmo ms ≈ 1e-6 — raríssimo, mas real (gap de projeto: união sem guarda de
+colisão). Medido pelo fuzzer.
+
+CORREÇÃO (na FONTE — ids únicos por construção):
+- + _uniqueSuffix(): crypto.randomUUID() (122 bits → colisão efetivamente impossível) quando
+  disponível; fallback = contador monotônico (_uidCounter, garante unicidade DENTRO da aba) +
+  dois segmentos Math.random base36 (cobre cross-aba/cross-cliente).
+- + _approvalId(prefix) = prefix + '_' + Date.now() + '_' + _uniqueSuffix(). Mantém o prefixo
+  (ac_/aa_) e o Date.now() (ordenação por id segue grosseiramente temporal).
+- Aplicado nos 3 pontos de geração: addApprovalComment (ac), logApprovalActivity (aa) e
+  pushManualHtmlEditActivity (aa). postApprovalReply usa addApprovalComment → coberto.
+- NÃO foi adicionada guarda de colisão no merge (re-chavear um id quebraria parentId/tombstones);
+  a unicidade na fonte é a correção correta e suficiente.
+
+===============================================================================
+F2 — ORDEM DO FEED/THREADS ERA NÃO-DETERMINÍSTICA EM EMPATE DE TIMESTAMP
+===============================================================================
+Atividades (ou comentários) com o MESMO at/createdAt (mesmo ms) saíam em ordem diferente conforme
+a ordem de commit, porque o sort tinha só o critério primário (sort estável do V8 mantinha a ordem
+de inserção = ordem de fold). Dois revisores podiam ver os mesmos eventos invertidos. Nada sumia;
+só a ordem oscilava.
+
+CORREÇÃO — desempate secundário ESTÁVEL por id (String(a.id).localeCompare(String(b.id))),
+independente da direção do critério primário:
+- mergeApprovalState: sort da atividade (b.at - a.at) || id.
+- approval-canvas.js: as duas threads de topo (b.createdAt - a.createdAt) || id, e as respostas
+  (a.createdAt - b.createdAt) || id.
+- (Notificações em index.html:3692 NÃO foram tocadas — outro domínio, fora do escopo do fuzzer.)
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- index.html: + _uidCounter/_uniqueSuffix/_approvalId (junto de _pickDoneEntry); sort de atividade
+  em mergeApprovalState com desempate; pushManualHtmlEditActivity usa _approvalId('aa').
+- modules/approval-canvas.js: addApprovalComment/logApprovalActivity usam _approvalId; 3 sorts de
+  thread com desempate por id.
+
+===============================================================================
+VERIFICAÇÃO (browser local, sbClient NEUTRALIZADO — ZERO produção)
+===============================================================================
+- node --check approval-canvas.js: OK. Load: 7 recursos, ZERO com erro (os 404 no console eram
+  resíduo do load logado anterior — miniaturas externas, sem relação).
+- F1 massa: 200.000 ids gerados, 0 colisão (crypto.randomUUID presente). OK.
+- F1 mesmo-ms: Date.now() congelado, 5.000 ids, 0 colisão (contador+random cobrem). OK.
+- F2 feed: 20 atividades com o MESMO at, merge em 5 ordens de commit → MESMA ordem final, todas as
+  20 presentes. Determinístico. OK.
+- F2b: 20 comentários com id do esquema novo não colapsam (ids únicos por construção). OK.
+- NENHUMA escrita em produção (sbClient()===null verificado).

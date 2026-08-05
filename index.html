@@ -6887,7 +6887,7 @@ function pushManualHtmlEditActivity(target, type) {
   if(!me) return;
   if(!Array.isArray(target.approvalActivity)) target.approvalActivity = [];
   target.approvalActivity.unshift({
-    id: 'aa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+    id: _approvalId('aa'),
     type, lang: null, rowId: null,
     by: me.email, at: Date.now()
   });
@@ -10622,6 +10622,21 @@ async function autosaveCampaignApprovalState() {
   }
 }
 
+// Id resistente a COLISÃO para comentário/atividade de aprovação. O merge concorrente une esses
+// itens por id (mergeApprovalState), então dois clientes que gerassem o MESMO id colapsariam um
+// sobre o outro (perda + não-comutatividade). O esquema antigo — Date.now()+5 chars base36 — tinha
+// ~36^5 (60M) de entropia no sufixo: colidia em ~1e-6 pra dois comentários no mesmo ms. Agora usa
+// crypto.randomUUID (122 bits → colisão efetivamente impossível), com fallback de timestamp +
+// contador monotônico (garante unicidade DENTRO da aba) + dois segmentos aleatórios (cobre
+// cross-aba/cross-cliente). Mantém o prefixo (ac_/aa_) e o Date.now() pra qualquer ordenação por id
+// seguir grosseiramente temporal.
+let _uidCounter = 0;
+function _uniqueSuffix(){
+  try { if(typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch(e){}
+  return (_uidCounter++).toString(36) + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+}
+function _approvalId(prefix){ return prefix + '_' + Date.now() + '_' + _uniqueSuffix(); }
+
 // Escolhe DETERMINISTICAMENTE entre duas marcas de aprovação de um idioma, independente de ordem
 // de commit (comutativo: _pickDoneEntry(a,b) === _pickDoneEntry(b,a)). Antes o empate de `at`
 // (mesmo milissegundo) era decidido pelo lado "local" = vencedor por updatedAt, então aprovar vs
@@ -10687,7 +10702,9 @@ function mergeApprovalState(remoteData, localComments, localActivity, localDoneB
   // Atividade: união por id, reordenada mais-recente-primeiro (mesmo critério do feed).
   const actById = new Map();
   [...remoteActivity, ...localActivity].forEach(a => actById.set(a.id, a));
-  const mergedActivity = [...actById.values()].sort((a, b) => b.at - a.at);
+  // Desempate estável por id: sem ele, empate de `at` (mesmo ms) deixava a ordem depender da
+  // ordem de inserção = ordem de commit → dois revisores viam o feed em ordem diferente.
+  const mergedActivity = [...actById.values()].sort((a, b) => (b.at - a.at) || String(a.id).localeCompare(String(b.id)));
 
   // Aprovação por idioma: não é uma lista, é 1 estado por idioma — mantém o mais recente.
   const mergedDoneByLang = { ...remoteDoneByLang };
