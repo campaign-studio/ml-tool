@@ -1,0 +1,39 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-06
+Tema: TESTE de regressão das invariantes de merge concorrente (avulso + campanha). Não corrige nada —
+      trava o comportamento pra mudanças futuras no merge não reintroduzirem os bugs de hoje.
+
+===============================================================================
+POR QUE
+===============================================================================
+Hoje mexemos no merge central: tombstone de linha no avulso (mergeLooseData) e confirmamos que a
+campanha (mergeItemRows/mergeCampaignItems) já é segura por outra via (rows de item imutáveis +
+tombstone de item deletado). Como o projeto não tem test runner (testes eram manuais no console),
+faltava algo versionado que pegue uma regressão futura nesse ponto sensível.
+
+===============================================================================
+O QUE
+===============================================================================
++ tests/merge-invariants.test.js — define window.runMergeInvariantTests(), executável NO NAVEGADOR
+  contra o app rodando (usa as funções globais reais + dados sintéticos; não toca banco nem estado).
+  7 asserções:
+  A) AVULSO (mergeLooseData):
+     A1 tombstone bloqueia ressurreição de linha deletada.
+     A2 sem tombstone mantém a linha (anti-perda antiga preservada).
+     A3 add concorrente dos dois lados preserva ambos.
+     A4 deleção antiga não vence re-add mais novo.
+  B) CAMPANHA:
+     B1 mergeItemRows: rows imutáveis — extra que só existe no lado velho é DROPADA (não
+        ressuscita); célula funde idiomas preenchidos nos dois lados.
+     B2 mergeCampaignItems: item deletado respeita deletedItemIds (não ressuscita).
+     B3 mergeCampaignItems: item novo de um lado é preservado (anti-perda de item).
+
+COMO RODAR (está no cabeçalho do arquivo):
+  Abrir o app (localhost:3000 ou Pages, sem precisar logar) → console → colar o arquivo (ou
+  fetch('/tests/merge-invariants.test.js').then(r=>r.text()).then(t=>eval(t))) → runMergeInvariantTests().
+  Retorna {passed, failed, results} e imprime tabela. failed===0 = OK.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+Rodado no app local (localhost:3000) contra as funções reais: 7 PASS / 0 FAIL.
