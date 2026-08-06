@@ -2858,7 +2858,7 @@ function _isDupKey(e){
 // Campos do CORPO que NÃO entram no merge 3-way por-campo (têm tratamento próprio: itens/tombstones
 // de campanha e data.csv via mergeCampaignItems/mergeLooseData; metadados voláteis de trava/presença;
 // updatedAt/rev que são carimbos de controle).
-const _BODY_MERGE_SKIP = new Set(['items','deletedItemIds','data','clearedCells','lockedBy','lockedAt','lockSessionId','approvingUsers','updatedAt','rev']);
+const _BODY_MERGE_SKIP = new Set(['items','deletedItemIds','data','clearedCells','deletedRowIds','lockedBy','lockedAt','lockSessionId','approvingUsers','updatedAt','rev']);
 
 // Reconciliação 3-WAY POR CAMPO dos escalares do corpo (name, sharedWith, approvers, folder, ...).
 // OBS: parkedLangs/pendingRowIds/langs NÃO são campos de corpo — vivem em project.data e são
@@ -9072,6 +9072,7 @@ function restoreProjectContent(data, readOnly) {
 
   S.rawHtml = data.html;
   S.clearedCells = Array.isArray(data.clearedCells) ? data.clearedCells.slice() : []; // tombstones de célula esvaziada
+  S.deletedRowIds = Array.isArray(data.deletedRowIds) ? data.deletedRowIds.slice() : []; // tombstones de linha deletada
   S.filename = data.htmlName || 'project.html';
   S.csv.name = parsedCsv.templateName || S.filename.replace(/\.html?$/i, '');
   S.csv.langs = langs;
@@ -10814,6 +10815,10 @@ function autosaveProject() {
     p.data.pendingRowIds = [...(S.pendingImgIds||[])];
     p.data.parkedLangs = { ...(S.parkedLangs||{}) };
     p.data.clearedCells = Array.isArray(S.clearedCells) ? S.clearedCells.slice() : []; // tombstones de célula esvaziada
+    // tombstones de linha deletada: mantém só os ids que NÃO estão mais presentes (linha viva =
+    // tombstone obsoleto). Sem podar, um re-add do mesmo id ficaria bloqueado pelo tombstone velho.
+    const _aliveIds = new Set(S.csv.rows.map(r => r.id));
+    p.data.deletedRowIds = (Array.isArray(S.deletedRowIds) ? S.deletedRowIds : []).filter(d => !_aliveIds.has(d.id));
   }
   // NÃO grava approvalComments/approvalDoneByLang/approvalActivity/approvalDeletedIds aqui.
   // Essa função salva a cada tecla digitada numa tradução (scheduleAutosave, 150ms) e lê
@@ -11152,7 +11157,18 @@ function maybeSnapshotBeforeStructuralDelete(){
 // Fechar/atualizar a aba no meio de uma rajada não pode perder o ponto de restore.
 window.addEventListener('beforeunload', _flushSafetySnap);
 
-function delRow(ri){maybeSnapshotBeforeStructuralDelete();S.csv.rows.splice(ri,1);reBody();debR();scheduleAutosave();}
+function delRow(ri){
+  maybeSnapshotBeforeStructuralDelete();
+  // Tombstone de LINHA deletada (ver mergeLooseData/deletedRowIds): carimba id+timestamp pra o
+  // merge não RESSUSCITAR a linha quando outra aba com cópia velha (que ainda a tem) salvar depois.
+  const _delId = S.csv.rows[ri] && S.csv.rows[ri].id;
+  if(_delId != null){
+    if(!Array.isArray(S.deletedRowIds)) S.deletedRowIds = [];
+    S.deletedRowIds = S.deletedRowIds.filter(d => d.id !== _delId);
+    S.deletedRowIds.push({ id: _delId, at: Date.now() });
+  }
+  S.csv.rows.splice(ri,1);reBody();debR();scheduleAutosave();
+}
 async function delLang(l){
   if(!(await uiConfirm(`Remove column "${l}"?`, {title:'Remove column', okLabel:'Remove', danger:true})))return;
   maybeSnapshotBeforeStructuralDelete();

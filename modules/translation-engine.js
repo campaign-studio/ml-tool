@@ -67,6 +67,30 @@ function unionClearedCells(a, b){
   return [...m.values()];
 }
 
+// deletedRowIds: tombstones de LINHA deletada de propósito — [{id, at}] em data.deletedRowIds.
+// Mesma ideia do clearedCells, mas pra a LINHA inteira. Sem isto, o merge de linhas (união por id
+// em mergeLooseData) RESSUSCITA uma linha que uma aba apagou quando OUTRA aba com cópia velha (que
+// ainda tem a linha) salva depois — a remoção era desfeita silenciosamente. O tombstone distingue
+// "apaguei de propósito (recente)" de "não tenho essa linha ainda / cache velho".
+function _delMap(data){
+  const m = new Map();
+  ((data && data.deletedRowIds) || []).forEach(d => {
+    if(!d || d.id == null) return;
+    const at = d.at || 0;
+    if(!m.has(d.id) || m.get(d.id) < at) m.set(d.id, at);
+  });
+  return m;
+}
+function unionDeletedRows(a, b){
+  const m = new Map();
+  [...(a || []), ...(b || [])].forEach(d => {
+    if(!d || d.id == null) return;
+    const at = d.at || 0;
+    if(!m.has(d.id) || (m.get(d.id).at || 0) < at) m.set(d.id, { id: d.id, at });
+  });
+  return [...m.values()];
+}
+
 function mergeLooseData(a, b, anc) {
   try {
     const ad = a.data, bd = b.data;
@@ -78,10 +102,20 @@ function mergeLooseData(a, b, anc) {
     const aUpd = a.updatedAt || 0, bUpd = b.updatedAt || 0;
     const aNewer = aUpd >= bUpd;
     const aClear = _clearMap(ad), bClear = _clearMap(bd);
+    const aDel = _delMap(ad), bDel = _delMap(bd);
+    // Uma linha NÃO ressuscita se o outro lado a apagou DEPOIS da versão deste lado (mesmo critério
+    // do clearedCells: oc > sideUpd). Se está viva nos DOIS lados, mantém (união anti-perda normal).
+    const rowDropped = (id) => {
+      const inA = A.rowsById.has(id), inB = B.rowsById.has(id);
+      if(inA && inB) return false;
+      if(inA && !inB) return (bDel.get(id) || 0) > aUpd; // B apagou depois da versão de A → some
+      if(inB && !inA) return (aDel.get(id) || 0) > bUpd; // A apagou depois da versão de B → some
+      return true; // em nenhum dos dois
+    };
     const langs = [...new Set([...A.langs, ...B.langs])];
     const newer = aNewer ? A : B, older = aNewer ? B : A;
-    const order = [...newer.order];
-    older.order.forEach(id => { if(!newer.rowsById.has(id)) order.push(id); });
+    const order = newer.order.filter(id => !rowDropped(id));
+    older.order.forEach(id => { if(!newer.rowsById.has(id) && !rowDropped(id)) order.push(id); });
     const rowsById = new Map();
     order.forEach(id => {
       const na = newer.rowsById.get(id), ol = older.rowsById.get(id);
@@ -105,21 +139,29 @@ function mergeLooseData(a, b, anc) {
     if(!M) return null;
     // GUARDA (relaxada p/ clear intencional): célula preenchida num lado só pode ficar vazia no
     // resultado se o OUTRO lado a limpou de propósito com timestamp mais novo que a versão deste lado.
-    const noLoss = (side, sideUpd, otherClear) => [...side.rowsById.keys()].every(id =>
-      side.langs.every(l => {
+    const noLoss = (side, sideUpd, otherClear) => [...side.rowsById.keys()].every(id => {
+      // Linha inteira sumiu do resultado: só acontece via rowDropped (deleção intencional mais nova
+      // que a versão deste lado) — não é perda de tradução, é a remoção sendo respeitada.
+      if(!M.rowsById.has(id)) return rowDropped(id);
+      return side.langs.every(l => {
         const v = (side.rowsById.get(id).tls[l] || '');
         if(!v.trim()) return true;
         const mr = M.rowsById.get(id);
         if(mr && (mr.tls[l] || '').trim().length > 0) return true;
         const oc = otherClear.get(id + '|' + l) || 0; // clear intencional do outro lado, mais novo?
         return oc > sideUpd;
-      }));
+      });
+    });
     if(!noLoss(A, aUpd, bClear) || !noLoss(B, bUpd, aClear)) return null;
     // clearedCells de saída = união, mantendo só os que resultaram em célula AINDA vazia (re-fill dropa).
     const outCleared = unionClearedCells(ad.clearedCells, bd.clearedCells).filter(c => {
       const mr = M.rowsById.get(c.id);
       return mr && !(mr.tls[c.lang] || '').trim();
     });
+    // deletedRowIds de saída = união dos tombstones dos dois lados, mantendo só os ids que NÃO
+    // voltaram a existir no merge (linha viva de novo = tombstone obsoleto → dropa, pra não travar
+    // um futuro re-add do mesmo id).
+    const outDeleted = unionDeletedRows(ad.deletedRowIds, bd.deletedRowIds).filter(d => !M.rowsById.has(d.id));
     const base = aNewer ? ad : bd;
     const other = aNewer ? bd : ad;
     // Aprovação NUNCA pode vir por LWW de `...base`: como toda edição de tradução carimba
@@ -144,6 +186,7 @@ function mergeLooseData(a, b, anc) {
       comments: { ...(bd.comments || {}), ...(ad.comments || {}) },
       maxIdIssued: Math.max(ad.maxIdIssued || 0, bd.maxIdIssued || 0),
       clearedCells: outCleared,
+      deletedRowIds: outDeleted,
       ...(mergedPending !== undefined ? { pendingRowIds: mergedPending } : {}),
       ...(mergedParked !== undefined ? { parkedLangs: mergedParked } : {}),
     };

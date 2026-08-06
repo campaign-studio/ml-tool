@@ -1,0 +1,66 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-06
+Tema: CONCORRÊNCIA (integridade) — linha de CSV deletada RESSUSCITAVA quando outra aba com cópia
+      velha salvava depois. Adicionado tombstone de LINHA (data.deletedRowIds), espelhando o
+      clearedCells (tombstone de célula) que já existia.
+
+===============================================================================
+DIAGNÓSTICO
+===============================================================================
+mergeLooseData (modules/translation-engine.js) funde as linhas do CSV por UNIÃO de id (anti-perda:
+uma linha adicionada por qualquer lado é mantida). Mas não havia como distinguir "essa linha foi
+APAGADA de propósito" de "esse lado ainda não tem essa linha". Resultado: se a aba X apaga uma linha
+e a aba Y (com cópia antiga que ainda tem a linha) salva depois, a união RE-ADICIONA a linha — a
+remoção era desfeita silenciosamente. Observado ao vivo durante o conserto dos e-mails (linhas
+órfãs que eu apagava voltavam a cada save de outra sessão).
+
+===============================================================================
+CORREÇÃO (tombstone de linha — mesmo padrão do clearedCells de célula)
+===============================================================================
+Novo campo data.deletedRowIds = [{id, at}] (paralelo a clearedCells = [{id, lang, at}]).
+
+- translation-engine.js:
+  * _delMap(data) e unionDeletedRows(a,b): iguais a _clearMap/unionClearedCells, mas por id de linha.
+  * mergeLooseData:
+    - rowDropped(id): uma linha só NÃO ressuscita se o OUTRO lado a apagou DEPOIS da versão deste
+      lado (delOutro > updatedAtDeste) — MESMO critério do clearedCells (oc > sideUpd). Se está viva
+      nos dois lados, mantém (união anti-perda normal). Aplica na construção do `order` (filtra as
+      duas listas), então até um id que só o lado "mais novo" tem pode ser dropado se o outro tombou
+      depois.
+    - noLoss: uma linha que sumiu do resultado só é aceita se rowDropped(id) (deleção intencional) —
+      senão continua sendo tratada como perda e cai no fallback (comportamento atual).
+    - saída: deletedRowIds = união dos dois lados, podando ids que voltaram a existir no merge.
+
+- index.html:
+  * _BODY_MERGE_SKIP += 'deletedRowIds' (mergeLooseData já cuida; não deixa o reconciliador escalar
+    tratar como scalar).
+  * delRow(ri): carimba {id, at:Date.now()} em S.deletedRowIds ANTES do splice (dedup por id).
+  * load do projeto (onde carrega S.clearedCells): + S.deletedRowIds.
+  * save (onde grava p.data.clearedCells): + p.data.deletedRowIds, PODADO pelos ids ainda vivos em
+    S.csv.rows (linha viva = tombstone obsoleto; sem podar, um re-add do mesmo id ficaria travado).
+
+Vale nos DOIS caminhos de merge (mergeTwoProjects/CAS e mergeProjectsForSave/save local) — ambos
+fundem o CSV via mergeLooseData.
+
+ESCOPO: caminho AVULSO (loose). Paridade para CAMPANHA (mergeItemRows/mergeCampaignItems, que também
+unem linhas) fica como follow-up — os e-mails afetados são avulsos.
+
+===============================================================================
+VERIFICAÇÃO (browser local, mergeLooseData REAL, CSV real do banco como base, só leitura)
+===============================================================================
+Recarregado localhost:3000; sem erro de sintaxe. 5 cenários com a função real:
+- C1 deleção COM tombstone (novo) vs cópia velha que ainda tem a linha -> linha AUSENTE no merge
+  (ressurreição CORRIGIDA); tombstone segue na saída.
+- C2 deleção SEM tombstone -> linha FICA (comportamento ANTIGO preservado — default seguro).
+- C3 add concorrente dos DOIS lados, sem tombstone -> ambos ficam (anti-perda intacta; total 37+2=39).
+- C4 deleção ANTIGA (tombstone < updatedAt do lado que re-tem) -> linha FICA (edição mais nova vence).
+- C6 delete-com-tombstone + add concorrente no MESMO merge -> victim some E linha nova fica.
+Todos PASS.
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- modules/translation-engine.js: + _delMap, + unionDeletedRows; mergeLooseData (rowDropped, noLoss,
+  saída deletedRowIds).
+- index.html: _BODY_MERGE_SKIP; delRow (recorder); load (S.deletedRowIds); save (p.data.deletedRowIds
+  podado).
