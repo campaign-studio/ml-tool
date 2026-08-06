@@ -1004,7 +1004,11 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 .av-activity-time{color:var(--text3);white-space:nowrap;flex-shrink:0;}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Supabase AUTO-HOSPEDADO (mesmo domínio) — era CDN jsdelivr síncrono e sem fallback: quando o
+     CDN não entregava (Safari com bloqueio de terceiros/adblock/rede), window.supabase ficava
+     indefinido -> sbClient() null -> compartilhar falhava com "No database connection". Servir do
+     próprio domínio elimina essa dependência. onerror = fallback pro CDN, só por segurança. -->
+<script src="vendor/supabase-js.min.js" onerror="(function(){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';document.head.appendChild(s);})()"></script>
 </head>
 <body>
 

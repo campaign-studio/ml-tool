@@ -1,0 +1,51 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-05
+Tema: Falha de compartilhamento / "failed sync" no Safari — lib do Supabase deixa de vir do CDN e
+      passa a ser AUTO-HOSPEDADA (mesmo domínio).
+
+===============================================================================
+DIAGNÓSTICO (mesmo bug do share e do Safari — raiz única)
+===============================================================================
+A lib @supabase/supabase-js era carregada de forma SÍNCRONA do CDN jsdelivr, SEM fallback/retry/
+onerror (index.html:1007). Quando o CDN não entrega — típico no Safari (bloqueio de terceiros/ITP/
+content blocker), mas também adblock/rede lenta — window.supabase fica indefinido -> sbClient()
+retorna null. Efeitos:
+- Compartilhar (save ESTRITO) lança "No database connection" -> _saveShareOrRollback desfaz ->
+  "Could not share... Nothing was saved" (o sintoma exato relatado).
+- "failed sync" e "projetos não funcionam" no Safari (todo pull/push vira no-op).
+Editar parecia funcionar porque o autosave é não-estrito (só marca _syncFailed). Permissão NÃO era
+a causa (admin passa em canShareProject).
+
+===============================================================================
+CORREÇÃO — auto-hospedar (elimina a dependência de CDN)
+===============================================================================
+- + vendor/supabase-js.min.js: o bundle UMD EXATO que o @2 resolvia (v2.112.1, 211KB), baixado e
+  versionado no repo. Servido pelo próprio `serve .` (mesmo domínio dos modules/*.js).
+- index.html: a tag passa a carregar `vendor/supabase-js.min.js`; onerror = fallback pro CDN
+  jsdelivr só por segurança. Como vem do mesmo domínio, nenhum bloqueio de terceiros do Safari o
+  impede — window.supabase sempre existe.
+- Complementar (já feito ontem): o banner de "não salvo no servidor" torna QUALQUER falha de
+  conexão visível em vez de silenciosa.
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- + vendor/supabase-js.min.js (novo, versionado).
+- index.html: <script> do supabase -> local + onerror fallback CDN.
+
+===============================================================================
+VERIFICAÇÃO (browser local)
+===============================================================================
+- serve entrega /vendor/supabase-js.min.js -> HTTP 200, 211134 bytes.
+- Load em localhost:3000: a lib carrega de http://localhost:3000/vendor/supabase-js.min.js;
+  window.supabase presente (createClient ok); sbClient() cria o cliente; NENHUMA requisição a
+  jsdelivr. Zero erro de console.
+- Bundle vendorizado FUNCIONA contra o Supabase real: leitura de 1 linha da tabela projects
+  (só leitura, sem escrita) retornou sem erro.
+
+===============================================================================
+NOTA
+===============================================================================
+O xlsx ainda vem de CDN (cdnjs, index.html:1006). Não é usado no caminho de sync/share (só em
+export/import de planilha), então fica fora do escopo deste fix; se quiser, dá pra auto-hospedar
+igual depois. Atualizar o supabase-js no futuro = rebaixar o arquivo em vendor/ e commitar.
