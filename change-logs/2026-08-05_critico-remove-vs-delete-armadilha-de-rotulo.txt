@@ -1,0 +1,60 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-05
+Tema: CRÍTICO (perda de dado) — "Remove from folder" x "Delete": armadilha de rótulo. Ações que
+      DELETAM usavam o verbo "Remove", idêntico ao botão seguro. Desarmado.
+
+===============================================================================
+DIAGNÓSTICO (confirmado por verificação adversarial independente)
+===============================================================================
+Relato: usuário moveu e-mail pra pasta errada, clicou "remove from folder", e o e-mail foi
+DELETADO em vez de voltar pro dashboard.
+
+Causa-raiz (NÃO era a hipótese inicial de tombstone — essa foi REFUTADA no código):
+- removeItemFromFolder é ANTI-PERDA: recria o avulso com id NOVO, salva+VERIFICA antes de tirar da
+  pasta (pior caso = duplicado, nunca perda). O tombstone do move fica no id antigo, não alcança o
+  recriado. Ou seja, o "Remove from folder" em si é seguro.
+- A perda real vem de deleteContentItem/confirmContentItemDelete (DELETE permanente: tombstone do
+  item + splice, sem recriar avulso). Dois gatilhos de confusão:
+  (a) botão vermelho "Delete" colado no "Remove from folder" na galeria;
+  (b) PIOR: no modal "Manage Content" um botão rotulado LITERALMENTE "Remove" que também DELETAVA.
+- E o modal de confirmação dizia "Remove content? / Remove X from this project? This cannot be
+  undone." — o verbo "Remove" idêntico ao botão seguro. A pessoa deletou achando que desvinculava.
+- Recuperável: o delete tira um snapshot 'backup' (Version History da pasta) ANTES de apagar.
+
+===============================================================================
+CORREÇÃO (desarmar a armadilha — nenhuma função de merge/save mudou)
+===============================================================================
+- Modal de confirmação de delete: título "Delete permanently?"; mensagem "Permanently delete X?
+  This can't be undone." e, p/ e-mail, aponta ATIVAMENTE a saída segura: "…use 'Remove from folder'
+  instead." Sumiu o verbo "Remove" das ações destrutivas.
+- Modal "Manage Content": o botão que era "Remove" (e deletava) agora é "Delete" (btn-danger,
+  honesto) E, para itens type:'email', ganhou um botão "Remove from folder" (desvincula de verdade,
+  via novo removeFromFolderViaModal → removeItemFromFolder + refresh do modal). Fecha a lacuna
+  "deletava em vez de desvincular" que a auditoria apontou.
+- Pós-exclusão: uiNotify dizendo que dá pra restaurar pelo Version History da pasta (o snapshot já
+  era tirado; agora a pessoa fica sabendo).
+- Galeria: o botão seguro segue "Remove from folder"; o destrutivo já era "Delete". Agora o ÚNICO
+  uso do verbo "Remove" na plataforma é o desvincular seguro.
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- deleteContentItem: copy do modal (título + mensagem, sem "Remove", aponta a alternativa).
+- renderManageContentList: botão "Remove"→"Delete" + "Remove from folder" p/ email.
+- confirmContentItemDelete: + uiNotify de recuperação.
+- + removeFromFolderViaModal (wrapper que desvincula e reatualiza o modal).
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Load em localhost:3000: ZERO erros de console. Funções presentes (deleteContentItem,
+  confirmContentItemDelete, removeItemFromFolder, removeFromFolderViaModal, renderManageContentModal).
+- Copy do modal conferida (Delete permanently + aponta "Remove from folder").
+- NENHUMA lógica de save/merge/unlink foi alterada — só rótulos, copy, um botão de unlink no modal e
+  um aviso de recuperação. Sem risco de regressão de dados.
+
+===============================================================================
+NOTA AO USUÁRIO
+===============================================================================
+O e-mail que sumiu é recuperável AGORA: pasta → Version History → restaurar a versão anterior à
+exclusão (antes de novas edições na pasta).

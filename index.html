@@ -6108,7 +6108,8 @@ function renderManageContentList() {
         <div style="font-size:11px;color:var(--text3);margin-top:2px;">${(it.langs || []).length} language(s)${(it.langs || []).length ? ': ' + sortLangsForDisplay(it.langs).map(escHtml).join(', ') : ''}</div>
       </div>
       <button class="btn-back" style="padding:6px 12px;font-size:11.5px;" onclick="openItemFromModal(${i})">Open</button>
-      <button class="btn-danger" style="padding:6px 10px;font-size:11.5px;" onclick="deleteContentItem(${i})">Remove</button>
+      ${it.type === 'email' ? `<button class="btn-back" style="padding:6px 10px;font-size:11.5px;" title="Take it out of this folder — goes back to the standalone list" onclick="removeFromFolderViaModal('${escJsAttr(_campaign.id)}','${escJsAttr(it.id)}')">Remove from folder</button>` : ''}
+      <button class="btn-danger" style="padding:6px 10px;font-size:11.5px;" title="Delete permanently" onclick="deleteContentItem(${i})">Delete</button>
     </div>
   `).join('');
 }
@@ -6123,8 +6124,11 @@ function deleteContentItem(i) {
   _pendingDeleteContentIdx = i;
   _pendingDeleteKind = 'contentItem';
   const item = _campaign.items[i];
-  document.getElementById('deleteConfirmTitle').textContent = 'Remove content?';
-  document.getElementById('deleteConfirmMsg').innerHTML = `Remove <strong>${escHtml(item.name)}</strong> from this project? This cannot be undone.`;
+  // Copy SEM o verbo "Remove" — ele era idêntico ao botão seguro "Remove from folder" e causou
+  // perda de dado (pessoa deletou achando que estava só desvinculando). Diz DELETE, é permanente,
+  // e aponta ativamente pra ação segura.
+  document.getElementById('deleteConfirmTitle').textContent = 'Delete permanently?';
+  document.getElementById('deleteConfirmMsg').innerHTML = `Permanently delete <strong>${escHtml(item.name)}</strong>? This can't be undone.${item.type === 'email' ? ' To keep it — just take it out of this folder — use <strong>“Remove from folder”</strong> instead.' : ''}`;
   document.getElementById('deleteConfirmModal').style.display = 'flex';
 }
 
@@ -6146,6 +6150,15 @@ async function confirmContentItemDelete() {
   renderCampaignTabs();
   renderCampaignMain();
   renderManageContentModal();
+  // Fecha o loop: a exclusão é recuperável (snapshot em 'backup' acima) — diz onde restaurar.
+  try{ uiNotify(`“${removed.name}” foi excluído. Se precisar, dá pra restaurar pelo Version History desta pasta.`, { type: 'info' }); }catch(e){}
+}
+
+// Usado pelo modal "Manage Content": desvincula (NÃO deleta) e reatualiza a lista do modal, que
+// fica por cima da galeria. Espelha o "Remove from folder" seguro da galeria.
+async function removeFromFolderViaModal(folderId, itemId) {
+  await removeItemFromFolder(folderId, itemId);
+  try{ renderManageContentModal(); }catch(e){}
 }
 
 // Formulário faseado — um passo por vez (igual ao wizard clássico: Origin → Targets),
