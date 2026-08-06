@@ -1004,7 +1004,11 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 .av-activity-time{color:var(--text3);white-space:nowrap;flex-shrink:0;}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Supabase AUTO-HOSPEDADO (mesmo domínio) — era CDN jsdelivr síncrono e sem fallback: quando o
+     CDN não entregava (Safari com bloqueio de terceiros/adblock/rede), window.supabase ficava
+     indefinido -> sbClient() null -> compartilhar falhava com "No database connection". Servir do
+     próprio domínio elimina essa dependência. onerror = fallback pro CDN, só por segurança. -->
+<script src="vendor/supabase-js.min.js" onerror="(function(){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';document.head.appendChild(s);})()"></script>
 </head>
 <body>
 
@@ -3992,9 +3996,18 @@ var LZString = (function(){
 })();
 
 const _LS_LZ_PREFIX = 'LZ1'; // marca de blob comprimido (char de controle: nunca aparece em JSON)
+// Cache por chave da STRING já descomprimida (não do objeto — os chamadores fazem JSON.parse e
+// mutam à vontade). Chaveado pelo raw armazenado: se o raw não mudou desde a última vez, pula o
+// decompress (o gargalo: ~30-100ms num blob de ~2,4M). Invalida sozinho quando outra aba grava
+// (getItem devolve raw diferente). projGetAll é chamado ~77x — sem isto, redescomprimia toda vez.
+const _lsCache = {};
 function _lsSetLarge(key, str){
-  try { localStorage.setItem(key, _LS_LZ_PREFIX + LZString.compressToUTF16(str)); return true; }
-  catch(e){
+  try {
+    const stored = _LS_LZ_PREFIX + LZString.compressToUTF16(str);
+    localStorage.setItem(key, stored);
+    _lsCache[key] = { raw: stored, val: str }; // read-after-write vira hit (sem redecomprimir)
+    return true;
+  } catch(e){
     console.warn('localStorage write failed ('+key+') — quota/erro; o sync com o Supabase ainda é tentado.', e);
     try { warnLocalStorageWriteFailed(); } catch(_){}
     return false;
@@ -4004,11 +4017,17 @@ function _lsGetLarge(key){
   var raw = null;
   try { raw = localStorage.getItem(key); } catch(e){ return null; }
   if(raw == null) return null;
+  const c = _lsCache[key];
+  if(c && c.raw === raw) return c.val; // HIT: pula o decompress
+  let val;
   if(raw.charCodeAt(0) === 1 && raw.slice(0, _LS_LZ_PREFIX.length) === _LS_LZ_PREFIX){
-    try { return LZString.decompressFromUTF16(raw.slice(_LS_LZ_PREFIX.length)); }
+    try { val = LZString.decompressFromUTF16(raw.slice(_LS_LZ_PREFIX.length)); }
     catch(e){ console.warn('decompress falhou ('+key+') — cache local ignorado.', e); return null; }
+  } else {
+    val = raw; // formato ANTIGO não comprimido — compatibilidade retroativa
   }
-  return raw; // formato ANTIGO não comprimido — compatibilidade retroativa
+  _lsCache[key] = { raw, val };
+  return val;
 }
 
 function projGetAll() {
@@ -4247,8 +4266,10 @@ function mergeProjectsForSave(projects) {
 // de deletar projeto, pra só fechar o modal e destravar o botão depois) pode dar await.
 function projSaveAll(projects) {
   const merged = mergeProjectsForSave(projects);
-  projSaveAllLocal(merged); // salva local imediatamente — não trava esperando o GitHub
-  return ghMergeAndPushProjects(merged); // sincroniza com o GitHub em segundo plano, com merge
+  // NÃO chamar projSaveAllLocal aqui: ghMergeAndPushProjects já faz projSaveAllLocal(merged) de
+  // forma SÍNCRONA no início (o cache local continua imediato). Chamar aqui comprimia o blob
+  // inteiro (~400-500ms) DUAS vezes por save — o freeze de ~1s por autosave. Agora comprime 1x.
+  return ghMergeAndPushProjects(merged); // grava local (sincrono) + sincroniza com o banco
 }
 
 /* ── SAVE DE AÇÃO CRÍTICA (compartilhamento) — "ou grava no banco, ou não aconteceu" ──────────
@@ -4261,7 +4282,7 @@ function projSaveAll(projects) {
    O custo do read extra é irrelevante: compartilhar é ação rara (não é autosave). */
 function projSaveAllStrict(projects) {
   const merged = mergeProjectsForSave(projects);
-  projSaveAllLocal(merged);
+  // idem projSaveAll: ghMergeAndPushProjects já grava local sincronamente — sem compress dobrado.
   return ghMergeAndPushProjects(merged, { strict: true });
 }
 
@@ -6108,7 +6129,8 @@ function renderManageContentList() {
         <div style="font-size:11px;color:var(--text3);margin-top:2px;">${(it.langs || []).length} language(s)${(it.langs || []).length ? ': ' + sortLangsForDisplay(it.langs).map(escHtml).join(', ') : ''}</div>
       </div>
       <button class="btn-back" style="padding:6px 12px;font-size:11.5px;" onclick="openItemFromModal(${i})">Open</button>
-      <button class="btn-danger" style="padding:6px 10px;font-size:11.5px;" onclick="deleteContentItem(${i})">Remove</button>
+      ${it.type === 'email' ? `<button class="btn-back" style="padding:6px 10px;font-size:11.5px;" title="Take it out of this folder — goes back to the standalone list" onclick="removeFromFolderViaModal('${escJsAttr(_campaign.id)}','${escJsAttr(it.id)}')">Remove from folder</button>` : ''}
+      <button class="btn-danger" style="padding:6px 10px;font-size:11.5px;" title="Delete permanently" onclick="deleteContentItem(${i})">Delete</button>
     </div>
   `).join('');
 }
@@ -6123,8 +6145,11 @@ function deleteContentItem(i) {
   _pendingDeleteContentIdx = i;
   _pendingDeleteKind = 'contentItem';
   const item = _campaign.items[i];
-  document.getElementById('deleteConfirmTitle').textContent = 'Remove content?';
-  document.getElementById('deleteConfirmMsg').innerHTML = `Remove <strong>${escHtml(item.name)}</strong> from this project? This cannot be undone.`;
+  // Copy SEM o verbo "Remove" — ele era idêntico ao botão seguro "Remove from folder" e causou
+  // perda de dado (pessoa deletou achando que estava só desvinculando). Diz DELETE, é permanente,
+  // e aponta ativamente pra ação segura.
+  document.getElementById('deleteConfirmTitle').textContent = 'Delete permanently?';
+  document.getElementById('deleteConfirmMsg').innerHTML = `Permanently delete <strong>${escHtml(item.name)}</strong>? This can't be undone.${item.type === 'email' ? ' To keep it — just take it out of this folder — use <strong>“Remove from folder”</strong> instead.' : ''}`;
   document.getElementById('deleteConfirmModal').style.display = 'flex';
 }
 
@@ -6146,6 +6171,15 @@ async function confirmContentItemDelete() {
   renderCampaignTabs();
   renderCampaignMain();
   renderManageContentModal();
+  // Fecha o loop: a exclusão é recuperável (snapshot em 'backup' acima) — diz onde restaurar.
+  try{ uiNotify(`“${removed.name}” foi excluído. Se precisar, dá pra restaurar pelo Version History desta pasta.`, { type: 'info' }); }catch(e){}
+}
+
+// Usado pelo modal "Manage Content": desvincula (NÃO deleta) e reatualiza a lista do modal, que
+// fica por cima da galeria. Espelha o "Remove from folder" seguro da galeria.
+async function removeFromFolderViaModal(folderId, itemId) {
+  await removeItemFromFolder(folderId, itemId);
+  try{ renderManageContentModal(); }catch(e){}
 }
 
 // Formulário faseado — um passo por vez (igual ao wizard clássico: Origin → Targets),
