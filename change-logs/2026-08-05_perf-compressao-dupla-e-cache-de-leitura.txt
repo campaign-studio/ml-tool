@@ -1,0 +1,54 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-05
+Tema: PERFORMANCE — regressão introduzida ontem (compressão do localStorage) deixava cada save
+      lento. Duas correções: comprimir 1x (não 2x) por save + cache da descompressão na leitura.
+
+===============================================================================
+DIAGNÓSTICO (o suspeito nº1 da lentidão fui EU — a compressão de ontem)
+===============================================================================
+O fix de cota do Safari (change-log 2026-08-05 safari-quota) passou a comprimir o blob de projetos
+(~2,4-2,9M chars) com LZString. Dois efeitos ruins medidos:
+1) projSaveAll comprimia o blob INTEIRO DUAS vezes por save: projSaveAllLocal(merged) direto E de
+   novo dentro de ghMergeAndPushProjects (que também chama projSaveAllLocal). Cada compressToUTF16
+   custa centenas de ms sincronos no thread principal → ~2x o custo por save (autosave a cada 1,5s
+   digitando, e todo mover/remover/aprovar). Idem projSaveAllStrict.
+2) projGetAll (~77 call sites, sem cache) DESCOMPRIMIA toda vez — dezenas de ms repetidos pelo
+   mesmo dado imutável dentro de um único render/tick.
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+1) projSaveAll e projSaveAllStrict NÃO chamam mais projSaveAllLocal — ghMergeAndPushProjects já faz
+   projSaveAllLocal(merged) SINCRONAMENTE no início (o cache local continua imediato). Passa a
+   comprimir 1x por save (era 2x).
+2) _lsGetLarge/_lsSetLarge ganham cache por chave (_lsCache) da STRING já descomprimida, chaveado
+   pelo raw armazenado: se o raw não mudou, pula o decompress (o gargalo). Invalida sozinho quando
+   outra aba grava (getItem devolve raw diferente). _lsSetLarge popula o cache (read-after-write vira
+   hit). Os chamadores seguem fazendo JSON.parse (objeto novo, mutável) — cacheia-se a string, não o
+   objeto, então ninguém corrompe o cache mutando.
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- projSaveAll / projSaveAllStrict: removida a chamada redundante a projSaveAllLocal.
+- _lsSetLarge / _lsGetLarge: + _lsCache (memoização da descompressão).
+
+===============================================================================
+VERIFICAÇÃO (browser local, sbClient neutralizado — ZERO produção; PROJ_KEY snapshotado/restaurado)
+===============================================================================
+- Estrutural: 1 compressToUTF16 por projSaveAll (era 2); 20x projGetAll após o 1o = 0 decompress
+  (só cache hit).
+- Medido em blob sintético ~2,87MB: compress 186ms(2x) → 93ms(1x); projGetAll 14ms(miss) → ~2ms
+  (hit, só o parse). No blob REAL (maior, menos compressível) o ganho absoluto é ainda maior
+  (compress medido antes ~400-500ms).
+- Zero erro de console.
+
+===============================================================================
+PRÓXIMO PASSO (se ainda não estiver fluido) — NÃO feito aqui
+===============================================================================
+A compressão ainda é síncrona (~1x por save). Pra tirar do caminho crítico: mover pra Web Worker,
+OU debouncar/coalescer a gravação comprimida no localStorage (durabilidade real é o push + o banner
+de não-salvo já cobre), OU manter um cache de projetos parseados em memória como fonte de verdade.
+Mudança maior/mais arriscada — proposta separada. Hotspots secundários mapeados: dashDataSnapshot
+serializa data.html de todos os projetos só pra comparar; renderDashboard reparseia CSV + iframe por
+card; _canonJson de todos os projetos por push.
