@@ -1844,6 +1844,18 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
   </div>
 </div>
 
+<!-- BANNER PERSISTENTE: alterações não salvas no servidor (fixo no rodapé, sobre qualquer tela) -->
+<div id="syncBanner" style="display:none;position:fixed;left:0;right:0;bottom:0;z-index:8600;background:#d8385e;color:#fff;
+     padding:10px 16px;font-size:13px;line-height:1.35;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;
+     box-shadow:0 -2px 12px rgba(0,0,0,.28);font-family:var(--sans);">
+  <span style="display:inline-flex;align-items:center;gap:8px;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+    <span id="syncBannerMsg">Suas alterações NÃO foram salvas no servidor.</span>
+  </span>
+  <button id="syncBannerRetry" onclick="retrySync()" style="background:#fff;color:#d8385e;border:none;border-radius:7px;
+     padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans);white-space:nowrap;">Tentar de novo</button>
+</div>
+
 <!-- HEADER (breadcrumb — only shown inside the wizard) -->
 <div class="hdr" id="hdrBar" style="position:relative;display:none;">
   <div class="bc-wrap" id="bcWrap" style="margin-left:20px;">
@@ -2605,6 +2617,46 @@ function setSyncDot(state) {
 }
 
 
+// ═══════════ BANNER PERSISTENTE DE "NÃO SALVO NO SERVIDOR" ═══════════
+// Regra do produto: NADA pode parecer salvo sem estar no banco. O conteúdo (tradução/aprovação)
+// continua salvando local (pra NUNCA perder digitação), MAS enquanto o banco não confirmar aparece
+// um banner vermelho persistente + botão de tentar de novo, e as saídas do projeto pedem
+// confirmação. _syncFailed é o sinal que faltava (o push antigo não guardava a falha: setSyncDot
+// pintava o DOM e o erro morria numa var local). Setado no push de conteúdo: true quando falha OU
+// quando não há conexão (não dá pra confirmar); false só quando o banco confirma.
+let _syncFailed = false;
+function _setSyncFailed(v) { _syncFailed = !!v; try { renderSyncBanner(); } catch(e){} }
+function renderSyncBanner() {
+  const el = document.getElementById('syncBanner');
+  if(!el) return;
+  el.style.display = _syncFailed ? 'flex' : 'none';
+  if(_syncFailed) {
+    const msg = document.getElementById('syncBannerMsg');
+    if(msg) msg.textContent = ghConfigured()
+      ? 'Suas alterações NÃO foram salvas no servidor — por enquanto estão só neste navegador.'
+      : 'Sem conexão com o servidor — suas alterações NÃO estão sendo salvas (só neste navegador).';
+  }
+}
+// Reenvia o que ainda não foi confirmado (sem descartar nada do cache local). ghMergeAndPushProjects
+// só reescreve o que difere do baseline, então é idempotente; sucesso limpa _syncFailed sozinho.
+async function retrySync() {
+  const btn = document.getElementById('syncBannerRetry');
+  if(btn){ btn.disabled = true; btn.textContent = 'Tentando…'; }
+  try { await ghMergeAndPushProjects(projGetAll()); } catch(e){ /* o catch interno já marca _syncFailed */ }
+  finally {
+    if(btn){ btn.disabled = false; btn.textContent = 'Tentar de novo'; }
+    renderSyncBanner();
+  }
+}
+// Guarda de saída do projeto: se há conteúdo não confirmado pelo banco, pede confirmação. NUNCA
+// descarta o cache local — só decide se navega ou fica. Devolve true se pode sair.
+async function _okToLeaveUnsynced() {
+  if(!_syncFailed) return true;
+  return await uiConfirm(
+    'Suas alterações ainda NÃO foram salvas no servidor. Sair mesmo?\n\nElas continuam salvas neste navegador e o aviso permanece até conseguir subir — dá pra tentar de novo a qualquer momento.',
+    { title: 'Não salvo no servidor', okLabel: 'Sair assim mesmo', cancelLabel: 'Continuar aqui', danger: true });
+}
+
 // Padronizado: agora sai no MESMO pop-up central da plataforma (antes era um toast discreto no
 // rodapé). Aviso de rede = tipo 'warning' (exige clique). dedupeKey evita empilhar N cópias
 // quando a sincronização falha repetidamente.
@@ -2992,7 +3044,8 @@ async function ghMergeAndPushProjects(localProjects, opts) {
   projSaveAllLocal(localProjects);
   const sb = sbClient();
   // Sem banco não há como confirmar nada — em strict isso é FALHA, não "salvou local e pronto".
-  if(!sb) { if(strict) throw new Error('No database connection — cannot confirm the change.'); return; }
+  // Não-strict (autosave de conteúdo): marca _syncFailed pra o banner avisar que NÃO subiu.
+  if(!sb) { if(strict) throw new Error('No database connection — cannot confirm the change.'); _setSyncFailed(true); return; }
   setSyncDot('saving'); // push começou — reflete o estado REAL da gravação (some só quando o banco confirmar)
   let pushError = null;
   const pushPromise = (async () => {
@@ -3034,6 +3087,7 @@ async function ghMergeAndPushProjects(localProjects, opts) {
       }
       _saveIssuedProjectDeletesLocal();
       setSyncDot('saved'); // banco confirmou → "Saved" (persiste até o próximo save virar "Saving…")
+      _setSyncFailed(false); // banco confirmou → some o banner de "não salvo"
       // Auto-snapshot do projeto EM EDIÇÃO (coalescido) — histórico de versões. Só o projeto
       // aberto, pra não gerar volume de snapshots de projetos que só passaram no merge.
       try{ const cur = currentProjectId && (localProjects||[]).find(p => p.id === currentProjectId); if(cur) maybeAutoSnapshot(cur); }catch(e){}
@@ -3043,6 +3097,7 @@ async function ghMergeAndPushProjects(localProjects, opts) {
     } catch(e) {
       console.warn('Supabase sync (push projects) error:', e);
       setSyncDot('error');
+      _setSyncFailed(true); // banner persistente: falhou de verdade, não some sozinho
       pushError = e;
       // Em strict o chamador mostra um erro ESPECÍFICO e desfaz a mudança — não empilha o
       // aviso genérico de sync ("salvo só localmente") por cima.
@@ -4852,6 +4907,8 @@ async function goToDashboard() {
     // seguro (o ghPullProjects abaixo espera _pendingProjectsPush), mas depender só desse guard
     // era frágil — um await explícito garante que a última edição foi pro banco antes de sair.
     if(_pendingProjectsPush) { try { await withTimeout(_pendingProjectsPush, 8000, 'flush push on exit'); } catch(e){} }
+    // Não confirmou no banco → não sai calado: pede confirmação (cache local intacto, banner fica).
+    if(!(await _okToLeaveUnsynced())) return;
   }
   // Sair do projeto libera a trava — sem isso ela ficava presa até o timeout de
   // 3min, e reabrir o mesmo projeto (até na mesma aba, se a página recarregou
@@ -4868,6 +4925,9 @@ async function goToDashboard() {
     try { await saveCampaignProject(); }
     catch(e){ console.warn('Save on exit failed:', e); }
     finally { setCampaignBusy(false); }
+    if(_pendingProjectsPush) { try { await withTimeout(_pendingProjectsPush, 8000, 'flush campaign push on exit'); } catch(e){} }
+    // Mesma guarda do avulso: se não subiu, pede confirmação ANTES de desmontar a pasta.
+    if(!(await _okToLeaveUnsynced())) return;
     _campaign = null;
     _campaignItemIndex = -1;
     currentProjectId = null;
@@ -10677,7 +10737,9 @@ window.addEventListener('beforeunload', (e) => {
   // edição ainda sincronizando), mostra o diálogo nativo do navegador de "tem certeza que
   // quer sair?" — dá a chance da pessoa esperar mais alguns segundos antes de fechar de
   // verdade, em vez de perder silenciosamente algo que só existia localmente ainda.
-  if(_pendingProjectsPush) {
+  // Avisa se há push EM VOO ou uma falha ainda não resolvida (_syncFailed) — nos dois casos há
+  // conteúdo que ainda não foi confirmado pelo banco.
+  if(_pendingProjectsPush || _syncFailed) {
     e.preventDefault();
     e.returnValue = '';
   }
