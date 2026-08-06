@@ -1,0 +1,67 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-06
+Tema: FIX DE RAIZ (tokenizer) — buildTaggedHtml não pode mais cravar {%translation%} dentro de uma
+      tag <...> nem no meio de uma palavra maior. Impede que um RE-UPLOAD recrie o bug do
+      "crossorigin"/alt corrompido (change-log irmão: tags-dentro-de-markup-alt-src-crossorigin).
+
+===============================================================================
+CONTEXTO
+===============================================================================
+O conserto anterior foi só nos DADOS (data.html dos e-mails). Como save normal preserva data.html,
+o conserto é durável — MAS um novo UPLOAD do HTML passa pelo tokenizer de novo. O tokenizer ainda
+tinha o furo que colocava a tag no lugar errado. Este fix fecha o furo no código.
+
+===============================================================================
+DIAGNÓSTICO (o furo exato em buildTaggedHtml, modules/translation-engine.js)
+===============================================================================
+No laço de posicionamento do texto (indexOf(key)), o guarda "pula se dentro de atributo" só pulava
+quando havia uma ASPA de atributo ABERTA (contagem de " ou ' ímpar dentro da tag corrente). Logo:
+- Um atributo SEM valor, como o `crossorigin` de `<link ... rel="preconnect" href="..." crossorigin>`,
+  tem contagem de aspas PAR -> NÃO era pulado. Um src curto como "or" casava como SUBSTRING dentro
+  de "crossorigin". Na Braze, ao trocar por idioma (ro "or"->"sau"), virava "crosssauigin"/"sauder"
+  (o sintoma "sauigin>/sauder" relatado).
+- Além disso, não havia checagem de fronteira de palavra: "or" também casaria dentro de
+  "for"/"your"/"workout" no texto visível.
+
+===============================================================================
+CORREÇÃO (2 guardas no laço de texto de buildTaggedHtml)
+===============================================================================
+1) DENTRO DE <...> = SEMPRE PULA. Se a posição cai entre '<' e '>' (before.lastIndexOf('<') >
+   before.lastIndexOf('>')), pula, sem depender de paridade de aspas. Imagem localizada por idioma
+   já é tratada num caminho à parte (r.isImg -> `src="{%translation%}URL{%endtranslation%}"`), então
+   o caminho de TEXTO nunca precisa taguear dentro de tag. (Alt="..." já era pulado antes porque a
+   aspa do alt ficava ímpar; o furo era só o atributo sem valor / substring de keyword.)
+2) FRONTEIRA DE PALAVRA. Se o texto da linha começa com alfanumérico, o char imediatamente ANTES da
+   posição no HTML não pode ser alfanumérico; idem para o fim. Só restringe bordas alfanuméricas —
+   frases que começam/terminam com pontuação/aspas/espaço não são afetadas. Mata o "or" dentro de
+   "for"/"crossorigin" e afins.
+
+Nenhuma outra função mudou. O caminho de imagem (r.isImg) e o de Liquid ({{...}}) ficaram intactos
+(o de Liquid casa tokens {{ }} distintos, não palavra solta, então não sofre desse problema).
+
+DESCOBERTA no teste: o id22 "or" NÃO era lixo — é a palavra conectiva "or" VISÍVEL entre dois
+<strong> (…</strong> or <strong>{%translation id23%}…). O bug era só de POSIÇÃO. O tokenizer novo
+posiciona no "or" visível corretamente. (Consequência p/ os dados já consertados: ver NOTA abaixo.)
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- modules/translation-engine.js: buildTaggedHtml() — laço de posicionamento do texto (2 guardas).
+
+===============================================================================
+VERIFICAÇÃO (browser local, função REAL buildTaggedHtml, sbClient só leitura)
+===============================================================================
+Recarregado localhost:3000 (módulo novo). Chamada real de buildTaggedHtml(true) com S.rawHtml =
+HTML real destagueado (simulando upload) + linhas reais do p_1785746541286, snapshot/restore de S:
+- Injetada uma linha-lixo src:"or": crossorigin fica INTACTO; "or" NÃO é cravado dentro de <...>;
+  0 marcador dentro de tag; títulos (id27/30/33) tagueados 1x cada.
+- NÃO-REGRESSÃO: saída do tokenizer novo == data.html correto atual, BYTE A BYTE, para todos os 33
+  ids de texto (única diferença é o id2, que no upload real é imagem/r.isImg e vai por outro caminho;
+  no teste ele foi tratado como texto). divergencia = null.
+
+===============================================================================
+NOTA (dado) — id22 "or" foi removido no conserto anterior; pode ser re-tagueado
+===============================================================================
+No conserto de dados anterior eu classifiquei id22 "or" como lixo e removi. O teste mostrou que é a
+palavra "or" VISÍVEL (tem tradução por idioma). Se quiser consistência (X "oder"/"sau" Y em vez de
+X "or" Y), dá pra re-taguear o "or" visível + restaurar a linha — decisão do usuário (conectiva).

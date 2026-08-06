@@ -1,0 +1,104 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-06
+Tema: CRÍTICO (export quebrado no Braze) — tags {%translation%} coladas DENTRO da marcação HTML
+      (atributos alt/src e o keyword crossorigin), não só no texto visível. Corrigido nos dados
+      dos 2 emails "Post Summer - Wave 2 - Email 1 - Non Paid - EN".
+
+===============================================================================
+SINTOMA RELATADO
+===============================================================================
+- Trecho 1: `Nu faci sport?" width="100" ...` — o alt de uma imagem aparecendo quebrado.
+- Trecho 2: `sauigin> sauder="0" ...` — marcação corrompida.
+"Tem algo errado no tagueamento."
+
+===============================================================================
+DIAGNÓSTICO (confirmado, só leitura, direto no banco)
+===============================================================================
+O tokenizer (versão que gerou esses HTMLs) injetou {%translation%} DENTRO de <...>, em 3 formas:
+1) MATCH DE SUBSTRING LIXO: `cross{%translation id22%}or{%endtranslation%}igin`. id22 é a
+   "tradução" da palavra "or" (2 letras), que casou dentro do keyword `crossorigin`. Em romeno
+   "or" = "sau" -> vira `crosssauigin`/`sauder` (o Trecho 2). Uma linha de CSV inteiramente espúria.
+2) DENTRO DE alt="...": `alt="{%translation id27%}Not a gym person?{%endtranslation%}"`. Em RO =
+   "Nu faci sport?" (o Trecho 1). Idem id30/id33.
+3) DENTRO DE src="...png": `<img src="{%translation id2%}https://...png{%endtranslation%}">`. A URL
+   da imagem tratada como string traduzível (se o idioma vier vazio, src="" = imagem sumida).
+Por que quebra no Braze: tag dentro de atributo/keyword corrompe a marcação ou zera o atributo por
+locale. (Tags {%translation%} devem envolver SOMENTE texto de corpo, nunca ficar dentro de <...>.)
+
+Observação honesta: parte das tags em alt do p_1785746541286 (id27/30/33) provavelmente foram
+introduzidas pelo fix anterior (2026-08-05, quando "re-tagueei a ocorrência visível" de frases que
+só existem como alt de imagem). Este fix desfaz isso.
+
+No p_1785404592310 os 16 marcadores em markup estavam todos dentro de comentários
+`<!-- ===== SECTION: ... ===== -->` (o mesmo bug de comentário do fix anterior).
+
+===============================================================================
+CORREÇÃO (decisão do usuário: "destaguear e remover as linhas")
+===============================================================================
+Regra aplicada: remover TODO marcador ({%translation idN%} e {%endtranslation%}) cuja posição esteja
+dentro de <...> (atributo, keyword OU comentário), preservando o texto literal em volta:
+  - `cross{%translation id22%}or{%endtranslation%}igin` -> `crossorigin`
+  - `alt="{%translation id27%}Not a gym person?{%endtranslation%}"` -> `alt="Not a gym person?"`
+  - `src="{%translation id2%}URL{%endtranslation%}"` -> `src="URL"`
+Depois, toda linha de CSV cujo id ficou SEM tag no corpo (órfã) é removida.
+
+Detecção "dentro de <...>": para cada marcador em offset p, lastIndexOf('<',p) > lastIndexOf('>',p).
+Funciona por marcador, sem tocar em texto de corpo legítimo nem nos condicionais MSO/VML
+(<!--[if mso]>...<![endif]-->), cujo conteúdo real fica APÓS um '>' e portanto é preservado.
+
+===============================================================================
+DADOS ALTERADOS (produção, via CAS eq('rev'), rescue em window.__RESCUE_ALL)
+===============================================================================
+- p_1785746541286: rev 49 -> 50. 12 marcadores removidos. Linhas órfãs removidas:
+  id22, id2, id27, id30, id33, id45, id37. Passou de 37 -> 30 linhas (todas com tag válida no corpo).
+- p_1785404592310: rev 5 -> 6. 16 marcadores removidos. Linhas órfãs removidas:
+  id9, id25, id28, id31, id34, id35, id2, id43. Passou de 35 -> 27 linhas.
+
+===============================================================================
+VERIFICAÇÃO (só leitura, relendo do banco pós-gravação)
+===============================================================================
+Ambos: marcadores_dentro_de_tag = 0; balanceado (opens == ends: 30/30 e 27/27); ids HTML == ids CSV
+(30 e 27), so_no_html = [] e so_no_csv = []; crossorigin literal de volta; nenhum alt="" com {% dentro.
+Trava de verificação ABORTA a gravação (nada escrito) se qualquer condição falhar.
+
+===============================================================================
+RAIZ NO CÓDIGO (NÃO corrigida aqui — recorre se houver RE-UPLOAD do HTML)
+===============================================================================
+Save normal preserva data.html, então o conserto é durável. MAS um novo upload do mesmo HTML volta a
+passar pelo tokenizer, que ainda pode taguear dentro de atributo/keyword. Fix de código pendente
+(translation-engine.js): buildTaggedHtml deve (a) NUNCA casar substring de palavra sem fronteira
+(o "or" dentro de "crossorigin"); (b) só taguear texto de nó visível OU o VALOR INTEIRO de src/href
+(imagem/link por idioma), nunca um pedaço de keyword/atributo. Proposta separada.
+
+===============================================================================
+CORREÇÃO 2 (mesma data) — eu tinha REMOVIDO demais; restaurado o que era legítimo
+===============================================================================
+O "destaguear e remover" foi largo demais e tirou conteúdo real:
+1) TÍTULOS que só existiam no alt: a frase visível está num <h3> (ex.: `...exactly;"> Not a gym
+   person? </h3>`). O certo NÃO é taguear o alt (nem remover), e sim taguear o TEXTO VISÍVEL do <h3>.
+   Restaurado tagueando o nó de texto visível + linha do CSV (todas as línguas):
+   - p_1785746541286: id27/id30/id33  |  p_1785404592310: id25/id28/id31.
+2) IMAGEM LOCALIZADA: p_1785746541286 id2 tinha 6 URLs de imagem DIFERENTES por idioma
+   (banner localizado) dentro de src="...". Removê-la forçou a imagem em inglês em todos os idiomas.
+   Restaurado: `src="{%translation id2%}URL{%endtranslation%}"` + linha (6 URLs). Tag em src que
+   envolve o VALOR INTEIRO do atributo é padrão Braze VÁLIDO — o gate passou a permitir só esse caso.
+   (p_1785404592310 id2/id43 tinham 1 URL só = mesma imagem; nenhuma imagem perdida lá.)
+3) p_1785404592310 id9 "Spend your workday at a desk?" tinha texto visível e tradução -> restaurado.
+   id34 "Not sure where to start?" NÃO foi restaurado: a frase visível JÁ é tagueada por id39
+   (id34 era duplicata; restaurar aninharia tag). id35/id37 "That's what free trials are for."
+   e as URLs id43/id45 só existiam em comentário (fantasmas) -> ficam removidos.
+
+Verificação final (relendo do banco): balanceado, 0 aninhamento, 0 marcador ruim em markup, imagem
+id2 com 6 URLs distintas presente, ids HTML == ids CSV, "or"/crossorigin limpo. Previewer simulado:
+títulos rendem pt-PT ("Não és grande fã de ir ao ginásio?" etc) e ro-RO ("Nu faci sport?" etc).
+Revs finais: p_1785746541286 -> 69, p_1785404592310 -> 12.
+
+===============================================================================
+CONCORRÊNCIA (observado ao vivo) — linhas de CSV deletadas RESSUSCITAM
+===============================================================================
+Durante o conserto, p_1785746541286 recebeu vários saves de outra sessão (rev 53 -> 68). O merge de
+linhas do CSV é UNIÃO (anti-perda), então linhas que eu deletava voltavam quando a outra sessão
+salvava com cópia antiga. Efeito: reaparece o aviso de integridade (linhas órfãs sem tag no HTML).
+NÃO corrompe export (linha sem tag não é substituída). Converge quando as sessões abertas dão REFRESH
+(passam a ter a versão limpa como base). Fix durável pendente: tombstone de linha de CSV deletada
+(igual ao que já existe para itens), pra deleção não ser desfeita por merge de cópia velha.

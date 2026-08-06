@@ -1447,16 +1447,25 @@ function buildTaggedHtml(silent) {
       const pos = tagged.indexOf(key, searchFrom);
       if(pos === -1) break;
       const before = tagged.slice(0, pos);
-      // Skip if inside an HTML attribute (between < and > with an unclosed quote)
+      // NUNCA cravar uma tag de tradução DENTRO de uma tag <...> (nome de tag OU atributo). Antes
+      // só pulava quando havia uma aspa de atributo ABERTA (dq/sq ímpar) — então um atributo SEM
+      // valor (ex: o "crossorigin" de <link ... crossorigin>) tinha contagem de aspas PAR e passava
+      // batido: um src curto tipo "or" casava como SUBSTRING dentro de "crossorigin", e a Braze, ao
+      // trocar pelo idioma (ro: "sau"), corrompia o markup ("crosssauigin" / "sauder" em "border").
+      // Imagem localizada por idioma já é tratada à parte (r.isImg, src="..."), então o caminho de
+      // TEXTO nunca precisa taguear dentro de <...>: se a posição cai entre '<' e '>', pula sempre.
       const lastTag = before.lastIndexOf('<');
       const lastTagClose = before.lastIndexOf('>');
-      if(lastTag > lastTagClose){
-        // We're inside a tag — check if inside a quoted attribute value
-        const inTag = before.slice(lastTag);
-        const dq = (inTag.match(/"/g)||[]).length;
-        const sq = (inTag.match(/'/g)||[]).length;
-        if(dq % 2 !== 0 || sq % 2 !== 0){ searchFrom = pos + key.length; continue; }
-      }
+      if(lastTag > lastTagClose){ searchFrom = pos + key.length; continue; }
+      // Fronteira de palavra: não casar no MEIO de uma palavra maior. Se o texto da linha começa
+      // (ou termina) com caractere alfanumérico, a borda correspondente no HTML não pode ser outro
+      // alfanumérico — senão "or" casaria dentro de "for"/"your"/"workout". Só restringe bordas
+      // alfanuméricas; frases que começam/terminam com pontuação/aspas/espaço não são afetadas.
+      const _isWord = c => !!c && /[A-Za-z0-9]/.test(c);
+      const _chBefore = pos > 0 ? tagged[pos-1] : '';
+      const _chAfter  = tagged[pos + key.length] || '';
+      if(_isWord(key[0]) && _isWord(_chBefore)){ searchFrom = pos + key.length; continue; }
+      if(_isWord(key[key.length-1]) && _isWord(_chAfter)){ searchFrom = pos + key.length; continue; }
       const opens  = (before.match(/\{%translation [^%]+?%\}/g)||[]).length;
       const closes = (before.match(/\{%endtranslation%\}/g)||[]).length;
       if(opens > closes){ searchFrom = pos + key.length; continue; }
