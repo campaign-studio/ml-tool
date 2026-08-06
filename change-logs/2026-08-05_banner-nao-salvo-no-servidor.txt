@@ -1,0 +1,71 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-05
+Tema: Regra "nada parece salvo sem estar no banco" para o CONTEÚDO — banner persistente de
+      "não salvo no servidor" + retry + confirmação ao sair, SEM perder digitação.
+
+===============================================================================
+PEDIDO
+===============================================================================
+Garantir que NADA fique salvo só localmente parecendo salvo: sempre que o banco não confirmar,
+a pessoa TEM que ver e pode repetir. Decisão do autor (entre 3 opções): estender ao conteúdo
+(edição de tradução/aprovação) MAS mantendo o texto local — nunca perder digitação numa queda de
+rede. Ou seja: local-first (não perde), porém com aviso impossível de ignorar + retry + bloqueio
+de saída, em vez de descartar.
+
+Contexto: as AÇÕES CRÍTICAS (compartilhar, convidar, papel/departamento, sair do projeto) já eram
+estritas (banco-ou-erro-e-desfaz, Fases 0–2). O que faltava era o CONTEÚDO, que é fire-and-forget
+de propósito (não trava a digitação) — sem sinal persistente de falha (o push só pintava o
+setSyncDot e o erro morria numa var local).
+
+===============================================================================
+O QUE MUDOU
+===============================================================================
+- + _syncFailed (flag global) + _setSyncFailed(v): o sinal persistente que faltava. Setado no push
+  de conteúdo (ghMergeAndPushProjects): TRUE no catch de erro E quando não há conexão (!sb, não-
+  strict — não dá pra confirmar); FALSE só quando o banco confirma (setSyncDot('saved')).
+- + Banner FIXO no rodapé (#syncBanner, vermelho, z-index alto sobre qualquer tela), com ícone,
+  mensagem ("Suas alterações NÃO foram salvas no servidor…" / "Sem conexão com o servidor…") e
+  botão "Tentar de novo". renderSyncBanner() mostra/esconde conforme _syncFailed.
+- + retrySync(): reenvia via ghMergeAndPushProjects(projGetAll()) — idempotente (só reescreve o que
+  difere do baseline), NÃO descarta cache; sucesso limpa _syncFailed e some o banner.
+- + _okToLeaveUnsynced(): se _syncFailed, pede uiConfirm ("Sair assim mesmo? … continua salvo neste
+  navegador e o aviso permanece"). Aplicado em goToDashboard (ramo avulso E campanha, ANTES de
+  qualquer teardown — cancelar mantém o projeto/pasta como está). Nunca descarta digitação.
+- beforeunload: o aviso nativo agora dispara com _pendingProjectsPush EM VOO **ou** _syncFailed
+  (push que já falhou e ainda não foi refeito), não só push em voo.
+
+Princípio preservado: NENHUM desses caminhos toca em S/localStorage/currentProjectId antes de
+confirmar. O cache local (projSaveAllLocal) é mantido independentemente do resultado do push —
+bloquear/avisar a navegação basta; o retry reusa o mesmo cache. Digitação nunca se perde.
+
+===============================================================================
+DEPENDÊNCIA (Safari)
+===============================================================================
+Se sbClient() for null (lib do Supabase não carrega do CDN no Safari — a investigar, pendente do
+`window.supabase` no Safari), TODO save de conteúdo marca _syncFailed → o banner fica permanente e
+a saída sempre pede confirmação. O banner é o comportamento CORRETO (honesto), mas o Safari só fica
+usável quando a conexão com o banco for consertada também (provável fix: auto-hospedar a lib em vez
+do CDN). Os dois têm que ir juntos pro Safari.
+
+===============================================================================
+ARQUIVOS (index.html)
+===============================================================================
+- + _syncFailed, _setSyncFailed, renderSyncBanner, retrySync, _okToLeaveUnsynced (perto de
+  setSyncDot/showSyncWarning).
+- + DOM #syncBanner (rodapé fixo) antes do #hdrBar.
+- ghMergeAndPushProjects: _setSyncFailed(true) no !sb não-strict e no catch; _setSyncFailed(false)
+  no sucesso.
+- goToDashboard: _okToLeaveUnsynced() nos dois ramos (avulso e campanha) antes do teardown.
+- beforeunload: condição do aviso amplia p/ _pendingProjectsPush || _syncFailed.
+
+===============================================================================
+VERIFICAÇÃO (browser local — só lógica de UI, sem escrita em produção)
+===============================================================================
+- Load em localhost:3000: ZERO erros de console; helpers e banner presentes.
+- Estado inicial: banner escondido. _setSyncFailed(true) → banner 'flex' com a msg certa;
+  _setSyncFailed(false) → some.
+- _okToLeaveUnsynced: sem falha → true direto (sem prompt); com falha → chama uiConfirm e respeita
+  "Continuar aqui" (false) vs "Sair assim mesmo" (true).
+- retrySync: push mockado que falha → banner permanece; que sucede → banner some.
+- Prova VISUAL do banner fica pro ambiente logado (preview é login-gated e a geometria headless
+  não renderiza fixed/rodapé de forma confiável — mesma limitação já vista na sessão).
