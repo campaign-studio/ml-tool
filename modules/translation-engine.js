@@ -1099,6 +1099,9 @@ function replaceLiquidPlaceholders(html){
   html=html.replace(/\{\{context\.offer_trial_duration\}\}/g, '{trial_duration}');
   html=html.replace(/\{\{content_blocks?\.\$\{currency\}[^}]*\}\}/g, '{currency}');
   html=html.replace(/\{\{custom_attribute\.\$\{([^}]+)\}[^}]*\}\}/g, '{$1}');
+  // Mesma forma ${...} pra context.* — ex: {{context.${first_paid_plan_price}}} vinha CRU no
+  // preview (as regras acima só cobriam {{context.NOME}} sem ${}), poluindo a arte. Vira {NOME}.
+  html=html.replace(/\{\{context\.\$\{([^}]+)\}[^}]*\}\}/g, '{$1}');
   // Rede de segurança: qualquer OUTRA Liquid merge tag com filtro "| default: '...'" que
   // não caiu em nenhuma regra específica acima (ex: {{rating | default: '4.5'}}, ou uma
   // variação de sintaxe de content_block que a gente ainda não tinha visto).
@@ -1170,10 +1173,12 @@ function buildPreviewHtml(lang, revealRow){
   html = html.replace(/\{%[-\s]*comment[-\s]*%\}[\s\S]*?\{%[-\s]*endcomment[-\s]*%\}/gi, '');
   html = renderFooterPlaceholder(html);
   html = resolveConditionalBranch(html, S.condBranch|0, revealRow);
-  // {% assign partner_X_id %} some (declarativo, nunca visível); os demais viram label curto.
-  html = html.replace(/\{%[-\s]*assign\s+partner_\d+_id\s*=[^%]*?%\}/g, '');
-  html = html.replace(/\{%[-\s]*assign\s+([A-Za-z0-9_.]+)\s*=[^%]*?%\}/g,
-    (m, name) => `<span class="mlt-cond-tag">{assign.${name}}</span>`);
+  // {% assign %} é DECLARAÇÃO de variável Liquid — não produz saída nenhuma no e-mail real (o
+  // Braze não renderiza nada no lugar). No preview a gente esconde TODOS: antes cada assign (fora
+  // os partner_X_id) virava uma pílula {assign.NOME} só cosmética, mas ela poluía a arte aparecendo
+  // "solta" no meio do corpo (ex: {ASSIGN.GYMS_URL} flutuando acima de uma imagem). Só preview —
+  // o HTML/CSV exportado mantém os {% assign %} originais intactos (buildTaggedHtml não passa por aqui).
+  html = html.replace(/\{%[-\s]*assign\s+[A-Za-z0-9_.]+\s*=[^%]*?%\}/g, '');
 
   // Imagens: buildTaggedHtml põe a tag DENTRO do src (src="{%translation idN%}URL{%endtranslation%}").
   // Converte a <img> inteira num <span data-tid class=braze-img-wrap>, trocando o src pelo de

@@ -1,0 +1,55 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-11
+Tema: PREVIEW parecia "quebrado" em e-mails muito pesados de Liquid (ex: "Eligible - Phase 1 -
+      Canadian" / "Email 1 - WH+"). Duas correções COSMÉTICAS de preview (o HTML/CSV exportado
+      pro Braze NÃO muda em nada).
+
+===============================================================================
+DIAGNÓSTICO (o dado NÃO estava corrompido)
+===============================================================================
+Inspeção do item "Email 1 - WH+" (pasta camp_1786467035898) com as funções reais, só leitura
+(sbClient neutralizado p/ escrita durante a inspeção):
+  - buildTaggedHtml: 69 tags abrindo / 69 fechando, balanceado; 0 linhas órfãs; as tags "dentro
+    de <...>" eram todas src de IMAGEM localizada (padrão correto). Tagueamento 100% íntegro.
+O que fazia PARECER quebrado era o preview renderizando pedaços de Liquid como placeholder:
+  1. 5 {% assign X = {{signUpURL}} %} (partner_url, app_url, checkin_url, gyms_url, apps_url) viravam
+     pílulas cinza {ASSIGN.X} soltas no corpo (acima de imagens/botões).
+  2. {{context.${first_paid_plan_price}}} e {{context.${last_free_plan_name}}} apareciam CRUS.
+  3. Logos de parceiro (content-blocks / {{partner_N_name}}) viram caixas "IMG" vazias — conteúdo
+     dinâmico do Braze, sem valor real no preview (não é bug; não mexido).
+
+===============================================================================
+CORREÇÃO (só preview — buildPreviewHtml e replaceLiquidPlaceholders; export intacto)
+===============================================================================
+modules/translation-engine.js:
+1) buildPreviewHtml — {% assign %} agora é REMOVIDO por completo (era, desde 2026-07-30/tarefa #25,
+   transformado em pílula {assign.NOME}). Justificativa: {% assign %} é DECLARAÇÃO de variável
+   Liquid — no e-mail real (Braze) não produz saída nenhuma. A pílula era puramente cosmética e
+   poluía a arte aparecendo solta no meio do conteúdo. Reverte a decisão da #25 (que também era
+   cosmética). Os partner_X_id já eram removidos; agora TODOS os assigns somem no preview.
+   -> Isto REVERTE o comportamento de "assign vira pílula" da #25. Se algum dia quiserem o rótulo
+      de volta, é só reintroduzir o replace por <span class="mlt-cond-tag">.
+
+2) replaceLiquidPlaceholders — nova regra pra {{context.${NOME}}} (forma com ${...}), espelhando a
+   que já existia pra custom_attribute.${...}. As regras anteriores só cobriam {{context.NOME}} sem
+   ${}, então a forma ${...} vazava crua. Agora vira {NOME} legível (ex: {first_paid_plan_price}).
+
+O que NÃO muda: buildTaggedHtml / buildCsvStringForSave (export) não passam por nenhuma dessas duas
+funções — o {% assign %} e o {{context.${...}}} originais continuam intactos no que sobe pro Braze.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Funções reais no navegador (puras/regex, sem banco):
+  * strip de assign: "{% assign gyms_url = {{signUpURL}} %}<a href="{{gyms_url}}">Gyms</a>" ->
+    "<a href="{{gyms_url}}">Gyms</a>" (declaração some; a REFERÊNCIA {{gyms_url}} no link fica).
+  * replaceLiquidPlaceholders("... {{context.${first_paid_plan_price}}} ... {{context.${last_free_plan_name}}} ...")
+    -> "... {first_paid_plan_price} ... {last_free_plan_name} ..." (sem "context." cru).
+- Sem erro de sintaxe no load (404s do console são imagens de parceiro com URL quebrada + sandbox
+  do srcdoc, ruído normal do preview).
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- modules/translation-engine.js: buildPreviewHtml (assign -> remove); replaceLiquidPlaceholders
+  (+ regra context.${...}).
