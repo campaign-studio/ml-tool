@@ -1532,7 +1532,7 @@ function buildTaggedHtml(silent) {
   });
   if(missed.length && !silent){
     console.warn(`[buildTaggedHtml] ${missed.length} linha(s) não encontrada(s) no HTML e ficaram de fora do export:`, missed.map(r=>({id:r.id, src:(r.src||'').slice(0,80)})));
-    if(typeof showNotif === 'function') showNotif(`${missed.length} linha(s) não foram encontradas no HTML e ficaram sem tradução no export — veja o console para detalhes.`, 'warn');
+    if(typeof showNotif === 'function') showNotif(`${missed.length} line(s) weren't found in the HTML and were left untranslated in the export — see the console for details.`, 'warn');
   }
   return tagged;
 }
@@ -1705,7 +1705,7 @@ function renderTranslationGridBody(cfg) {
     // Marcador VML na coluna Origin: quando o trecho é o label de uma forma VML (fallback
     // Outlook, ex: botão <v:roundrect>), mostra a tag ali pra quem edita saber que é VML.
     const vmlBadge = row.vmlTag
-      ? `<span class="vml-badge" title="Este trecho está dentro de uma forma VML (fallback Outlook): &lt;${escHtml(row.vmlTag)}&gt;">VML: ${escHtml(row.vmlTag)}</span>`
+      ? `<span class="vml-badge" title="This segment is inside a VML shape (Outlook fallback): &lt;${escHtml(row.vmlTag)}&gt;">VML: ${escHtml(row.vmlTag)}</span>`
       : '';
     // Imagem adicionada DEPOIS que o projeto já tinha aprovação: a aprovação foi mantida (regra
     // silenciosa), mas o item fica marcado como "novo — revisar" até uma nova aprovação.

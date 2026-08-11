@@ -1,0 +1,57 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-11
+Tema: AUDITORIA + remoção de português VISÍVEL pro usuário (o produto é 100% em inglês). Só texto
+      de interface; comentários de código e logs de console (developer-only) NÃO foram tocados.
+
+===============================================================================
+AUDITORIA
+===============================================================================
+Varredura dos arquivos de UI (index.html + modules/{translation-engine,approval-canvas,folders,
+strings}.js) por português em contextos que o usuário REALMENTE vê: texto em HTML, title/placeholder/
+alt/aria-label, showNotif/uiConfirm/uiAlert, textContent/innerHTML e o dicionário i18n (window.STR).
+Excluídos de propósito: comentários (// e /* */ e <!-- -->), console.*, nomes de variável/função,
+change-logs. strings.js já estava 100% em inglês (os únicos PT ali são comentários e as CHAVES do
+LEGACY_LABEL_MAP, que casam registros antigos do banco e nunca são renderizadas).
+
+Total encontrado: 15 trechos visíveis (9 deles em POP-UPS — banner de "não salvo", diálogo de
+sair sem salvar e toasts de aviso).
+
+===============================================================================
+CORREÇÕES (PT -> EN)
+===============================================================================
+index.html:
+- Banner "não salvo no servidor" (rodapé): span estático + 2 variações via textContent + botão
+  "Tentar de novo"/"Tentando…"  ->  "Your changes have NOT been saved…", "No connection…",
+  "Try again"/"Trying…".
+- Diálogo (uiConfirm) de sair com pendência: mensagem + title "Não salvo no servidor" +
+  okLabel "Sair assim mesmo" + cancelLabel "Continuar aqui"  ->  "Not saved to the server" /
+  "Leave anyway" / "Stay here".
+- Tooltip do toggle de branch condicional ("Só teste de visualização…")  ->  "Preview test only…".
+- Tooltip do botão Move to folder ("Mover este e-mail…")  ->  "Move this email into a folder".
+- Nome padrão de projeto sem título ("Projeto sem nome")  ->  "Untitled project".
+- Toast de integridade do preview ("Aviso de integridade…")  ->  "Integrity warning…".
+
+modules/translation-engine.js:
+- Toast de export ("N linha(s) não foram encontradas…")  ->  "N line(s) weren't found…".
+- Tooltip do badge VML ("Este trecho está dentro de uma forma VML…")  ->  "This segment is inside
+  a VML shape…".
+
+modules/approval-canvas.js:
+- Tooltip do toggle de branch na Approval View ("Só teste de visualização…")  ->  "Preview test
+  only…".
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Re-varredura pós-edição (title/placeholder/alt/aria-label/value/showNotif/uiConfirm/textContent/
+  texto visível): zero PT restante fora de comentário/console.
+- App recarregado (localhost:3000): sem erro de sintaxe; funções carregadas; banner agora lê
+  "Your changes have NOT been saved to the server." e o botão "Try again".
+
+Escopo intencionalmente NÃO alterado: comentários de código (internos) e mensagens de console.*
+(developer-only) seguem em português — não são "área do produto".
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- index.html (12), modules/translation-engine.js (2), modules/approval-canvas.js (1).

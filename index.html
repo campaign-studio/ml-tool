@@ -1854,10 +1854,10 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
      box-shadow:0 -2px 12px rgba(0,0,0,.28);font-family:var(--sans);">
   <span style="display:inline-flex;align-items:center;gap:8px;">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-    <span id="syncBannerMsg">Suas alterações NÃO foram salvas no servidor.</span>
+    <span id="syncBannerMsg">Your changes have NOT been saved to the server.</span>
   </span>
   <button id="syncBannerRetry" onclick="retrySync()" style="background:#fff;color:#d8385e;border:none;border-radius:7px;
-     padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans);white-space:nowrap;">Tentar de novo</button>
+     padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans);white-space:nowrap;">Try again</button>
 </div>
 
 <!-- HEADER (breadcrumb — only shown inside the wizard) -->
@@ -2077,7 +2077,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
             Mobile
           </button>
         </div>
-        <div class="sp-wrap" id="condBranchWrap" title="Só teste de visualização — não afeta o HTML tageado nem o CSV" style="display:none;"></div>
+        <div class="sp-wrap" id="condBranchWrap" title="Preview test only — doesn't affect the tagged HTML or the CSV" style="display:none;"></div>
       </div>
       <div class="vw-langs">
         <span class="vw-langs-label">Language</span>
@@ -2637,18 +2637,18 @@ function renderSyncBanner() {
   if(_syncFailed) {
     const msg = document.getElementById('syncBannerMsg');
     if(msg) msg.textContent = ghConfigured()
-      ? 'Suas alterações NÃO foram salvas no servidor — por enquanto estão só neste navegador.'
-      : 'Sem conexão com o servidor — suas alterações NÃO estão sendo salvas (só neste navegador).';
+      ? 'Your changes have NOT been saved to the server — for now they are only in this browser.'
+      : 'No connection to the server — your changes are NOT being saved (only in this browser).';
   }
 }
 // Reenvia o que ainda não foi confirmado (sem descartar nada do cache local). ghMergeAndPushProjects
 // só reescreve o que difere do baseline, então é idempotente; sucesso limpa _syncFailed sozinho.
 async function retrySync() {
   const btn = document.getElementById('syncBannerRetry');
-  if(btn){ btn.disabled = true; btn.textContent = 'Tentando…'; }
+  if(btn){ btn.disabled = true; btn.textContent = 'Trying…'; }
   try { await ghMergeAndPushProjects(projGetAll()); } catch(e){ /* o catch interno já marca _syncFailed */ }
   finally {
-    if(btn){ btn.disabled = false; btn.textContent = 'Tentar de novo'; }
+    if(btn){ btn.disabled = false; btn.textContent = 'Try again'; }
     renderSyncBanner();
   }
 }
@@ -2657,8 +2657,8 @@ async function retrySync() {
 async function _okToLeaveUnsynced() {
   if(!_syncFailed) return true;
   return await uiConfirm(
-    'Suas alterações ainda NÃO foram salvas no servidor. Sair mesmo?\n\nElas continuam salvas neste navegador e o aviso permanece até conseguir subir — dá pra tentar de novo a qualquer momento.',
-    { title: 'Não salvo no servidor', okLabel: 'Sair assim mesmo', cancelLabel: 'Continuar aqui', danger: true });
+    'Your changes have NOT been saved to the server yet. Leave anyway?\n\nThey stay saved in this browser and the warning remains until they can be uploaded — you can try again at any time.',
+    { title: 'Not saved to the server', okLabel: 'Leave anyway', cancelLabel: 'Stay here', danger: true });
 }
 
 // Padronizado: agora sai no MESMO pop-up central da plataforma (antes era um toast discreto no
@@ -7023,7 +7023,7 @@ function projRowHtml(p, isOwner) {
         </div>
       </div>
       <div class="proj-actions">
-        ${isOwner ? `<button class="btn-back" title="Mover este e-mail para dentro de uma pasta" onclick="openMoveToFolderModal('${p.id}')">📂 Move to folder</button>` : ''}
+        ${isOwner ? `<button class="btn-back" title="Move this email into a folder" onclick="openMoveToFolderModal('${p.id}')">📂 Move to folder</button>` : ''}
         ${canShare ? `<button class="btn-back" onclick="openShareModal('${p.id}')">Share with your team</button>` : ''}
         ${isApprover ? `<button class="btn-go" style="background:#6d28d9;" ${locked ? 'disabled' : ''} onclick="approverOpenProject('${p.id}')">Approve copies</button>` : ''}
         ${!isApprover ? `<button class="btn-go" id="openBtn-${p.id}" ${(locked && !lockedByMe) || reviewers.length ? 'disabled' : ''} onclick="projOpen('${p.id}', this)">Open Project</button>` : ''}
@@ -9043,7 +9043,7 @@ function projSaveOnBuild(wasImport) {
   const me = authCurrentUser();
   if(!me) return;
   const projects = projGetAll();
-  const name = (S.csv && S.csv.name) ? S.csv.name : 'Projeto sem nome';
+  const name = (S.csv && S.csv.name) ? S.csv.name : 'Untitled project';
 
   // Continue editing: S.rawHtml já é o HTML tageado (vindo do upload). New project: precisa gerar a versão tageada agora.
   const htmlToSave = wasImport ? S.rawHtml : buildTaggedHtml();
@@ -11626,7 +11626,7 @@ function verifyAllRowsPositionable() {
   if(missing.length || dups.length) {
     console.warn('[integridade preview] ids que não aparecem em nenhum ramo:', missing, '| ids duplicados no HTML:', dups);
     if(typeof showNotif === 'function') {
-      showNotif(`Aviso de integridade: ${missing.length} trecho(s) não aparecem no preview em nenhum modo${dups.length ? ` · ${dups.length} id(s) duplicado(s)` : ''} — veja o console.`, 'warn');
+      showNotif(`Integrity warning: ${missing.length} segment(s) don't appear in the preview in any mode${dups.length ? ` · ${dups.length} duplicate id(s)` : ''} — see the console.`, 'warn');
     }
   }
   return { missing, dups };

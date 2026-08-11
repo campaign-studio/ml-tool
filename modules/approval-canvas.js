@@ -587,7 +587,7 @@ function renderApprovalGrid() {
     // Cond-branch é um teste do fluxo single (um item × idiomas). No modo locale (itens
     // diferentes por frame) não faz sentido — esconde os botões.
     const condToggle = _avMode === 'single'
-      ? `<span class="av-cb-toggle" title="Só teste de visualização — não afeta o HTML/CSV"${maxCondBranchCount(S.rawHtml)<=1?' style="display:none;"':''}>
+      ? `<span class="av-cb-toggle" title="Preview test only — doesn't affect the HTML/CSV"${maxCondBranchCount(S.rawHtml)<=1?' style="display:none;"':''}>
             ${Array.from({length:maxCondBranchCount(S.rawHtml)}, (_,i) =>
               `<button class="av-cb-btn ${(S.condBranch|0)===i?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch(${i})">${condBranchLabel(i,maxCondBranchCount(S.rawHtml))}</button>`
             ).join('')}
