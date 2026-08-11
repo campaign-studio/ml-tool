@@ -83,6 +83,29 @@ body{background:var(--bg);font-family:var(--sans);font-size:14px;color:var(--tex
 .amb-glow::before{width:60vw;height:60vw;top:-25vw;right:-15vw;background:radial-gradient(circle,rgba(216,56,94,.16),transparent 62%);}
 .amb-glow::after{width:55vw;height:55vw;bottom:-25vw;left:-20vw;background:radial-gradient(circle,rgba(99,102,241,.12),transparent 62%);}
 
+/* ─── Tema escuro (redesign/foundation): prefers-color-scheme + toggle via data-theme, igual ao Ditto UX Audit.
+       Redefine só os tokens do design system; telas ainda não migradas (cores hardcoded) completam o dark ao
+       serem reskinadas. data-theme="light" força claro mesmo no SO escuro; data-theme="dark" força escuro. ─── */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#131019; --ground:#131019; --surface:#1b1824; --s2:#211d2c; --s3:#191622;
+    --border:#2b2738; --border-s:#3a3550;
+    --text:#f1eff6; --text2:#a8a3b6; --text3:#6f6a82;
+    --brand-hover:#f2496b; --brand-soft:rgba(242,73,107,.13); --brand-tint:rgba(242,73,107,.16); --brand-focus:rgba(242,73,107,.24);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131019; --ground:#131019; --surface:#1b1824; --s2:#211d2c; --s3:#191622;
+  --border:#2b2738; --border-s:#3a3550;
+  --text:#f1eff6; --text2:#a8a3b6; --text3:#6f6a82;
+  --brand-hover:#f2496b; --brand-soft:rgba(242,73,107,.13); --brand-tint:rgba(242,73,107,.16); --brand-focus:rgba(242,73,107,.24);
+}
+.theme-tgl{position:fixed;top:18px;right:18px;z-index:10;display:inline-flex;align-items:center;gap:6px;
+  font-family:var(--sans);font-size:12.5px;font-weight:600;color:var(--muted);background:var(--surface);
+  border:1px solid var(--border);border-radius:99px;padding:7px 13px;cursor:pointer;box-shadow:var(--shadow-1);
+  transition:color var(--dur) var(--ease-out),border-color var(--dur) var(--ease-out),background var(--dur) var(--ease-out);}
+.theme-tgl:hover{color:var(--text);border-color:var(--border-s);}
+
 /* HEADER */
 .hdr{height:52px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:0;position:relative;z-index:320;}
 
@@ -1048,9 +1071,17 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 <script src="vendor/supabase-js.min.js" onerror="(function(){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';document.head.appendChild(s);})()"></script>
 </head>
 <body>
+<script>/* Tema: aplica a escolha salva ANTES de pintar (sem flash). Toggle via .theme-tgl. */
+(function(){try{var t=localStorage.getItem('mlt-theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('data-theme');
+  var sysDark=window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;
+  var next=cur==='dark'?'light':cur==='light'?'dark':(sysDark?'light':'dark');
+  r.setAttribute('data-theme',next);try{localStorage.setItem('mlt-theme',next);}catch(e){}}
+</script>
 
 <!-- ═══════════ LOGIN OVERLAY ═══════════ -->
 <div id="loginOverlay" class="amb-glow" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;">
+  <button class="theme-tgl" aria-label="Toggle light/dark theme" onclick="toggleTheme()">◐ Theme</button>
   <div class="login-shell">
     <div class="login-card">
       <div class="login-mark">
