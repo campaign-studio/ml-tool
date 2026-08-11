@@ -73,6 +73,10 @@ body{background:var(--bg);font-family:var(--sans);font-size:14px;color:var(--tex
 .btn--ghost:hover{background:var(--bg);color:var(--text);}
 .btn--soft{background:var(--brand-soft);border-color:transparent;color:var(--brand);}
 .btn--soft:hover{background:var(--brand-tint);}
+.btn--danger{background:transparent;border-color:transparent;color:#c0392b;}
+.btn--danger:hover{background:rgba(192,57,43,.10);color:#a93226;}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn--danger{color:#f0807e;}}
+:root[data-theme="dark"] .btn--danger{color:#f0807e;}
 .btn--sm{padding:6px 10px;font-size:var(--fs-sm);border-radius:7px;}
 .btn--lg{padding:13px 22px;font-size:var(--fs-md);border-radius:10px;}
 .glass{background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.6);border-radius:var(--radius-lg);
@@ -288,7 +292,8 @@ body{background:var(--bg);font-family:var(--sans);font-size:14px;color:var(--tex
 .dash-sort{display:flex;gap:2px;background:var(--s2);border-radius:8px;padding:2px;}
 .dash-sort-btn{height:24px;padding:0 10px;border:none;background:transparent;border-radius:6px;font-size:11px;font-weight:600;color:var(--text3);cursor:pointer;font-family:var(--sans);transition:all .12s;}
 .dash-sort-btn:hover{color:var(--text2);}
-.dash-sort-btn.active{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(20,20,40,.1);}
+.dash-sort-btn.active{background:var(--brand);color:#fff;box-shadow:0 1px 2px rgba(216,56,94,.2);}
+.dash-sort-btn.active:hover{color:#fff;}
 .pills{display:flex;flex-wrap:wrap;gap:5px;min-height:24px;}
 .pill{display:flex;align-items:center;gap:4px;border-radius:20px;padding:3px 9px;font-size:11px;font-weight:500;}
 .pill.acc{background:var(--acc-bg);border:1px solid var(--acc-bd);color:var(--accent);}
@@ -651,15 +656,15 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .abl-approve-btn:hover{background:#5b21b6;}
 
 /* ═══════════ CARD DE ITEM DENTRO DA PASTA (e-mail/in-app/push) — cores sólidas ═══════════ */
-.camp-item-card{position:relative;display:flex;flex-direction:column;border-radius:18px;overflow:hidden;
+.camp-item-card{position:relative;display:flex;flex-direction:column;border-radius:var(--radius-lg);overflow:hidden;
   background:var(--surface);border:1px solid var(--border);
-  box-shadow:0 1px 3px rgba(20,20,40,.05);transition:border-color .18s,box-shadow .18s,transform .18s;}
-.camp-item-card:hover{border-color:var(--border-s);box-shadow:0 16px 36px rgba(20,20,40,.12);transform:translateY(-3px);}
-.camp-item-preview{height:440px;overflow:hidden;background:#f2f1f6;position:relative;}
+  box-shadow:var(--shadow-1);transition:border-color var(--dur) var(--ease-out),box-shadow var(--dur) var(--ease-out),transform var(--dur) var(--ease-out);}
+.camp-item-card:hover{border-color:var(--brand);box-shadow:0 10px 28px rgba(216,56,94,.10);transform:translateY(-2px);}
+.camp-item-preview{height:440px;overflow:hidden;background:var(--s3);position:relative;}
 .camp-item-preview iframe{width:100%;height:100%;border:none;}
 /* Rodapé em COLUNA: linha de info (nome + progresso) em cima, linha de AÇÕES embaixo — sempre
    visíveis (não escondidas no hover), pra "Remove from folder" e "Delete" ficarem evidentes. */
-.camp-item-foot{display:flex;flex-direction:column;gap:10px;padding:13px 15px;border-top:1px solid var(--border);background:var(--s2);}
+.camp-item-foot{display:flex;flex-direction:column;gap:12px;padding:14px 16px;border-top:1px solid var(--border);background:var(--surface);}
 .camp-item-info{display:flex;align-items:center;gap:10px;min-width:0;}
 .camp-item-name{flex:1;min-width:0;font-size:14px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .camp-item-progress{flex-shrink:0;}
@@ -5790,20 +5795,20 @@ function renderCampaignGallery(pairs) {
           <div class="camp-item-progress">${translationProgressBadgeHtml(campaignItemTranslationStats(it), 'font-size:10px;padding:2px 8px;')}</div>
         </div>
         <div class="camp-item-actions">
-          <button class="tbtn" style="height:30px;padding:0 12px;font-size:11.5px;border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;" title="Approve copies" onclick="openCampaignItemApprove(${idx})">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
+          <button class="btn btn--sm btn--primary" title="Approve copies" onclick="openCampaignItemApprove(${idx})">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
             Approve
           </button>
-          ${_approverMode ? '' : `<button class="tbtn html" style="height:30px;padding:0 12px;font-size:11.5px;" title="Edit translations" onclick="openCampaignItemEdit(${idx})">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          ${_approverMode ? '' : `<button class="btn btn--sm" title="Edit translations" onclick="openCampaignItemEdit(${idx})">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             Edit
           </button>`}
-          ${(!_approverMode && it.type === 'email' && _campaign) ? `<button class="tbtn camp-item-btn-remove" style="height:30px;padding:0 12px;font-size:11.5px;" title="Remove this email from the folder — it goes back to the standalone list" onclick="removeItemFromFolder('${escJsAttr(_campaign.id)}','${escJsAttr(it.id)}')">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 015 5v1"/></svg>
+          ${(!_approverMode && it.type === 'email' && _campaign) ? `<button class="btn btn--sm btn--ghost" title="Remove this email from the folder — it goes back to the standalone list" onclick="removeItemFromFolder('${escJsAttr(_campaign.id)}','${escJsAttr(it.id)}')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 015 5v1"/></svg>
             Remove from folder
           </button>` : ''}
-          ${_approverMode ? '' : `<button class="tbtn camp-item-btn-delete" style="height:30px;padding:0 11px;font-size:11.5px;" title="Delete this item permanently" onclick="deleteContentItem(${idx})">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
+          ${_approverMode ? '' : `<button class="btn btn--sm btn--danger" title="Delete this item permanently" onclick="deleteContentItem(${idx})">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
             Delete
           </button>`}
         </div>
