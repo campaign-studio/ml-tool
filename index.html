@@ -190,15 +190,15 @@ body{background:var(--bg);font-family:var(--sans);font-size:14px;color:var(--tex
    Destructive:                    fundo/borda vermelho
    Accent nav (.btn-lime):         lime #dcff79 texto navy (usado na navbar)
 ──────────────────────────────────────────────────────────────────── */
-.btn-next{margin-top:24px;width:100%;padding:12px;border-radius:var(--r);background:var(--wh-navy);color:#fff;border:none;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:background .15s,box-shadow .15s;display:flex;align-items:center;justify-content:center;gap:7px;}
-.btn-next:hover{background:var(--wh-navy2);box-shadow:0 4px 12px rgba(27,19,64,.25);}
+.btn-next{margin-top:24px;width:100%;padding:12px;border-radius:var(--r);background:var(--brand);color:#fff;border:none;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:background .15s,box-shadow .15s;display:flex;align-items:center;justify-content:center;gap:7px;}
+.btn-next:hover{background:var(--brand-hover);box-shadow:0 2px 8px rgba(216,56,94,.25);}
 .btn-next:disabled{opacity:.38;cursor:not-allowed;}
 .btn-back{background:none;border:1.5px solid var(--border-s);border-radius:var(--r);padding:9px 18px;font-size:13px;cursor:pointer;color:var(--text2);font-family:var(--sans);transition:background .15s,border-color .15s;}
 .btn-back:hover{background:var(--s2);border-color:var(--wh-navy);color:var(--wh-navy);}
-.btn-go{padding:10px 22px;border-radius:var(--r);background:var(--wh-navy);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);display:flex;align-items:center;gap:6px;transition:background .15s,box-shadow .15s,opacity .15s;}
-.btn-go:hover{background:var(--wh-navy2);box-shadow:0 4px 12px rgba(27,19,64,.25);}
+.btn-go{padding:10px 22px;border-radius:var(--r);background:var(--brand);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);display:flex;align-items:center;gap:6px;transition:background .15s,box-shadow .15s,opacity .15s;}
+.btn-go:hover{background:var(--brand-hover);box-shadow:0 2px 8px rgba(216,56,94,.25);}
 .btn-go:disabled{opacity:.38;cursor:not-allowed;pointer-events:none;}
-.btn-go:disabled:hover{background:var(--wh-navy);box-shadow:none;}
+.btn-go:disabled:hover{background:var(--brand);box-shadow:none;}
 .btn-spinner{width:11px;height:11px;border-radius:50%;border:1.5px solid rgba(255,255,255,.4);border-top-color:#fff;animation:btnSpin .6s linear infinite;flex-shrink:0;}
 @keyframes btnSpin{to{transform:rotate(360deg);}}
 .move-spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--accent);animation:btnSpin .7s linear infinite;}
@@ -898,23 +898,19 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 .actions{display:flex;gap:6px;margin-top:8px;justify-content:flex-end;}
 
 /* ═══════════ NAVBAR (header controls, distinct from wizard breadcrumb) ═══════════ */
-.topbar{height:48px;background:linear-gradient(135deg,var(--wh-navy),var(--wh-navy2));display:flex;align-items:center;padding:0 20px;position:sticky;top:0;z-index:700;box-shadow:0 1px 3px rgba(0,0,0,.12);}
-.topbar-logo{color:#fff!important;}
-.topbar-logo .logo-dot{background:#fff;}
-.topbar-logo .logo-sep{color:rgba(255,255,255,.4);}
-.topbar-logo .logo-sub{color:rgba(255,255,255,.7);}
-.topbar-logo:hover{background:rgba(255,255,255,.12);}
-.topbar-email{font-size:12px;font-weight:500;color:rgba(255,255,255,.85);margin-right:4px;}
-.topbar .navlink{color:rgba(255,255,255,.85);}
-.topbar .navlink:hover{background:rgba(255,255,255,.16);color:#fff;}
-.topbar .navlink.active{background:var(--wh-lime);color:var(--wh-navy);border-color:var(--wh-lime);}
-.topbar .navlink.ghost{color:rgba(255,255,255,.65);}
-.topbar .navlink.ghost:hover{background:rgba(255,255,255,.16);color:#fff;}
+/* Top bar — nav claro Ditto (redesign/foundation): antes era barra navy escura. */
+.topbar{height:48px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;position:sticky;top:0;z-index:700;}
+.topbar-logo{color:var(--text)!important;}
+.topbar-logo .logo-sep{color:var(--border-s);}
+.topbar-logo .logo-sub{color:var(--text3);}
+.topbar-logo:hover{background:var(--s2);}
+.topbar-email{font-size:12px;font-weight:500;color:var(--text2);margin-right:4px;}
+/* navlink dentro do topbar herda o estilo base claro (.navlink) — sem overrides brancos */
 
 /* Ícone de perfil (bolinha com a inicial, mesma lógica de cor por pessoa usada nos
    cursores da Approval View) — abre um menu com "Change password" e, pra admin,
    "Members" (que antes era uma aba do Dashboard). */
-.profile-avatar-btn{width:28px;height:28px;border-radius:50%;border:1.5px solid rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:#fff;cursor:pointer;flex-shrink:0;}
+.profile-avatar-btn{width:28px;height:28px;border-radius:50%;border:none;background:linear-gradient(135deg,var(--brand),var(--brand-hover));box-shadow:0 0 0 1px var(--border);display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:#fff;cursor:pointer;flex-shrink:0;}
 .profile-menu{position:absolute;top:calc(100% + 8px);right:0;min-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 28px rgba(20,20,40,.18);z-index:400;padding:6px;animation:modalIn .15s cubic-bezier(.2,.8,.2,1);}
 .profile-menu-header{padding:10px 12px 8px;border-bottom:1px solid var(--border);margin-bottom:6px;}
 .profile-menu-name{font-size:13px;font-weight:700;color:var(--text);}
@@ -1864,22 +1860,25 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
 <!-- TOP NAVBAR (blue, always visible) -->
 <div class="topbar">
   <div class="logo topbar-logo" onclick="goToDashboard()" role="button" title="Dashboard">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="wh-mark"><path d="M11.5998 10.08C10.94 8.54002 7.77944 7.38076 5.39991 7.38076C3.38018 7.38076 2 8.08084 2 9.60065C2 10.7801 3.03978 11.6006 3.90006 11.6006C5.77992 11.6006 6.86013 9.78092 9.28008 9.78092C10.1404 9.78092 10.86 10.1609 10.86 10.7211C10.86 10.9612 10.6999 11.1407 10.4597 11.1407C10.26 11.1407 10.1104 11.0404 9.73933 11.0404C7.29916 11.0404 3.21927 14.5198 3.21927 16.7001C3.21927 17.7801 4.07957 18.7001 5.17918 18.7001C5.91899 18.7001 6.63939 18.2999 6.95957 17.5998C7.69938 16.1399 7.29997 15.4398 8.37937 13.1407C8.73917 12.3808 9.37953 11.9612 9.87921 11.9612C10.1994 11.9612 10.4395 12.1609 10.4395 12.4212C10.4395 13.021 8.95909 13.0412 8.95909 16.1205C8.95909 18.3403 9.55903 22 11.7793 22C12.8595 22 13.6996 21.1002 13.6996 20.0404C13.6996 19.7405 13.6397 19.4406 13.5192 19.1803C12.8393 17.7001 11.7388 17.4406 10.6594 15.1205C10.5196 14.8205 10.4395 14.5206 10.4395 14.2409C10.4395 13.6807 10.6594 13.3808 11.0799 13.3808C11.3402 13.3808 11.5197 13.561 11.5197 13.8205C11.5197 16.3606 16.4001 18.9596 18.44 18.9596C19.5598 18.9596 20.48 18.0994 20.48 17.0396C20.48 15.92 19.5598 15 18.3996 15C17.3396 15 16.6192 15.1196 15.6999 15.1196C14.6197 15.1196 12.4398 15.1399 12.4398 13.8601C12.4398 13.5198 12.7002 13.38 12.8595 13.38C13.3996 13.38 13.3397 14.1196 15.4395 14.1196C17.6994 14.1196 22 12.2595 22 9.96039C22 8.86015 21.1001 7.96039 20.0401 7.96039C19.6003 7.96039 19.1798 8.12045 18.82 8.40016C17.5603 9.37995 17.8603 10.92 15.7799 12.4398C15.2997 12.8197 14.8202 12.9596 14.3601 12.9596C14.0804 12.9596 13.5605 12.8795 13.5605 12.3994C13.5605 12.1795 13.7004 12.0396 13.9203 11.9992C15.4403 11.7389 17.7406 8.59984 17.7406 4.08003C17.7406 3 16.8609 2.12045 15.7807 2.12045C14.7005 2.12045 13.8208 3 13.8208 4.08003C13.8208 5.65966 14.7409 6.7793 14.7409 9.33953C14.7409 10.3994 14.141 11.139 13.5613 11.139C13.3414 11.139 13.1417 10.9588 13.1417 10.7389C13.1417 10.519 13.4821 10.139 13.4821 9.29911C13.4821 6.73969 10.522 2 8.44163 2C7.18193 2 6.48173 2.95958 6.48173 3.91997C6.48173 4.51981 6.74207 5.11964 7.22154 5.47939C8.44162 6.47939 9.66171 6.63945 11.662 8.21908C12.2223 8.65885 12.5223 9.25869 12.5223 9.7591C12.5223 10.1593 12.342 10.3994 12.0226 10.3994C11.8229 10.3994 11.6822 10.2797 11.603 10.0792L11.5998 10.08Z" fill="var(--wh-lime)"/></svg>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="wh-mark"><path d="M11.5998 10.08C10.94 8.54002 7.77944 7.38076 5.39991 7.38076C3.38018 7.38076 2 8.08084 2 9.60065C2 10.7801 3.03978 11.6006 3.90006 11.6006C5.77992 11.6006 6.86013 9.78092 9.28008 9.78092C10.1404 9.78092 10.86 10.1609 10.86 10.7211C10.86 10.9612 10.6999 11.1407 10.4597 11.1407C10.26 11.1407 10.1104 11.0404 9.73933 11.0404C7.29916 11.0404 3.21927 14.5198 3.21927 16.7001C3.21927 17.7801 4.07957 18.7001 5.17918 18.7001C5.91899 18.7001 6.63939 18.2999 6.95957 17.5998C7.69938 16.1399 7.29997 15.4398 8.37937 13.1407C8.73917 12.3808 9.37953 11.9612 9.87921 11.9612C10.1994 11.9612 10.4395 12.1609 10.4395 12.4212C10.4395 13.021 8.95909 13.0412 8.95909 16.1205C8.95909 18.3403 9.55903 22 11.7793 22C12.8595 22 13.6996 21.1002 13.6996 20.0404C13.6996 19.7405 13.6397 19.4406 13.5192 19.1803C12.8393 17.7001 11.7388 17.4406 10.6594 15.1205C10.5196 14.8205 10.4395 14.5206 10.4395 14.2409C10.4395 13.6807 10.6594 13.3808 11.0799 13.3808C11.3402 13.3808 11.5197 13.561 11.5197 13.8205C11.5197 16.3606 16.4001 18.9596 18.44 18.9596C19.5598 18.9596 20.48 18.0994 20.48 17.0396C20.48 15.92 19.5598 15 18.3996 15C17.3396 15 16.6192 15.1196 15.6999 15.1196C14.6197 15.1196 12.4398 15.1399 12.4398 13.8601C12.4398 13.5198 12.7002 13.38 12.8595 13.38C13.3996 13.38 13.3397 14.1196 15.4395 14.1196C17.6994 14.1196 22 12.2595 22 9.96039C22 8.86015 21.1001 7.96039 20.0401 7.96039C19.6003 7.96039 19.1798 8.12045 18.82 8.40016C17.5603 9.37995 17.8603 10.92 15.7799 12.4398C15.2997 12.8197 14.8202 12.9596 14.3601 12.9596C14.0804 12.9596 13.5605 12.8795 13.5605 12.3994C13.5605 12.1795 13.7004 12.0396 13.9203 11.9992C15.4403 11.7389 17.7406 8.59984 17.7406 4.08003C17.7406 3 16.8609 2.12045 15.7807 2.12045C14.7005 2.12045 13.8208 3 13.8208 4.08003C13.8208 5.65966 14.7409 6.7793 14.7409 9.33953C14.7409 10.3994 14.141 11.139 13.5613 11.139C13.3414 11.139 13.1417 10.9588 13.1417 10.7389C13.1417 10.519 13.4821 10.139 13.4821 9.29911C13.4821 6.73969 10.522 2 8.44163 2C7.18193 2 6.48173 2.95958 6.48173 3.91997C6.48173 4.51981 6.74207 5.11964 7.22154 5.47939C8.44162 6.47939 9.66171 6.63945 11.662 8.21908C12.2223 8.65885 12.5223 9.25869 12.5223 9.7591C12.5223 10.1593 12.342 10.3994 12.0226 10.3994C11.8229 10.3994 11.6822 10.2797 11.603 10.0792L11.5998 10.08Z" fill="var(--brand)"/></svg>
     <span class="logo-name">Multilanguage Tool</span>
     <span class="logo-sep">/</span>
     <span class="logo-sub" title="Multilanguage Tool — a Ditto by Campaign Studio tool">Ditto by Campaign Studio</span>
     <span class="logo-sep" style="margin-left:6px;">·</span>
-    <span id="appVersionTag" style="font-size:10px;font-weight:600;color:rgba(255,255,255,.55);font-family:var(--mono);letter-spacing:.02em;"></span>
+    <span id="appVersionTag" style="font-size:10px;font-weight:600;color:var(--text3);font-family:var(--mono);letter-spacing:.02em;"></span>
   </div>
   <div id="userBadge" style="display:flex;align-items:center;gap:8px;margin-left:auto;">
     <button id="dashBtn" class="navlink" onclick="goToDashboard()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
       Dashboard
     </button>
-    <span id="syncStatus" title="Cloud save status" style="display:inline-flex;align-items:center;gap:5px;padding:6px 10px;font-size:11px;color:rgba(255,255,255,.65);">
+    <span id="syncStatus" title="Cloud save status" style="display:inline-flex;align-items:center;gap:5px;padding:6px 10px;font-size:11px;color:var(--text3);">
       <span id="syncDot" style="width:7px;height:7px;border-radius:50%;background:#9a9a90;flex-shrink:0;transition:background .2s;"></span>
       <span id="syncLabel">Sync</span>
     </span>
+    <button class="navlink" title="Toggle light/dark theme" onclick="toggleTheme()" style="padding:6px 9px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a9 9 0 109 9c0-.46-.04-.92-.1-1.36A5.4 5.4 0 0112 3z"/></svg>
+    </button>
     <button id="bellBtn" class="navlink bell-btn" title="Notifications">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
       <span id="notifBadge" class="notif-badge"></span>
