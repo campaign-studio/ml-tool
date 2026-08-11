@@ -5931,15 +5931,30 @@ function toggleCampaignBulkApprove(idx, lang) {
 function renderCampaignGrid(item) {
   const table = document.getElementById('campaignItemTable');
   const langs = sortLangsForDisplay(item.langs || []); // ordem fixa global (bate com renderCampaignLangBar)
-  // colgroup, thead e tbody precisam ser montados numa ÚNICA atribuição a table.innerHTML —
-  // setar cada um separado (ex: só colgroup.innerHTML) faz a próxima atribuição de
-  // table.innerHTML apagar o colgroup junto, já que ele também é filho da table.
-  const colgroup = `<colgroup><col style="width:22px;min-width:22px;max-width:22px"><col style="width:38px;min-width:38px;max-width:38px"><col style="width:170px;min-width:170px;max-width:170px">${langs.map(() => '<col style="width:200px">').join('')}<col style="width:22px;min-width:22px;max-width:22px"></colgroup>`;
-  const thead = `<thead><tr>
-    <th class="rn"></th><th class="cid">ID</th><th class="src">Origin</th>
-    ${langs.map(l => `<th class="tl">${escHtml(l)}</th>`).join('')}
-    <th></th>
-  </tr></thead>`;
+  const origLangName = item.origin ? (COUNTRIES.find(c => c.code === item.origin)?.lang) : null;
+  // Header/banner IDÊNTICOS ao buildTable() do editor avulso (mesmas classes/estilo inline) —
+  // ver comentário da função sobre reaproveitar o motor: o objetivo é os dois grids serem
+  // visualmente indistinguíveis, não só a linha de tradução.
+  const minW = 22 + 38 + 170 + (langs.length * 140) + 30 + 22;
+  table.style.minWidth = minW + 'px';
+  // MESMA sequência do buildTable() do avulso (colgroup via elemento próprio, thead+tbody juntos
+  // depois): mantém os dois pixel-a-pixel idênticos, inclusive no jeito de montar o DOM.
+  const cg = document.getElementById('campaignItemColgroup');
+  if(cg) cg.innerHTML =
+    `<col class="rn" style="width:22px;min-width:22px;max-width:22px"><col class="cid" style="width:38px;min-width:38px;max-width:38px"><col class="src" style="width:170px;min-width:170px;max-width:170px">${langs.map(()=>'<col class="tl" style="width:200px">').join('')}<col class="del" style="width:22px;min-width:22px;max-width:22px">`;
+  const thead = `<thead>
+    <tr class="rname">
+      <td class="rn"></td>
+      <td class="tname" colspan="${2+langs.length+2}">${escHtml(item.name)}</td>
+    </tr>
+    <tr>
+      <th style="width:22px!important;max-width:22px!important"></th>
+      <th style="width:38px!important;max-width:38px!important;background:var(--s3);color:var(--text3);">id</th>
+      <th>${origLangName||langs[0]||'src'} <span style="font-size:9px;background:var(--green);color:#fff;border-radius:3px;padding:1px 5px;margin-left:3px;font-weight:700;vertical-align:middle;">origin</span></th>
+      ${langs.map(l=>`<th>${toBrazeLang(l)} <button onclick="campDelLang('${escJsAttr(l)}')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:10px;padding:1px 4px;border-radius:3px;vertical-align:middle;" title="Remove">×</button></th>`).join('')}
+      <th></th>
+    </tr>
+  </thead>`;
   // Push não vem de upload de HTML — não existe "origem" pra extrair, então essa
   // coluna precisa ser editável (a pessoa escreve o texto original ali mesmo).
   // Email/in-app continuam com a origem travada (vem do HTML tageado).
@@ -5947,7 +5962,7 @@ function renderCampaignGrid(item) {
   const body = renderTranslationGridBody({
     rows: item.rows || [],
     langs,
-    originLang: null,
+    originLang: origLangName,
     pendingImgIds: [], // "imagem pendente pós-aprovação" é um conceito só do projeto avulso
     write: 'setCampaignCell',
     liveHL: false,       // avulso sincroniza o preview clássico (#vf) por foco/tecla; campanha
@@ -5960,13 +5975,31 @@ function renderCampaignGrid(item) {
     srcEditable: () => originEditable,
     srcWrite: 'setCampaignOrigin',
   });
-  table.innerHTML = colgroup + thead + `<tbody id="campGstb">${body}</tbody>`;
+  table.innerHTML = thead + `<tbody id="campGstb">${body}</tbody>`;
   // Aponta o controlador compartilhado pro grid da campanha e liga os listeners no host (o
   // <table> persiste entre re-renders; só o innerHTML troca, então a delegação sobrevive).
   _gridBodyId = 'campGstb';
   _gridWrite = setCampaignCell;
   wireGridController('campaignItemTable');
   gridReapplyHighlight();
+  setTimeout(() => syncAllRowHeights('campGstb') , 0);
+}
+
+// Remove um idioma inteiro do item de pasta — espelha delLang() do editor avulso, mas escopado
+// a ESTE item só (langs/traduções são por-item na campanha, não globais como no avulso).
+async function campDelLang(l) {
+  const item = _campaign && _campaign.items[_campaignItemIndex];
+  if(!item) return;
+  if(!(await uiConfirm(`Remove column "${l}"?`, {title:'Remove column', okLabel:'Remove', danger:true}))) return;
+  maybeSnapshotBeforeStructuralDelete();
+  item.langs = (item.langs || []).filter(x => x !== l);
+  (item.rows || []).forEach(r => { if(r.translations) delete r.translations[l]; });
+  if(item._activeLang === l) item._activeLang = null;
+  touchCampaignItem(item); // edição de conteúdo → carimba pro merge por item
+  renderCampaignGrid(item);
+  renderCampaignLangBar(item);
+  renderCampaignPreview(item, item._activeLang || (item.langs && item.langs[0]) || null);
+  scheduleCampaignAutosave();
 }
 
 // Deletar linha de um item de pasta — espelha delRow() do editor avulso, incluindo o tombstone
@@ -9914,15 +9947,16 @@ function autoH(ta){
 }
 
 
-function syncAllRowHeights(){
-  const allTas = Array.from(document.querySelectorAll('#gst textarea'));
+function syncAllRowHeights(hostId){
+  hostId = hostId || 'gst';
+  const allTas = Array.from(document.querySelectorAll('#' + hostId + ' textarea'));
   // Pass 1: reset ALL textareas to auto simultaneously before any measurement
   allTas.forEach(t => t.style.height = 'auto');
   // Force a single reflow for the whole table
-  const gst = document.getElementById('gst');
-  if(gst) void gst.offsetHeight;
+  const host = document.getElementById(hostId);
+  if(host) void host.offsetHeight;
   // Pass 2: for each row, measure scrollHeights and apply the max
-  document.querySelectorAll('#gst tr').forEach(row => {
+  document.querySelectorAll('#' + hostId + ' tr').forEach(row => {
     const tas = Array.from(row.querySelectorAll('textarea'));
     if(!tas.length) return;
     const maxH = Math.max(...tas.map(t => t.scrollHeight));

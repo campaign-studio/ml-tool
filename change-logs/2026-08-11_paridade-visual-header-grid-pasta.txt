@@ -1,0 +1,52 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-11
+Tema: PARIDADE VISUAL do header/banner do grid de item de pasta com o editor avulso (continuação
+      da unificação do motor de renderização, ver 2026-08-11_editor-de-csv-unificado-pasta-e-avulso.txt).
+
+===============================================================================
+DIAGNÓSTICO
+===============================================================================
+A unificação anterior trouxe o CORPO da grade (linhas/células) pro mesmo motor
+(renderTranslationGridBody), mas o CABEÇALHO de renderCampaignGrid() continuava sendo montado à
+mão, diferente do buildTable() do avulso:
+  - sem a faixa azul com o nome do item acima do cabeçalho (tr.rname do avulso);
+  - coluna "id" maiúscula ("ID") em vez do estilo/rótulo do avulso ("id", fundo cinza);
+  - coluna de origem sem o badge verde "origin";
+  - sem botão de remover coluna de idioma por item (o avulso tem o "×" no header de cada idioma).
+Resultado: mesmo com as linhas idênticas, o topo da tabela ficava visualmente diferente — o pedido
+era "exatamente idêntico", não só a linha de tradução.
+
+===============================================================================
+O QUE MUDOU
+===============================================================================
+index.html:
+- renderCampaignGrid(item): thead/colgroup reescritos pra serem BYTE-A-BYTE equivalentes ao
+  buildTable() do avulso (mesmas classes, mesmo estilo inline, mesma sequência de montagem do DOM —
+  colgroup via elemento próprio primeiro, depois table.innerHTML = thead+tbody, que apaga o colgroup
+  originalmemente já era assim no avulso; mantido idêntico de propósito). Inclui agora:
+  - faixa com o nome do item (tr.rname/td.tname);
+  - "id" com o mesmo estilo;
+  - origem com o badge verde "origin" (COUNTRIES.find(c=>c.code===item.origin) — mesma fonte que
+    renderCampaignLangBar já usava pro nome do idioma de origem);
+  - botão "×" por coluna de idioma.
+- Nova função campDelLang(l): espelha delLang() do avulso, mas escopada ao ITEM (langs/traduções são
+  por-item na campanha, não globais como no avulso) — confirma, remove o idioma de item.langs, apaga
+  a tradução de todas as rows, re-renderiza grid+lang bar+preview, agenda autosave.
+- syncAllRowHeights() generalizada (aceita hostId, default 'gst') pra também sincronizar a altura das
+  linhas no primeiro render do grid de pasta — antes só rodava no avulso (hardcoded pra #gst).
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- tests/merge-invariants.test.js: 9/9 PASS (campDelLang não mexe em rows/merge, sem impacto).
+- Browser (localhost:3000, sem tocar o Supabase — item sintético em memória, loginOverlay
+  escondido só pra inspeção visual): screenshot confirma faixa azul com nome do item, cabeçalho
+  "id | en-US [origin] | de_de × | pt_br ×" idêntico ao avulso, linha de imagem com o mesmo
+  scaffold (img-thumb-wrap) — thumbnail não carregou só porque a URL de teste era fake (mesmo
+  comportamento onerror do avulso). Sem erro no console.
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- index.html: renderCampaignGrid (header/colgroup reescritos), + campDelLang, syncAllRowHeights
+  (parametrizada).
