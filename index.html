@@ -357,26 +357,26 @@ table.gs col.del{width:22px !important;min-width:22px !important;max-width:22px 
 table.gs th,table.gs td{border-right:1px solid var(--border);border-bottom:1px solid var(--border);}
 table.gs th{position:sticky;top:0;z-index:20;background:var(--s3);height:26px;text-align:left;font-size:9px;font-weight:800;color:var(--text3);letter-spacing:.06em;white-space:nowrap;padding:0 5px;vertical-align:middle;box-shadow:0 1px 0 var(--border-s);}
 td.rn,th.rn{width:22px !important;min-width:22px !important;max-width:22px !important;background:var(--s3);color:var(--text3);font-size:9px;text-align:center;font-family:var(--mono);padding:8px 0 0 !important;vertical-align:top;user-select:none;}
-tr.rname td{background:#e8f0fe;height:22px;vertical-align:middle;}
+tr.rname td{background:var(--brand-soft);height:22px;vertical-align:middle;}
 tr.rname td.rn{background:var(--s3);padding:0 !important;vertical-align:middle;}
-tr.rname td.tname{font-size:11px;font-weight:700;color:#1a3a7a;padding:0 8px;}
+tr.rname td.tname{font-size:11px;font-weight:700;color:var(--brand);padding:0 8px;}
 td.cid,th.cid{width:38px !important;min-width:38px !important;max-width:38px !important;background:var(--s3);color:var(--text3);font-size:9px;font-family:var(--mono);text-align:center;vertical-align:top;padding:8px 0 0 !important;user-select:none;}
 
 td.src{padding:0;vertical-align:top;}
-td.src textarea{width:100%;border:none;outline:none;padding:5px 7px;font-size:12px;font-family:var(--sans);color:var(--text2);background:#fffdf7;resize:none;line-height:1.5;overflow:hidden;display:block;transition:background .1s;height:28px;min-height:28px;cursor:default;user-select:text;}
-td.src textarea:focus{background:#fffdf7;outline:none;}
+td.src textarea{width:100%;border:none;outline:none;padding:5px 7px;font-size:12px;font-family:var(--sans);color:var(--text2);background:var(--s2);resize:none;line-height:1.5;overflow:hidden;display:block;transition:background .1s;height:28px;min-height:28px;cursor:default;user-select:text;}
+td.src textarea:focus{background:var(--s2);outline:none;}
 td.tl{padding:0;vertical-align:top;}
 td.tl textarea{width:100%;border:none;outline:none;padding:5px 7px;font-size:12px;font-family:var(--sans);color:var(--text);background:transparent;resize:none;line-height:1.5;overflow:hidden;display:block;transition:background .1s;}
 td.tl textarea:hover{background:rgba(216,56,94,.04);}
-td.tl textarea:focus{background:var(--acc-bg);}
+td.tl textarea:focus{background:var(--brand-soft);}
 /* Row highlight on hover */
 table.gs tbody tr:hover td.rn,
-table.gs tbody tr:hover td.cid{background:#e8e7e0;}
-table.gs tbody tr:hover td.src textarea:not(:focus){background:#fff5d6;}
-table.gs tbody tr:hover td.tl textarea:not(:focus){background:rgba(59,130,246,.05);}
+table.gs tbody tr:hover td.cid{background:var(--s3);}
+table.gs tbody tr:hover td.src textarea:not(:focus){background:rgba(216,56,94,.06);}
+table.gs tbody tr:hover td.tl textarea:not(:focus){background:rgba(216,56,94,.05);}
 /* Active row (any cell focused) */
 table.gs tbody tr:focus-within td.rn,
-table.gs tbody tr:focus-within td.cid{background:#dde8fc;}
+table.gs tbody tr:focus-within td.cid{background:var(--brand-soft);}
 table.gs tbody tr:focus-within td{border-bottom-color:#93c5fd;}
 /* Table row selected — blue highlight */
 table.gs tbody tr.table-sel td{background:rgba(59,130,246,.06) !important;}
@@ -833,7 +833,7 @@ td.tl.tl-missing textarea,td.tl.tl-missing input{background:transparent;}
    não deslocar o layout. */
 td.tl-cell.cell-active{box-shadow:inset 0 0 0 2px var(--accent);}
 /* Células dentro de um intervalo (Shift+setas / arrastar) — realce suave. */
-td.tl-cell.cell-range{background:rgba(37,99,235,.10);}
+td.tl-cell.cell-range{background:rgba(216,56,94,.10);}
 /* Em modo de NAVEGAÇÃO (textarea/input readonly) o cursor é seta, não texto — deixa claro que
    ali você seleciona/navega; pra editar entra em modo de edição (Enter/F2/duplo-clique/digitar). */
 td.tl-cell.cell-nav textarea,td.tl-cell.cell-nav input{cursor:default;}
