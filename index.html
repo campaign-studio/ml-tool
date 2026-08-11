@@ -4135,11 +4135,15 @@ function mergeCampaignItems(a, b) {
       const r = mergedRowsById.get(c.id);
       return r && !(((r.translations || {})[c.lang]) || '').trim(); // mantém só tombstone de célula ainda vazia
     });
+    // Tombstone de linha (ver mergeItemRows/rowDropped): poda quem já voltou a existir no merge
+    // (re-add mais novo venceu a deleção antiga) pra não travar um id que renasceu de propósito.
+    const mergedDeleted = unionDeletedRows(winner.deletedRowIds, other.deletedRowIds).filter(d => !mergedRowsById.has(d.id));
     out.push({
       ...winner,
       langs: [...new Set([...(winner.langs || []), ...(other.langs || [])])],
       rows: mergedRows,
       clearedCells: mergedCleared,
+      deletedRowIds: mergedDeleted,
       ...mergeApprovalIntoFields(winner, other)
     });
   });
@@ -4155,15 +4159,30 @@ function mergeCampaignItems(a, b) {
 // Recebe os ITENS (winner = updatedAt mais novo; other = mais velho) pra ter acesso aos
 // clearedCells/updatedAt e tratar esvaziamento intencional (igual mergeLooseData). Célula vazia
 // só apaga a preenchida do outro lado se ESTE lado a limpou de propósito depois da versão do outro.
+// Rows de item de campanha eram fixadas na criação (só mudavam célula a célula), então o merge
+// original assumia o MESMO conjunto de ids nos dois lados e sempre devolvia a estrutura do
+// vencedor. Agora que campDelRow() permite apagar linha (mesma feature do editor avulso — ver
+// renderCampaignGrid), precisa do MESMO tratamento de tombstone que mergeLooseData usa pra linha
+// avulsa (deletedRowIds/_delMap/rowDropped): uma linha ausente de um lado só fica FORA do merge se
+// o outro lado a apagou DEPOIS da versão deste lado — senão é "só não chegou ainda" e a união
+// anti-perda de sempre continua valendo (nunca derruba linha silenciosamente).
 function mergeItemRows(winner, other) {
   const winnerRows = (winner && winner.rows) || [], otherRows = (other && other.rows) || [];
   const wUpd = (winner && winner.updatedAt) || 0, oUpd = (other && other.updatedAt) || 0;
   const wClear = _clearMap(winner), oClear = _clearMap(other);
+  const winnerById = new Map(winnerRows.map(r => [r.id, r]));
   const otherById = new Map(otherRows.map(r => [r.id, r]));
-  const winnerIds = new Set(winnerRows.map(r => r.id));
-  const merged = winnerRows.map(wr => {
-    const or = otherById.get(wr.id);
+  const wDel = _delMap(winner), oDel = _delMap(other);
+  const rowDropped = (id) => {
+    const inW = winnerById.has(id), inO = otherById.has(id);
+    if(inW && inO) return false;
+    if(inW && !inO) return (oDel.get(id) || 0) > wUpd;
+    if(inO && !inW) return (wDel.get(id) || 0) > oUpd;
+    return true;
+  };
+  const mergeCell = (wr, or) => {
     if(!or) return wr;
+    if(!wr) return or;
     const langs = new Set([...Object.keys(wr.translations || {}), ...Object.keys(or.translations || {})]);
     const translations = {};
     langs.forEach(l => {
@@ -4177,22 +4196,11 @@ function mergeItemRows(winner, other) {
       translations[l] = val;
     });
     return { ...wr, translations };
-  });
-  // TRIPWIRE (defesa em profundidade, hoje NUNCA dispara): as rows de um item são fixadas na
-  // criação (ids únicos) e são imutáveis — não há caminho na UI pra adicionar row a um item
-  // existente. Por isso winner e other sempre têm o MESMO conjunto de ids e este merge por-célula
-  // é correto. Se algum dia uma feature passar a mutar rows (add-row, re-tag que re-extraia rows),
-  // rows presentes só no perdedor sumiriam SILENCIOSAMENTE aqui. NÃO anexamos as órfãs (criariam
-  // row sem correspondência no rawHtml do vencedor = bug pior); alarmamos pra isso ser tratado
-  // conscientemente (ex: notice de conflito + snapshot) na hora que a invariante mudar.
-  const onlyInOther = otherRows.filter(r => !winnerIds.has(r.id));
-  if(onlyInOther.length){
-    console.warn('[mergeItemRows] divergência de estrutura de rows num item de campanha — ' +
-      onlyInOther.length + ' row(s) só no lado mais antigo seriam descartadas. Invariante "rows ' +
-      'imutáveis após criação" quebrou; tratar conflito antes de confiar neste merge.',
-      { itemId: (winner && winner.id) || (other && other.id), ids: onlyInOther.map(r => r.id) });
-  }
-  return merged;
+  };
+  const order = [], seen = new Set();
+  winnerRows.forEach(r => { if(!seen.has(r.id)){ seen.add(r.id); order.push(r.id); } });
+  otherRows.forEach(r => { if(!seen.has(r.id)){ seen.add(r.id); order.push(r.id); } });
+  return order.filter(id => !rowDropped(id)).map(id => mergeCell(winnerById.get(id), otherById.get(id)));
 }
 
 // Aprovação sempre fundida (união via mergeApprovalState) — devolve só os 4 campos de aprovação.
@@ -5916,41 +5924,70 @@ function toggleCampaignBulkApprove(idx, lang) {
   renderCampaignBulkApproval();
 }
 
+// Grade de item de pasta — usa o MESMO motor de renderização do editor avulso
+// (renderTranslationGridBody, ver modules/translation-engine.js) pra manter os dois editores
+// idênticos: badge de imagem/mismatch/VML, botão de deletar linha, etc. valem pros dois sem
+// duplicar markup — uma correção futura no motor se aplica automaticamente aqui também.
 function renderCampaignGrid(item) {
   const table = document.getElementById('campaignItemTable');
   const langs = sortLangsForDisplay(item.langs || []); // ordem fixa global (bate com renderCampaignLangBar)
   // colgroup, thead e tbody precisam ser montados numa ÚNICA atribuição a table.innerHTML —
   // setar cada um separado (ex: só colgroup.innerHTML) faz a próxima atribuição de
   // table.innerHTML apagar o colgroup junto, já que ele também é filho da table.
-  const colgroup = `<colgroup><col style="width:28px;"><col style="width:70px;"><col style="width:220px;">${langs.map(() => '<col style="width:200px;">').join('')}</colgroup>`;
+  const colgroup = `<colgroup><col style="width:22px;min-width:22px;max-width:22px"><col style="width:38px;min-width:38px;max-width:38px"><col style="width:170px;min-width:170px;max-width:170px">${langs.map(() => '<col style="width:200px">').join('')}<col style="width:22px;min-width:22px;max-width:22px"></colgroup>`;
   const thead = `<thead><tr>
     <th class="rn"></th><th class="cid">ID</th><th class="src">Origin</th>
     ${langs.map(l => `<th class="tl">${escHtml(l)}</th>`).join('')}
+    <th></th>
   </tr></thead>`;
-  const rows = item.rows || [];
   // Push não vem de upload de HTML — não existe "origem" pra extrair, então essa
   // coluna precisa ser editável (a pessoa escreve o texto original ali mesmo).
   // Email/in-app continuam com a origem travada (vem do HTML tageado).
   const originEditable = item.type === 'push';
-  // Células de tradução no MESMO formato do editor avulso (td.tl-cell.cell-nav + data-r/data-c +
-  // textarea readonly), pra o controlador de grid compartilhado (nav/copy/paste estilo planilha)
-  // funcionar aqui também. O readonly é gerenciado pelo controlador (F2/Enter/digitar entram em
-  // edição); a escrita vai por setCampaignCell (ver _gridWrite abaixo).
-  const tbody = '<tbody id="campGstb">' + rows.map((row, ri) => `
-    <tr>
-      <td class="rn">${ri + 1}</td>
-      <td class="cid">${escHtml(row.label || row.id)}</td>
-      <td class="src"><textarea rows="1" ${originEditable ? `oninput="setCampaignOrigin(${ri},this.value)"` : 'readonly'}>${escHtml(row.src)}</textarea></td>
-      ${langs.map((l, ci) => translationCellTd({ ri, ci, lang: l, value: row.translations[l] || '', write: 'setCampaignCell', liveHL: false, wrapInner: false, commentBtn: '', valEsc: escHtml })).join('')}
-    </tr>
-  `).join('') + '</tbody>';
-  table.innerHTML = colgroup + thead + tbody;
+  const body = renderTranslationGridBody({
+    rows: item.rows || [],
+    langs,
+    originLang: null,
+    pendingImgIds: [], // "imagem pendente pós-aprovação" é um conceito só do projeto avulso
+    write: 'setCampaignCell',
+    liveHL: false,       // avulso sincroniza o preview clássico (#vf) por foco/tecla; campanha
+                          // já tem seu próprio caminho de preview (updateCampaignPreviewCell)
+    wrapInner: false,
+    commentsEnabled: false, // comentário por célula ainda não existe no fluxo de campanha
+    delRowFn: 'campDelRow',
+    idLabel: row => row.label || row.id,
+    onclickHighlight: false,
+    srcEditable: () => originEditable,
+    srcWrite: 'setCampaignOrigin',
+  });
+  table.innerHTML = colgroup + thead + `<tbody id="campGstb">${body}</tbody>`;
   // Aponta o controlador compartilhado pro grid da campanha e liga os listeners no host (o
   // <table> persiste entre re-renders; só o innerHTML troca, então a delegação sobrevive).
   _gridBodyId = 'campGstb';
   _gridWrite = setCampaignCell;
   wireGridController('campaignItemTable');
   gridReapplyHighlight();
+}
+
+// Deletar linha de um item de pasta — espelha delRow() do editor avulso, incluindo o tombstone
+// (item.deletedRowIds) que o mergeItemRows precisa pra não RESSUSCITAR a linha quando outra
+// aba com cópia velha do item salvar depois (mesmo bug já corrigido no lado avulso).
+function campDelRow(ri) {
+  const item = _campaign && _campaign.items[_campaignItemIndex];
+  if(!item || !item.rows || !item.rows[ri]) return;
+  maybeSnapshotBeforeStructuralDelete();
+  const delId = item.rows[ri].id;
+  if(delId != null){
+    if(!Array.isArray(item.deletedRowIds)) item.deletedRowIds = [];
+    item.deletedRowIds = item.deletedRowIds.filter(d => d.id !== delId);
+    item.deletedRowIds.push({ id: delId, at: Date.now() });
+  }
+  item.rows.splice(ri, 1);
+  touchCampaignItem(item); // edição de conteúdo → carimba pro merge por item
+  renderCampaignGrid(item);
+  renderCampaignLangBar(item);
+  renderCampaignPreview(item, item._activeLang || (item.langs && item.langs[0]) || null);
+  scheduleCampaignAutosave();
 }
 
 function setCampaignOrigin(ri, value) {

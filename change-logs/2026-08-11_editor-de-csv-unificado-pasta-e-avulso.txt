@@ -1,0 +1,85 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-11
+Tema: UNIFICAÇÃO do editor de CSV — grade de item de pasta (campanha) agora usa o MESMO motor de
+      renderização do editor avulso, em vez de uma implementação separada e mais pobre.
+
+===============================================================================
+DIAGNÓSTICO
+===============================================================================
+renderCampaignGrid() (index.html) tinha seu próprio HTML de tabela, hand-rolled, separado de
+renderTranslationGridBody() (modules/translation-engine.js) usado pelo editor avulso. Consequência:
+o grid de pasta não tinha botão de deletar linha, tratamento de linha de imagem (thumbnail/input de
+URL), badges de mismatch/VML/imagem pendente, nem clique-para-destacar no preview — e qualquer
+correção futura no motor avulso não se propagava pra pasta. folders.js em si não tem nenhum código
+de tabela (só lógica de dados) — a duplicação estava toda em index.html.
+
+===============================================================================
+O QUE MUDOU
+===============================================================================
+1) modules/translation-engine.js — renderTranslationGridBody(cfg) ganhou opções (com default =
+   comportamento antigo do avulso, sem regressão): write, liveHL, wrapInner, commentsEnabled,
+   delRowFn, idLabel(row), onclickHighlight, srcEditable(row), srcWrite. Cada diferença legítima
+   entre os dois editores agora entra por opção, sem duplicar markup.
+
+2) index.html — renderCampaignGrid(item) reescrita pra montar thead/colgroup (mesmas larguras
+   dinâmicas do avulso) e delegar o corpo pra renderTranslationGridBody(), passando:
+   write:'setCampaignCell', liveHL:false (preview de campanha tem seu próprio caminho —
+   updateCampaignPreviewCell/iframe postMessage — não usa o #vf/refreshViewer do avulso),
+   wrapInner:false, commentsEnabled:false (comentário por célula ainda não existe no fluxo de
+   campanha), delRowFn:'campDelRow', idLabel: row.label||row.id, onclickHighlight:false,
+   srcEditable: só pra item.type==='push' (sem HTML de origem pra extrair), srcWrite:
+   'setCampaignOrigin'.
+   BÔNUS (efeito colateral correto da unificação): linha de imagem num item de pasta agora
+   renderiza com thumbnail/input de URL — antes virava textarea comum sem tratamento nenhum.
+
+3) Nova função campDelRow(ri) — espelha delRow() do avulso: chama maybeSnapshotBeforeStructuralDelete,
+   carimba tombstone em item.deletedRowIds ({id, at}), remove a linha, re-renderiza grid+langbar+
+   preview e agenda o autosave de campanha.
+
+===============================================================================
+RISCO DE CONCORRÊNCIA TRATADO (mesma classe do bug corrigido em 2026-08-06)
+===============================================================================
+Deletar linha de item de pasta é uma feature NOVA — antes disso as rows de um item eram tidas como
+imutáveis, e mergeItemRows() confiava nisso (merge por-célula sobre o conjunto FIXO de rows do
+vencedor; row só-no-lado-mais-velho era descartada silenciosamente, com um console.warn de
+tripwire). Ligar o botão de deletar sem mexer no merge teria REABERTO o bug de ressurreição de linha
+(outra aba com cópia velha do item salvando depois faria a linha deletada voltar).
+
+Correção: item.deletedRowIds (mesmo formato de data.deletedRowIds do avulso) + mergeItemRows()
+reescrita pra UNIÃO com tombstone (mesma lógica de rowDropped do mergeLooseData):
+  - linha presente nos dois lados → nunca cai, célula funde normalmente;
+  - linha só num lado, SEM tombstone do outro lado mais novo que a versão deste lado → PRESERVADA
+    (anti-perda — "ainda não chegou" é tratado igual a "novo", não como deleção);
+  - linha só num lado, COM tombstone do outro lado mais novo → DROPADA (deleção intencional vence).
+mergeCampaignItems() agora também emite deletedRowIds no item de saída (união, podado pelos ids
+que voltaram a existir no merge) — mesmo padrão do clearedCells/deletedItemIds já existentes.
+_delMap/unionDeletedRows (translation-engine.js) já eram genéricos (leem data.deletedRowIds de
+QUALQUER objeto) — reaproveitados sem mudança pro item de campanha.
+
+MUDANÇA DE COMPORTAMENTO DO TESTE B1 (esperada, documentada em tests/merge-invariants.test.js):
+antes, "row só no lado mais velho" era sempre dropada (suposição de imutabilidade). Agora, sem
+tombstone, ela é PRESERVADA — mesma semântica anti-perda do avulso. B1 foi reescrito pra refletir
+isso; B4/B5 (novos) cobrem o caso COM tombstone (bloqueia ressurreição / deleção antiga não vence).
+
+ESCOPO NÃO COBERTO (decisão consciente, fora do pedido): folders.js (projectToFolderItem) não
+carrega deletedRowIds do avulso ao mover um projeto pra dentro de uma pasta — caso de borda raro,
+de baixo risco (rows deletadas do avulso não aparecem no rawHtml tageado de qualquer forma), deixado
+como follow-up se algum dia importar.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- tests/merge-invariants.test.js: 9/9 PASS no navegador (A1-A4 avulso inalterados; B1 revisado;
+  B2-B3 item-tombstone inalterados; B4-B5 novos — todos contra as funções reais).
+- Browser (localhost:3000, sem tocar o Supabase — item de campanha 100% sintético em memória):
+  renderCampaignGrid renderiza botão de deletar linha, linha de imagem com thumbnail, badge de
+  mismatch; campDelRow remove a linha e carimba o tombstone; origem editável só em item type=push,
+  readonly em email; setCampaignCell grava a célula normalmente. Sem erro no console.
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- modules/translation-engine.js: renderTranslationGridBody (opções parametrizadas).
+- index.html: renderCampaignGrid (reescrita), + campDelRow, mergeItemRows (união+tombstone),
+  mergeCampaignItems (+ deletedRowIds no output).
+- tests/merge-invariants.test.js: B1 revisado, + B4, B5.

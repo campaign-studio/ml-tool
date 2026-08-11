@@ -1632,40 +1632,55 @@ function translationCellTd(o){
 
 function renderTranslationGridBody(cfg) {
   const langsOrdered = cfg.langs;
+  // Opções que diferem entre o editor avulso (default) e o editor de campanha — ver comentário
+  // de translationCellTd. Reaproveitar esta função pros dois grids é o ponto: qualquer ajuste
+  // feito aqui (badge nova, coluna, etc.) vale pros dois automaticamente, sem duplicar markup.
+  const write = cfg.write || 'setCellV';
+  const liveHL = cfg.liveHL !== false;
+  const wrapInner = cfg.wrapInner !== false;
+  const commentsEnabled = cfg.commentsEnabled !== false;
+  const delRowFn = cfg.delRowFn || 'delRow';
+  const idLabel = cfg.idLabel || (row => row.id);
+  const onclickHighlight = cfg.onclickHighlight !== false;
+  const srcEditable = cfg.srcEditable || (() => false);
+  const srcWrite = cfg.srcWrite || 'setSrcV';
+  const comment = (ri, l, row) => commentsEnabled ? cellCommentBtn(ri, l, row) : '';
   return cfg.rows.map((row,ri)=>{
     // ── IMAGE ROW ──
     if(row.isImg){
-      const id  = (row.id||'').replace(/"/g,'&quot;');
+      const id  = (idLabel(row)||'').replace(/"/g,'&quot;');
       const src = (row.src||'').replace(/"/g,'&quot;');
       const origLang = cfg.originLang;
       const tls = langsOrdered.map((l,ci)=>{
         const v=(row.translations[l]||'').replace(/"/g,'&quot;');
         const isEmpty = !(row.translations[l]||'').trim();
+        const onfocus = liveHL ? ` onfocus="switchAndHL(${ri},'${l}')"` : '';
+        const hl = liveHL ? `;sendHL(${ri},'${l}')` : '';
         return `<td class="tl tl-cell cell-nav${isEmpty ? ' tl-missing' : ''}" data-r="${ri}" data-c="${ci}">
           <div class="tl-inner">
-            <input class="img-url" type="text" readonly placeholder="URL for ${l}…" value="${v}"
-              onfocus="switchAndHL(${ri},'${l}')"
-              oninput="setCellV(${ri},'${l}',this.value);sendHL(${ri},'${l}')"
+            <input class="img-url" type="text" readonly placeholder="URL for ${l}…" value="${v}"${onfocus}
+              oninput="${write}(${ri},'${l}',this.value)${hl}"
             />
-            ${cellCommentBtn(ri, l, row)}
+            ${comment(ri, l, row)}
           </div>
         </td>`;
       }).join('');
       const thumbSrc = src.startsWith('{{') ? '' : src;
+      const srcOnclick = onclickHighlight ? ` onclick="highlightFromTable(${ri},'${origLang||''}')"` : '';
       return `<tr class="img-row">
         <td class="rn">${ri+1}</td>
         <td class="cid">${id}</td>
-        <td class="src" onclick="highlightFromTable(${ri},'${origLang||''}')">
+        <td class="src"${srcOnclick}>
           <div class="img-thumb-wrap">
             ${thumbSrc ? `<img class="img-thumb" src="${thumbSrc.replace(/"/g,'&quot;')}" onerror="this.style.display='none'">` : '<div class="img-thumb" style="display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--text3)">Liquid</div>'}
             <span class="img-src-txt">${src.length>60?src.slice(0,57)+'…':src}</span>
           </div>
         </td>
         ${tls}
-        <td class="del"><button onclick="event.stopPropagation();delRow(${ri})">×</button></td>
+        <td class="del"><button onclick="event.stopPropagation();${delRowFn}(${ri})">×</button></td>
       </tr>`;
     }
-    const id  = (row.id||'').replace(/"/g,'&quot;');
+    const id  = (idLabel(row)||'').replace(/"/g,'&quot;');
     // Mesmo texto que vai pro CSV exportado (csvSourceText) — sem isso, a grade principal
     // (o que a pessoa realmente olha pra traduzir) mostrava o Liquid cru (content_blocks,
     // custom_attribute, context) no meio da frase, mesmo já tendo sido "limpo" só no CSV.
@@ -1673,8 +1688,8 @@ function renderTranslationGridBody(cfg) {
     const origLang = cfg.originLang;
     const tls = langsOrdered.map((l,ci)=> translationCellTd({
       ri, ci, lang: l, value: row.translations[l] || '',
-      write: 'setCellV', liveHL: true, wrapInner: true,
-      commentBtn: cellCommentBtn(ri, l, row),
+      write, liveHL, wrapInner,
+      commentBtn: comment(ri, l, row),
       valEsc: s => String(s).replace(/</g,'&lt;').replace(/"/g,'&quot;')
     })).join('');
     const mismatch = row._textMismatch;
@@ -1689,15 +1704,23 @@ function renderTranslationGridBody(cfg) {
       : '';
     // Imagem adicionada DEPOIS que o projeto já tinha aprovação: a aprovação foi mantida (regra
     // silenciosa), mas o item fica marcado como "novo — revisar" até uma nova aprovação.
-    const pendingBadge = cfg.pendingImgIds.includes(id)
+    const pendingBadge = (cfg.pendingImgIds||[]).includes(id)
       ? `<span class="vml-badge" style="background:#fff3cd;border-color:#ffe08a;color:#8a6d3b;" title="Image added after the project was already approved. The existing approval was kept, but this item came in later and needs review.">⏳ new — review</span>`
       : '';
+    // Origin/src editável só quando o chamador pede (ex: item de push da campanha, que não vem
+    // de upload de HTML — não existe "origem" pra extrair, a pessoa escreve o texto ali mesmo).
+    // Editor avulso nunca passa isso: a origem sempre vem travada do HTML tageado.
+    const editable = srcEditable(row);
+    const srcCell = editable
+      ? `<textarea rows="1" oninput="${srcWrite}(${ri},this.value)">${displaySrc}</textarea>`
+      : `<textarea rows="1" readonly style="${row.isLiquidFull ? 'color:var(--text3);font-size:10.5px;' : ''}cursor:default;">${displaySrc}</textarea>`;
+    const srcOnclick = (!editable && onclickHighlight) ? ` onclick="highlightFromTable(${ri},'${origLang||''}')"` : '';
     return `<tr>
       <td class="rn" style="width:22px!important;max-width:22px!important">${ri+1}</td>
       <td class="cid" style="width:38px!important;max-width:38px!important">${id}</td>
-      <td class="src" onclick="highlightFromTable(${ri},'${origLang||''}')">${warnBadge}${vmlBadge}${pendingBadge}<textarea rows="1" readonly style="${row.isLiquidFull ? 'color:var(--text3);font-size:10.5px;' : ''}cursor:default;">${displaySrc}</textarea></td>
+      <td class="src"${srcOnclick}>${warnBadge}${vmlBadge}${pendingBadge}${srcCell}</td>
       ${tls}
-      <td class="del"><button onclick="event.stopPropagation();delRow(${ri})">×</button></td>
+      <td class="del"><button onclick="event.stopPropagation();${delRowFn}(${ri})">×</button></td>
     </tr>`;
   }).join('');
 }

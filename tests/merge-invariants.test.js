@@ -8,10 +8,12 @@
    A) AVULSO (mergeLooseData): linha de CSV deletada NÃO ressuscita quando há
       tombstone (data.deletedRowIds) mais novo que a versão do outro lado; e a
       anti-perda de add concorrente continua valendo.
-   B) CAMPANHA (mergeItemRows / mergeCampaignItems): as rows de um item são
-      IMUTÁVEIS — o merge é por-célula sobre o conjunto de rows do vencedor, e
-      uma row que só existe no lado mais antigo é DROPADA (não ressuscitada);
-      item inteiro deletado respeita o tombstone deletedItemIds.
+   B) CAMPANHA (mergeItemRows / mergeCampaignItems): rows de item agora podem ser deletadas
+      pela UI (campDelRow, mesmo botão do editor avulso) — o merge de rows é uma UNIÃO com o
+      MESMO tratamento de tombstone do avulso (item.deletedRowIds/_delMap/rowDropped): sem
+      tombstone, linha só-num-lado é PRESERVADA (anti-perda); com tombstone mais novo que a
+      versão do outro lado, a linha NÃO ressuscita. Célula funde os dois lados normalmente.
+      Item inteiro deletado respeita o tombstone deletedItemIds (nível de item, separado).
 
    COMO RODAR:
      1. Abra o app (localhost:3000 ou o Pages). Não precisa estar logado.
@@ -79,8 +81,9 @@ function runMergeInvariantTests() {
     approvalComments: [], approvalActivity: [], approvalDoneByLang: {}, approvalDeletedIds: []
   });
 
-  // B1 — mergeItemRows: rows imutáveis (só-no-velho é DROPADA), célula funde os dois lados
-  T('B1 campanha: rows imutáveis + célula funde (extra do velho é dropada)', () => {
+  // B1 — mergeItemRows: SEM tombstone, linha só-no-velho é PRESERVADA (anti-perda, mesma regra
+  // do avulso — ausência sozinha nunca é deleção); célula funde os dois lados normalmente.
+  T('B1 campanha: sem tombstone a linha extra é preservada (anti-perda) + célula funde os dois lados', () => {
     const winner = mkItem('it1', 2000, [
       { id:'r1', src:'A', translations:{ 'pt-BR':'a-pt' } },
       { id:'r2', src:'B', translations:{} },
@@ -88,15 +91,36 @@ function runMergeInvariantTests() {
     const older = mkItem('it1', 1000, [
       { id:'r1', src:'A', translations:{ 'de-DE':'a-de' } },
       { id:'r2', src:'B', translations:{} },
-      { id:'rX', src:'X', translations:{ 'pt-BR':'x-pt' } }, // só no velho
+      { id:'rX', src:'X', translations:{ 'pt-BR':'x-pt' } }, // só no velho, sem tombstone
     ]);
     const merged = mergeItemRows(winner, older);
     const ids = merged.map(r => r.id);
     const r1 = merged.find(r => r.id==='r1');
-    const rXausente = !ids.includes('rX');
-    const idsSaoDoVencedor = ids.length===2 && ids.includes('r1') && ids.includes('r2');
+    const rXpresente = ids.includes('rX');
     const celulaFundiuOsDois = r1 && r1.translations['pt-BR']==='a-pt' && r1.translations['de-DE']==='a-de';
-    return rXausente && idsSaoDoVencedor && celulaFundiuOsDois;
+    return rXpresente && celulaFundiuOsDois;
+  });
+  // B4 — mergeItemRows: tombstone (item.deletedRowIds) bloqueia ressurreição de linha deletada
+  T('B4 campanha: tombstone bloqueia ressurreição de linha', () => {
+    const winner = mkItem('it1', 2000, [ { id:'r1', src:'A', translations:{} } ]);
+    winner.deletedRowIds = [{ id:'rX', at: 2000 }];
+    const older = mkItem('it1', 1000, [
+      { id:'r1', src:'A', translations:{} },
+      { id:'rX', src:'X', translations:{} },
+    ]);
+    const merged = mergeItemRows(winner, older);
+    return !merged.map(r => r.id).includes('rX');
+  });
+  // B5 — mergeItemRows: deleção ANTIGA não vence re-add mais novo (novo ainda tem a linha)
+  T('B5 campanha: deleção antiga não vence re-add mais novo', () => {
+    const winner = mkItem('it1', 2000, [
+      { id:'r1', src:'A', translations:{} },
+      { id:'rX', src:'X', translations:{} }, // novo AINDA tem rX
+    ]);
+    const older = mkItem('it1', 1000, [ { id:'r1', src:'A', translations:{} } ]);
+    older.deletedRowIds = [{ id:'rX', at: 1500 }]; // velho deletou antes de existir a versão nova
+    const merged = mergeItemRows(winner, older);
+    return merged.map(r => r.id).includes('rX');
   });
   // B2 — mergeCampaignItems: item deletado respeita tombstone deletedItemIds
   T('B2 campanha: item deletado não ressuscita (deletedItemIds)', () => {
