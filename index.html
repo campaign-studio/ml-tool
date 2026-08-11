@@ -29,9 +29,59 @@
   --r: 10px;
   --mono: 'JetBrains Mono','Fira Code',monospace;
   --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  /* ─── Ditto design system (redesign/foundation) — valores IDÊNTICOS ao inapp-builder/core/shared.css.
+        Aditivo: os tokens antigos acima continuam válidos; as telas migram pra estes conforme reskin. ─── */
+  --brand: var(--accent);            /* #d8385e — a cor de marca já era essa */
+  --brand-hover: #F2496B;
+  --brand-soft: rgba(216,56,94,.08);
+  --brand-tint: #FEF0F3;
+  --brand-focus: rgba(216,56,94,.12);
+  --indigo: #6366F1;
+  --muted: var(--text2);
+  --subtle: var(--text3);
+  --ground: #F7F7F8;                 /* fundo claro Ditto (aplicado por tela ao migrar) */
+  --success: #0f9d58;  --success-soft: rgba(15,157,88,.10);
+  --warning: #d97706;
+  --info: #6366F1;     --info-soft: rgba(99,102,241,.10);
+  --radius-lg: 16px; --radius-md: 10px; --radius-sm: 7px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-8:32px; --sp-10:40px; --sp-12:48px; --sp-16:64px;
+  --fs-xs:11px; --fs-sm:12px; --fs-base:14px; --fs-md:15px; --fs-lg:17px; --fs-xl:20px; --fs-2xl:28px; --fs-3xl:36px; --fs-4xl:52px;
+  --lh-tight:1.15; --lh-snug:1.3; --lh-normal:1.5; --lh-relaxed:1.7;
+  --shadow-1: 0 1px 2px rgba(29,29,31,.04),0 2px 6px rgba(29,29,31,.04);
+  --shadow-2: 0 4px 12px rgba(29,29,31,.06);
+  --shadow-3: 0 12px 32px rgba(29,29,31,.08);
+  --ease-in-out: cubic-bezier(.4,0,.2,1);
+  --ease-out: cubic-bezier(.2,.7,.2,1);
+  --dur-fast:.12s; --dur:.2s; --dur-slow:.35s;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);font-family:var(--sans);font-size:14px;color:var(--text);min-height:100vh;}
+
+/* ═══ Ditto core primitives (redesign/foundation) — idênticas ao core/shared.css. Novas classes,
+       sem colidir com as antigas (.btn-next/.card já existentes); as telas adotam ao serem reskinadas. ═══ */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 16px;border-radius:8px;
+  font-family:inherit;font-size:var(--fs-base);font-weight:600;color:var(--text);background:var(--surface);
+  border:1px solid var(--border);cursor:pointer;
+  transition:background var(--dur) var(--ease-out),border-color var(--dur) var(--ease-out),color var(--dur) var(--ease-out),transform var(--dur-fast),box-shadow var(--dur);}
+.btn:hover{background:var(--bg);border-color:var(--border-s);}
+.btn:active{transform:translateY(1px);}
+.btn:disabled{opacity:.5;pointer-events:none;}
+.btn svg{width:16px;height:16px;flex:0 0 auto;}
+.btn--primary{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 1px 2px rgba(216,56,94,.15);}
+.btn--primary:hover{background:var(--brand-hover);border-color:var(--brand-hover);box-shadow:0 2px 8px rgba(216,56,94,.25);}
+.btn--ghost{background:transparent;border-color:transparent;color:var(--muted);}
+.btn--ghost:hover{background:var(--bg);color:var(--text);}
+.btn--soft{background:var(--brand-soft);border-color:transparent;color:var(--brand);}
+.btn--soft:hover{background:var(--brand-tint);}
+.btn--sm{padding:6px 10px;font-size:var(--fs-sm);border-radius:7px;}
+.btn--lg{padding:13px 22px;font-size:var(--fs-md);border-radius:10px;}
+.glass{background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.6);border-radius:var(--radius-lg);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 8px 24px rgba(29,29,31,.06);
+  backdrop-filter:blur(18px) saturate(150%);-webkit-backdrop-filter:blur(18px) saturate(150%);}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.glass{background:var(--surface);}}
+.amb-glow::before,.amb-glow::after{content:'';position:absolute;z-index:0;filter:blur(60px);pointer-events:none;}
+.amb-glow::before{width:60vw;height:60vw;top:-25vw;right:-15vw;background:radial-gradient(circle,rgba(216,56,94,.16),transparent 62%);}
+.amb-glow::after{width:55vw;height:55vw;bottom:-25vw;left:-20vw;background:radial-gradient(circle,rgba(99,102,241,.12),transparent 62%);}
 
 /* HEADER */
 .hdr{height:52px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:0;position:relative;z-index:320;}
@@ -471,35 +521,22 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .route-card{transition:box-shadow .15s,transform .12s;}
 .route-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.08);transform:translateY(-2px);}
 
-/* ═══════════ LOGIN ═══════════ */
-#loginOverlay{background:radial-gradient(ellipse at top left,#2a1f5c,#1b1340 55%,#120c2e);overflow:hidden;}
-#loginOverlay::before,#loginOverlay::after{content:'';position:absolute;border-radius:50%;filter:blur(60px);opacity:.35;pointer-events:none;animation:loginBlobDrift 16s ease-in-out infinite alternate;}
-#loginOverlay::before{width:420px;height:420px;background:var(--wh-lime);top:-140px;left:-120px;}
-#loginOverlay::after{width:360px;height:360px;background:#8b5cf6;bottom:-120px;right:-100px;animation-delay:-8s;}
-@keyframes loginBlobDrift{from{transform:translate(0,0) scale(1);}to{transform:translate(40px,30px) scale(1.12);}}
-.login-shell{position:relative;display:flex;width:100%;max-width:760px;min-height:460px;border-radius:22px;overflow:hidden;border:none;box-shadow:0 30px 70px -20px rgba(0,0,0,.55);animation:loginIn .4s cubic-bezier(.2,.8,.2,1);}
+/* ═══════════ LOGIN (redesign/foundation — Ditto light) ═══════════ */
+#loginOverlay{background:var(--ground);overflow:hidden;}
+.login-shell{position:relative;z-index:1;width:100%;max-width:400px;animation:loginIn .5s var(--ease-out);}
 @keyframes loginIn{from{opacity:0;transform:translateY(10px) scale(.98);}to{opacity:1;transform:translateY(0) scale(1);}}
-.login-brand{flex:1 1 46%;background:linear-gradient(160deg,var(--wh-navy2),var(--wh-navy));position:relative;overflow:hidden;padding:44px 38px;display:flex;flex-direction:column;justify-content:space-between;color:#fff;}
-.login-brand::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 30% 110%,rgba(220,255,121,.18),transparent 55%);}
-.login-brand-dots{position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.14) 1.5px,transparent 1.5px);background-size:22px 22px;-webkit-mask-image:linear-gradient(180deg,rgba(0,0,0,.5),transparent 70%);mask-image:linear-gradient(180deg,rgba(0,0,0,.5),transparent 70%);}
-.login-mark{position:relative;width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.25);backdrop-filter:blur(6px);}
-.login-brand-name{position:relative;font-size:13px;font-weight:700;color:var(--wh-lime);letter-spacing:.02em;margin-top:22px;}
-.login-brand-headline{position:relative;font-size:23px;font-weight:800;letter-spacing:-.02em;line-height:1.25;margin-top:8px;}
-.login-brand-sub{position:relative;font-size:12.5px;color:rgba(255,255,255,.6);margin-top:10px;line-height:1.6;max-width:260px;}
-.login-brand-foot{position:relative;font-size:11px;color:rgba(255,255,255,.4);font-weight:600;letter-spacing:.03em;}
-.login-form-panel{flex:1 1 54%;background:var(--surface);padding:44px 40px;display:flex;flex-direction:column;justify-content:center;}
-.login-card{width:100%;}
+.login-card{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-3);padding:38px 34px;}
+.login-mark{width:44px;height:44px;border-radius:12px;background:var(--brand-soft);display:flex;align-items:center;justify-content:center;margin-bottom:20px;}
+.login-h{font-size:var(--fs-xl);font-weight:800;letter-spacing:-.02em;color:var(--text);}
+.login-sub{color:var(--muted);font-size:var(--fs-base);margin:5px 0 26px;}
+.login-brand-foot{text-align:center;margin-top:24px;font-size:11px;color:var(--subtle);font-weight:600;letter-spacing:.05em;text-transform:uppercase;}
 .login-input-wrap{position:relative;}
 .login-input-wrap svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none;}
 .login-input-wrap input{padding-left:36px!important;}
-@media (max-width:680px){
-  .login-shell{max-width:400px;min-height:0;}
-  .login-brand{display:none;}
-}
 .field{margin-bottom:16px;}
 .field label{display:block;font-size:11.5px;font-weight:600;color:var(--text2);margin-bottom:6px;}
-.field input,.field select{width:100%;padding:10px 12px;border:1.5px solid var(--border-s);border-radius:9px;font-size:13.5px;font-family:var(--sans);background:var(--surface);color:var(--text);transition:border-color .15s,box-shadow .15s;}
-.field input:focus,.field select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--acc-bg);}
+.field input,.field select{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;font-family:var(--sans);background:var(--surface);color:var(--text);transition:border-color var(--dur) var(--ease-out),box-shadow var(--dur) var(--ease-out);}
+.field input:focus,.field select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-focus);}
 .field input::placeholder{color:var(--text3);}
 .form-err{display:none;align-items:center;gap:6px;color:#B91C1C;font-size:12px;margin-top:2px;background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:8px 10px;}
 .form-err.show{display:flex;}
@@ -1013,21 +1050,14 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 <body>
 
 <!-- ═══════════ LOGIN OVERLAY ═══════════ -->
-<div id="loginOverlay" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;">
-  <div class="login-shell card login-card">
-    <div class="login-brand">
-      <div class="login-brand-dots"></div>
+<div id="loginOverlay" class="amb-glow" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;">
+  <div class="login-shell">
+    <div class="login-card">
       <div class="login-mark">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11.5998 10.08C10.94 8.54002 7.77944 7.38076 5.39991 7.38076C3.38018 7.38076 2 8.08084 2 9.60065C2 10.7801 3.03978 11.6006 3.90006 11.6006C5.77992 11.6006 6.86013 9.78092 9.28008 9.78092C10.1404 9.78092 10.86 10.1609 10.86 10.7211C10.86 10.9612 10.6999 11.1407 10.4597 11.1407C10.26 11.1407 10.1104 11.0404 9.73933 11.0404C7.29916 11.0404 3.21927 14.5198 3.21927 16.7001C3.21927 17.7801 4.07957 18.7001 5.17918 18.7001C5.91899 18.7001 6.63939 18.2999 6.95957 17.5998C7.69938 16.1399 7.29997 15.4398 8.37937 13.1407C8.73917 12.3808 9.37953 11.9612 9.87921 11.9612C10.1994 11.9612 10.4395 12.1609 10.4395 12.4212C10.4395 13.021 8.95909 13.0412 8.95909 16.1205C8.95909 18.3403 9.55903 22 11.7793 22C12.8595 22 13.6996 21.1002 13.6996 20.0404C13.6996 19.7405 13.6397 19.4406 13.5192 19.1803C12.8393 17.7001 11.7388 17.4406 10.6594 15.1205C10.5196 14.8205 10.4395 14.5206 10.4395 14.2409C10.4395 13.6807 10.6594 13.3808 11.0799 13.3808C11.3402 13.3808 11.5197 13.561 11.5197 13.8205C11.5197 16.3606 16.4001 18.9596 18.44 18.9596C19.5598 18.9596 20.48 18.0994 20.48 17.0396C20.48 15.92 19.5598 15 18.3996 15C17.3396 15 16.6192 15.1196 15.6999 15.1196C14.6197 15.1196 12.4398 15.1399 12.4398 13.8601C12.4398 13.5198 12.7002 13.38 12.8595 13.38C13.3996 13.38 13.3397 14.1196 15.4395 14.1196C17.6994 14.1196 22 12.2595 22 9.96039C22 8.86015 21.1001 7.96039 20.0401 7.96039C19.6003 7.96039 19.1798 8.12045 18.82 8.40016C17.5603 9.37995 17.8603 10.92 15.7799 12.4398C15.2997 12.8197 14.8202 12.9596 14.3601 12.9596C14.0804 12.9596 13.5605 12.8795 13.5605 12.3994C13.5605 12.1795 13.7004 12.0396 13.9203 11.9992C15.4403 11.7389 17.7406 8.59984 17.7406 4.08003C17.7406 3 16.8609 2.12045 15.7807 2.12045C14.7005 2.12045 13.8208 3 13.8208 4.08003C13.8208 5.65966 14.7409 6.7793 14.7409 9.33953C14.7409 10.3994 14.141 11.139 13.5613 11.139C13.3414 11.139 13.1417 10.9588 13.1417 10.7389C13.1417 10.519 13.4821 10.139 13.4821 9.29911C13.4821 6.73969 10.522 2 8.44163 2C7.18193 2 6.48173 2.95958 6.48173 3.91997C6.48173 4.51981 6.74207 5.11964 7.22154 5.47939C8.44162 6.47939 9.66171 6.63945 11.662 8.21908C12.2223 8.65885 12.5223 9.25869 12.5223 9.7591C12.5223 10.1593 12.342 10.3994 12.0226 10.3994C11.8229 10.3994 11.6822 10.2797 11.603 10.0792L11.5998 10.08Z" fill="var(--wh-lime)"/></svg>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11.5998 10.08C10.94 8.54002 7.77944 7.38076 5.39991 7.38076C3.38018 7.38076 2 8.08084 2 9.60065C2 10.7801 3.03978 11.6006 3.90006 11.6006C5.77992 11.6006 6.86013 9.78092 9.28008 9.78092C10.1404 9.78092 10.86 10.1609 10.86 10.7211C10.86 10.9612 10.6999 11.1407 10.4597 11.1407C10.26 11.1407 10.1104 11.0404 9.73933 11.0404C7.29916 11.0404 3.21927 14.5198 3.21927 16.7001C3.21927 17.7801 4.07957 18.7001 5.17918 18.7001C5.91899 18.7001 6.63939 18.2999 6.95957 17.5998C7.69938 16.1399 7.29997 15.4398 8.37937 13.1407C8.73917 12.3808 9.37953 11.9612 9.87921 11.9612C10.1994 11.9612 10.4395 12.1609 10.4395 12.4212C10.4395 13.021 8.95909 13.0412 8.95909 16.1205C8.95909 18.3403 9.55903 22 11.7793 22C12.8595 22 13.6996 21.1002 13.6996 20.0404C13.6996 19.7405 13.6397 19.4406 13.5192 19.1803C12.8393 17.7001 11.7388 17.4406 10.6594 15.1205C10.5196 14.8205 10.4395 14.5206 10.4395 14.2409C10.4395 13.6807 10.6594 13.3808 11.0799 13.3808C11.3402 13.3808 11.5197 13.561 11.5197 13.8205C11.5197 16.3606 16.4001 18.9596 18.44 18.9596C19.5598 18.9596 20.48 18.0994 20.48 17.0396C20.48 15.92 19.5598 15 18.3996 15C17.3396 15 16.6192 15.1196 15.6999 15.1196C14.6197 15.1196 12.4398 15.1399 12.4398 13.8601C12.4398 13.5198 12.7002 13.38 12.8595 13.38C13.3996 13.38 13.3397 14.1196 15.4395 14.1196C17.6994 14.1196 22 12.2595 22 9.96039C22 8.86015 21.1001 7.96039 20.0401 7.96039C19.6003 7.96039 19.1798 8.12045 18.82 8.40016C17.5603 9.37995 17.8603 10.92 15.7799 12.4398C15.2997 12.8197 14.8202 12.9596 14.3601 12.9596C14.0804 12.9596 13.5605 12.8795 13.5605 12.3994C13.5605 12.1795 13.7004 12.0396 13.9203 11.9992C15.4403 11.7389 17.7406 8.59984 17.7406 4.08003C17.7406 3 16.8609 2.12045 15.7807 2.12045C14.7005 2.12045 13.8208 3 13.8208 4.08003C13.8208 5.65966 14.7409 6.7793 14.7409 9.33953C14.7409 10.3994 14.141 11.139 13.5613 11.139C13.3414 11.139 13.1417 10.9588 13.1417 10.7389C13.1417 10.519 13.4821 10.139 13.4821 9.29911C13.4821 6.73969 10.522 2 8.44163 2C7.18193 2 6.48173 2.95958 6.48173 3.91997C6.48173 4.51981 6.74207 5.11964 7.22154 5.47939C8.44162 6.47939 9.66171 6.63945 11.662 8.21908C12.2223 8.65885 12.5223 9.25869 12.5223 9.7591C12.5223 10.1593 12.342 10.3994 12.0226 10.3994C11.8229 10.3994 11.6822 10.2797 11.603 10.0792L11.5998 10.08Z" fill="var(--brand)"/></svg>
       </div>
-      <div class="login-brand-name">Multilanguage Tool</div>
-      <div class="login-brand-headline">Create global campaigns without losing your rhythm</div>
-      <p class="login-brand-sub">Centralize your Braze email translations and approvals in one place. Spend less time managing messy files and more time driving impact together.</p>
-      <div class="login-brand-foot">A DITTO BY CAMPAIGN STUDIO TOOL</div>
-    </div>
-    <div class="login-form-panel">
-      <h1 style="margin-bottom:3px;">Welcome back</h1>
-      <p class="sub" style="margin-bottom:26px;">Log in to Multilanguage Tool</p>
+      <h1 class="login-h">Welcome back</h1>
+      <p class="login-sub">Log in to Multilanguage Tool</p>
 
       <div id="loginFormWrap">
         <div class="field">
@@ -1045,11 +1075,12 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
           </div>
         </div>
         <div id="loginErr" class="form-err"></div>
-        <button class="btn-next" id="btnLogin" style="margin-top:18px;" onclick="doLogin()">
+        <button class="btn btn--primary btn--lg" id="btnLogin" style="width:100%;margin-top:18px;" onclick="doLogin()">
           Log in
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </button>
       </div>
+      <div class="login-brand-foot">A Ditto by Campaign Studio tool</div>
     </div>
   </div>
 </div>
