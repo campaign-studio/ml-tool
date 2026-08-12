@@ -3134,11 +3134,20 @@ async function _plainUpsertProject(sb, p){
 // vira false sozinho se a função não responder → fallback pro update direto.
 let _saveProjApiOk = true;
 async function saveProjectViaApi(sb, id, payload, expected){
-  const { data, error } = await withTimeout(
-    sb.functions.invoke('save-project', { body: { id, payload, expected_rev: expected } }), 8000, 'save-project '+id);
-  if(error){ _saveProjApiOk = false; return { data:null, error }; }
+  // fetch cru (não sb.functions.invoke — não engole a publishable key). Devolve no MESMO formato do
+  // .update().select('rev'): sucesso => [{rev}], conflito => [] (o casWriteProject re-tenta).
+  let data;
+  try{
+    const res = await withTimeout(fetch(SB_URL + '/functions/v1/save-project', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + SB_PUBLISHABLE_KEY, 'apikey': SB_PUBLISHABLE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, payload, expected_rev: expected })
+    }), 8000, 'save-project '+id);
+    if(!res.ok) throw new Error('save-project HTTP ' + res.status);
+    data = await res.json();
+  }catch(e){ _saveProjApiOk = false; return { data:null, error:e }; } // ausente / HTTP / rede / timeout → fallback
   if(!data || data.error){ _saveProjApiOk = false; return { data:null, error:{ message:(data && data.error) || 'save-project sem resposta' } }; }
-  return { data: data.ok ? [{ rev: data.rev }] : [], error: null };  // ok => grava; conflito => [] (cliente re-tenta)
+  return { data: data.ok ? [{ rev: data.rev }] : [], error: null };
 }
 
 async function casWriteProject(sb, p, tries, origContentCanon){
@@ -3810,12 +3819,21 @@ let _saveUserRpcOk = true;
 // DESLIGADO por padrão. Ligue _USE_SAVE_API=true SÓ depois de: supabase functions deploy save-user.
 // Prioridade: API (servidor dono da escrita) → se indisponível, RPC (B-lite) → se não, caminho atual.
 // _saveApiOk vira false sozinho se a função não responder (404/rede), caindo pro fallback.
-let _USE_SAVE_API = false;
+let _USE_SAVE_API = true;   // ATIVADO: save-user + save-project deployadas no Supabase (Edge Functions)
 let _saveApiOk = true;
 async function saveUserViaApi(sb, key, mine){
-  const { data, error } = await withTimeout(
-    sb.functions.invoke('save-user', { body: { email: key, payload: mine } }), 8000, 'save-user '+key);
-  if(error){ _saveApiOk = false; throw error; }                       // função não deployada / erro HTTP / rede
+  // fetch cru (não sb.functions.invoke — o invoke não engole a publishable key). Manda a chave no
+  // Authorization + apikey; a função valida a presença do header.
+  let data;
+  try{
+    const res = await withTimeout(fetch(SB_URL + '/functions/v1/save-user', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + SB_PUBLISHABLE_KEY, 'apikey': SB_PUBLISHABLE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: key, payload: mine })
+    }), 8000, 'save-user '+key);
+    if(!res.ok) throw new Error('save-user HTTP ' + res.status);
+    data = await res.json();
+  }catch(e){ _saveApiOk = false; throw e; }                            // função ausente / HTTP / rede / timeout → fallback
   if(!data || data.error){ _saveApiOk = false; throw new Error((data && data.error) || 'save-user sem resposta'); }
   const saved = data.payload || mine;                                  // servidor devolve o payload JÁ mesclado
   _syncedUserJson[key] = _canonJson(saved);
