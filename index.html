@@ -336,20 +336,23 @@ body{background:var(--bg);font-family:var(--sans);font-size:14px;color:var(--tex
 .ph{min-height:56px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:10px 18px;gap:10px;flex-shrink:0;position:relative;z-index:30;box-shadow:0 1px 3px rgba(20,20,40,.03);}
 .ph-t{font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;}
 .ph-a{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-left:auto;}
-.tbtn{height:34px;padding:0 15px;border-radius:10px;border:1px solid transparent;background:var(--s2);font-size:12px;font-weight:700;cursor:pointer;color:var(--text2);display:flex;align-items:center;gap:6px;font-family:var(--sans);white-space:nowrap;transition:transform .12s,box-shadow .12s,background .12s,color .12s;}
-.tbtn:hover{background:var(--s3);color:var(--text);transform:translateY(-1px);box-shadow:0 4px 10px rgba(20,20,40,.08);}
-.tbtn.html{color:var(--accent);background:var(--acc-bg);}
-.tbtn.html:hover{background:#fbe1e8;box-shadow:0 4px 10px rgba(216,56,94,.16);}
-.tbtn.csv{color:var(--green);background:var(--grn-bg);}
-.tbtn.csv:hover{background:#e6f5c4;box-shadow:0 4px 10px rgba(3,64,54,.14);}
-.tbtn.upload{color:#1d4ed8;background:#eff6ff;}
-.tbtn.upload:hover{background:#dbeafe;box-shadow:0 4px 10px rgba(29,78,216,.16);}
+/* .tbtn = botão de toolbar. Redefinido pra spec do .btn do Ditto (core/shared.css) — assim TODO
+   toolbar (dashboard, editor de CSV, campanha) usa o componente Ditto de verdade. */
+.tbtn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:12.5px;font-weight:600;cursor:pointer;color:var(--text);font-family:var(--sans);white-space:nowrap;transition:background var(--dur) var(--ease-out),border-color var(--dur) var(--ease-out),color var(--dur) var(--ease-out),box-shadow var(--dur);}
+.tbtn:hover{background:var(--bg);color:var(--text);border-color:var(--border-s);}
+.tbtn.html{color:var(--brand);background:var(--brand-soft);border-color:transparent;}
+.tbtn.html:hover{background:var(--brand-tint);border-color:transparent;}
+.tbtn.primary{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 1px 2px rgba(216,56,94,.15);}
+.tbtn.primary:hover{background:var(--brand-hover);border-color:var(--brand-hover);color:#fff;box-shadow:0 2px 8px rgba(216,56,94,.25);}
+/* Download/Upload: botões NEUTROS Ditto (antes verde/azul). Toolbar Ditto = neutros + 1 primário. */
+.tbtn.csv,.tbtn.upload{color:var(--text);background:var(--surface);border-color:var(--border);}
+.tbtn.csv:hover,.tbtn.upload:hover{background:var(--bg);border-color:var(--border-s);}
 .dl-dropdown-wrap{position:relative;}
 .dl-dropdown-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:170px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(20,20,40,.16);z-index:60;padding:5px;animation:modalIn .12s ease;}
 .dl-dropdown-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:8px 10px;border:none;background:none;border-radius:7px;font-size:12px;font-weight:600;color:var(--text2);cursor:pointer;font-family:var(--sans);}
 .dl-dropdown-menu button:hover{background:var(--s2);color:var(--text);}
-#btnApprove{color:#fff!important;background:linear-gradient(135deg,#6d28d9,#8b5cf6)!important;box-shadow:0 2px 8px rgba(109,40,217,.3);}
-#btnApprove:hover{box-shadow:0 6px 16px rgba(109,40,217,.4);}
+#btnApprove{color:#fff!important;background:var(--brand)!important;border-color:var(--brand)!important;box-shadow:0 1px 2px rgba(216,56,94,.15);}
+#btnApprove:hover{background:var(--brand-hover)!important;box-shadow:0 2px 8px rgba(216,56,94,.25);}
 
 /* GSHEET TABLE */
 .tscroll{flex:1;overflow:auto;}
@@ -1349,7 +1352,7 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
           <span class="ph-t" id="campaignItemLabel">Item</span>
           <div class="ph-a">
             <span class="presence-badge" style="display:none;"></span>
-            <button class="tbtn" style="border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;" onclick="openCampaignApprovalView()">
+            <button class="tbtn primary" onclick="openCampaignApprovalView()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
               Approve copies
             </button>
@@ -2114,7 +2117,7 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
               Update from CSV/XLSX
             </button>
             <input type="file" id="editorCsvInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="onEditorCsvUpload(this.files[0])">
-            <button class="tbtn" id="btnApprove" onclick="openApprovalView()" style="border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;font-weight:600;">
+            <button class="tbtn primary" id="btnApprove" onclick="openApprovalView()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
               Approve copies
             </button>
@@ -5931,7 +5934,7 @@ function campaignBulkLangCardHtml(item, idx, lang, isOrig) {
         ${isOrig ? '<span class="av-frame-origin-badge">origin</span>' : ''}
       </div>
       <div id="${cid}" style="height:${size.h}px;border-radius:8px;overflow:hidden;background:#f2f1f6;"></div>
-      ${!isOrig ? `<button class="tbtn" style="height:24px;padding:0 8px;font-size:10.5px;${done ? 'border-color:#bbf7d0;color:#15803d;background:#f0fdf4;' : 'border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff;'}" onclick="toggleCampaignBulkApprove(${idx},'${escJsAttr(lang)}')">${done ? '✓ Approved' : 'Approve'}</button>` : '<div style="height:24px;"></div>'}
+      ${!isOrig ? `<button class="tbtn${done ? '' : ' primary'}" style="padding:5px 10px;font-size:10.5px;${done ? 'border-color:var(--grn-bd);color:var(--green);background:var(--grn-bg);' : ''}" onclick="toggleCampaignBulkApprove(${idx},'${escJsAttr(lang)}')">${done ? '✓ Approved' : 'Approve'}</button>` : '<div style="height:24px;"></div>'}
     </div>
   `;
 }
