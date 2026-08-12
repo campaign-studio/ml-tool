@@ -3750,7 +3750,7 @@ function _threeWayMergeUser(base, mine, remote){
 // Supabase. Enquanto false (ou se a função save_user não existir), o app usa o caminho atual (upsert
 // + merge 3-way por carimbo) — nada quebra. _saveUserRpcOk vira false sozinho se o RPC não responder,
 // caindo pro fallback automaticamente.
-let _USE_SAVE_RPC = false;
+let _USE_SAVE_RPC = true;   // ATIVADO: db/2026-08-11_save_rpc.sql aplicado no Supabase (users.rev + save_user RPC)
 let _saveUserRpcOk = true;
 async function casWriteUser(sb, key, mine, tries){
   tries = tries || 0;
