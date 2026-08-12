@@ -2700,6 +2700,7 @@ function setSyncDot(state) {
     on:     { c: '#2e9e5b', t: 'Synced' },
     saving: { c: '#e0a000', t: 'Saving…' },
     saved:  { c: '#2e9e5b', t: 'Saved' },
+    retrying:{ c: '#e0a000', t: 'Retrying…' },
     error:  { c: '#d8385e', t: 'Save failed' },
   };
   const m = meta[state] || meta.off;
@@ -2725,18 +2726,59 @@ function setSyncDot(state) {
 // pintava o DOM e o erro morria numa var local). Setado no push de conteúdo: true quando falha OU
 // quando não há conexão (não dá pra confirmar); false só quando o banco confirma.
 let _syncFailed = false;
-function _setSyncFailed(v) { _syncFailed = !!v; try { renderSyncBanner(); } catch(e){} }
+function _setSyncFailed(v) {
+  _syncFailed = !!v;
+  // Auto-resync: ao falhar, agenda re-tentativa em segundo plano (backoff); ao confirmar, cancela.
+  if(_syncFailed) _scheduleAutoResync(); else _cancelAutoResync();
+  try { renderSyncBanner(); } catch(e){}
+}
 function renderSyncBanner() {
   const el = document.getElementById('syncBanner');
   if(!el) return;
   el.style.display = _syncFailed ? 'flex' : 'none';
   if(_syncFailed) {
     const msg = document.getElementById('syncBannerMsg');
-    if(msg) msg.textContent = ghConfigured()
-      ? 'Your changes have NOT been saved to the server — for now they are only in this browser.'
-      : 'No connection to the server — your changes are NOT being saved (only in this browser).';
+    // Mensagem CALMA: o dado está salvo local e a sincronização se resolve sozinha (auto-retry).
+    // Mantém a verdade do produto ("ainda não confirmado no servidor") sem parecer um erro grave.
+    if(msg) msg.textContent = !ghConfigured()
+      ? 'Offline — your changes are saved in this browser and will sync automatically when you reconnect.'
+      : (_resyncInFlight
+          ? 'Syncing your changes to the server…'
+          : 'Saved in this browser — syncing to the server automatically. Nothing is lost.');
   }
 }
+
+// ─── AUTO-RESYNC: re-tenta o push que falhou, em segundo plano, com backoff exponencial + jitter,
+// até o banco confirmar. Assim uma falha transitória (throttle/egress do Supabase, rede piscando)
+// se cura sozinha — a pessoa NUNCA precisa clicar "Try again". Não muda o merge/CAS: só re-chama o
+// mesmo push idempotente (ghMergeAndPushProjects só reescreve o que difere do baseline). ───
+let _resyncTimer = null, _resyncAttempt = 0, _resyncInFlight = false;
+const _RESYNC_DELAYS = [2000, 5000, 12000, 30000, 60000]; // ms; depois fixa em 60s
+function _cancelAutoResync(){ if(_resyncTimer){ clearTimeout(_resyncTimer); _resyncTimer = null; } _resyncAttempt = 0; }
+function _scheduleAutoResync(){
+  if(_resyncTimer || !_syncFailed) return;
+  const base = _RESYNC_DELAYS[Math.min(_resyncAttempt, _RESYNC_DELAYS.length - 1)];
+  const delay = base + Math.floor(base * 0.25 * Math.random()); // jitter até +25%
+  try{ setSyncDot('retrying'); }catch(e){}
+  _resyncTimer = setTimeout(_doAutoResync, delay);
+}
+async function _doAutoResync(){
+  _resyncTimer = null;
+  if(!_syncFailed || _resyncInFlight) return;
+  if(navigator.onLine === false){ _scheduleAutoResync(); return; } // offline: espera o evento 'online'
+  _resyncInFlight = true;
+  try{ renderSyncBanner(); }catch(e){}
+  try { await ghMergeAndPushProjects(projGetAll()); } catch(e){ /* catch interno já marca _syncFailed */ }
+  finally {
+    _resyncInFlight = false;
+    if(_syncFailed){ _resyncAttempt++; _scheduleAutoResync(); }  // ainda falhou → próxima (delay maior)
+    else { _cancelAutoResync(); }
+    try{ renderSyncBanner(); }catch(e){}
+  }
+}
+// Gatilhos imediatos: rede voltou, ou a aba voltou a ficar visível → tenta JÁ (reseta o backoff).
+window.addEventListener('online', () => { if(_syncFailed){ _cancelAutoResync(); _doAutoResync(); } });
+document.addEventListener('visibilitychange', () => { if(!document.hidden && _syncFailed && !_resyncInFlight){ _cancelAutoResync(); _doAutoResync(); } });
 // Reenvia o que ainda não foi confirmado (sem descartar nada do cache local). ghMergeAndPushProjects
 // só reescreve o que difere do baseline, então é idempotente; sucesso limpa _syncFailed sozinho.
 async function retrySync() {
