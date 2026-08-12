@@ -1,0 +1,37 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-11
+Tema: B-FULL ATIVADO (incrementos 1 e 2) — o navegador passou a gravar USUÁRIO e PROJETO pelo
+      SERVIDOR (Supabase Edge Functions save-user / save-project), não mais direto no banco.
+
+===============================================================================
+O QUE ACONTECEU
+===============================================================================
+- Deploy feito por hiago (npx supabase functions deploy save-user / save-project). OK.
+- Descoberta no teste ao vivo: sb.functions.invoke (supabase-js) NÃO aceita a publishable key do app
+  (sb_publishable_*, que não é JWT) → devolvia "non-2xx". A chamada via fetch cru, com a chave em
+  Authorization + apikey, retorna 200 normalmente (as funções em si estavam corretas).
+- Correção: saveUserViaApi e saveProjectViaApi passaram a usar fetch cru pra SB_URL/functions/v1/<nome>.
+  _USE_SAVE_API ligado (true).
+
+===============================================================================
+VERIFICAÇÃO (ao vivo, produção do banco, payloads inalterados)
+===============================================================================
+- casWriteUser → save-user: rev sobe, role 'admin' intacto, sem fallback (_saveApiOk true).
+- casWriteProject → save-project: rev sobe, sharedWith intacto (Karla + Dani), sem fallback.
+- Conflito de rev: a função devolve conflict:true e o cliente re-lê/re-mescla/re-tenta (fluxo de hoje).
+- Sem erro de console. Fallback (API indisponível → RPC/CAS direto) permanece.
+
+===============================================================================
+ESTADO
+===============================================================================
+Escrita: pelo servidor (usuário + projeto). Merge de projeto continua no cliente (mergeTwoProjects
+já testado); a função garante a gravação atômica. Leitura: ainda direta (incremento 3, próximo, é o
+que esconde o banco na leitura e mata o throttle de egress). Auth forte: incremento 4.
+
+ROLLBACK: index.html → _USE_SAVE_API = false (volta na hora pro caminho atual).
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- index.html: saveUserViaApi/saveProjectViaApi via fetch cru; _USE_SAVE_API = true.
+- supabase/functions/save-user, save-project: deployados no Supabase.
