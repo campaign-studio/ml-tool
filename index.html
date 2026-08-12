@@ -3745,6 +3745,34 @@ function _threeWayMergeUser(base, mine, remote){
   return remote;
 }
 
+// ─── B-lite: escrita ATÔMICA de usuário via RPC no Postgres (compare-and-swap por coluna rev). ───
+// DESLIGADO por padrão. Ligue _USE_SAVE_RPC=true SÓ depois de aplicar db/2026-08-11_save_rpc.sql no
+// Supabase. Enquanto false (ou se a função save_user não existir), o app usa o caminho atual (upsert
+// + merge 3-way por carimbo) — nada quebra. _saveUserRpcOk vira false sozinho se o RPC não responder,
+// caindo pro fallback automaticamente.
+let _USE_SAVE_RPC = false;
+let _saveUserRpcOk = true;
+async function casWriteUser(sb, key, mine, tries){
+  tries = tries || 0;
+  const sel = await withTimeout(sb.from('users').select('payload,rev').eq('email', key).maybeSingle(), 8000, 'user cas read '+key);
+  if(sel.error){ if(_isMissingRevColumn(sel.error)) _saveUserRpcOk = false; throw sel.error; } // sem coluna rev → fallback
+  if(!sel.data){ // usuário novo: insere (rev default 0)
+    const ins = await withTimeout(sb.from('users').insert({ email: key, payload: mine }), 8000, 'user cas insert '+key);
+    if(ins.error){ if(_isDupKey(ins.error)) return casWriteUser(sb, key, mine, tries+1); throw ins.error; }
+    _syncedUserJson[key] = _canonJson(mine); _updateLocalUserPayload(mine); return;
+  }
+  const expected = Number(sel.data.rev) || 0;
+  const base = _syncedUserJson[key] ? JSON.parse(_syncedUserJson[key]) : null;
+  const merged = _threeWayMergeUser(base, mine, sel.data.payload);
+  const rpc = await withTimeout(sb.rpc('save_user', { p_email: key, p_payload: merged, p_expected_rev: expected }), 8000, 'save_user '+key);
+  if(rpc.error){ _saveUserRpcOk = false; throw rpc.error; }   // função ausente/erro → indisponível → fallback
+  if(!rpc.data || !rpc.data.length){                          // conflito de rev → re-lê + re-mescla + re-tenta
+    if(tries >= 5) throw new Error('CAS users: conflitos demais em '+key);
+    return casWriteUser(sb, key, mine, tries+1);
+  }
+  _syncedUserJson[key] = _canonJson(merged); _updateLocalUserPayload(merged);
+}
+
 async function sbPushUsers(users) {
   const sb = sbClient();
   if(!sb) return;
@@ -3760,8 +3788,12 @@ async function sbPushUsers(users) {
       const changed = candidates.filter(u => _canonJson(u) !== (_syncedUserJson[_userKey(u)] || ''));
       for(const u of changed){
         const key = _userKey(u);
-        // Read-modify-write por linha: lê o remoto atual e mescla por campo antes de gravar, pra
-        // não clobberar uma edição concorrente de OUTRO campo do MESMO usuário.
+        // Caminho RPC (CAS atômico) quando ligado E disponível; erro de RPC-indisponível cai no antigo.
+        if(_USE_SAVE_RPC && _saveUserRpcOk){
+          try { await casWriteUser(sb, key, u); continue; }
+          catch(e){ if(_saveUserRpcOk) throw e; /* RPC ficou indisponível → segue pro fallback abaixo */ }
+        }
+        // Caminho PADRÃO/FALLBACK: read-modify-write por linha (mescla por campo/carimbo antes de gravar).
         let remote = null;
         try{
           const sel = await withTimeout(sb.from('users').select('payload').eq('email', key).maybeSingle(), 8000, 'user read '+key);

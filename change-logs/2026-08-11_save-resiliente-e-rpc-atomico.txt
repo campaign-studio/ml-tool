@@ -1,0 +1,61 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-11
+Tema: SAVE mais saudável. (A) Auto-resync resiliente no cliente — o erro de "não salvou" some sozinho
+      quando o banco pisca. (B-lite) Escrita ATÔMICA de usuário via RPC no Postgres (compare-and-swap),
+      entregue pronta e DESLIGADA por padrão (ativa após aplicar 1 SQL no Supabase).
+
+===============================================================================
+CONTEXTO
+===============================================================================
+O app é estático (GitHub Pages) e fala DIRETO com o Supabase do navegador. Sem servidor no meio, um
+throttle/egress do Supabase ou uma piscada de rede aparecia pra pessoa como "erro no banco" e só saía
+clicando "Try again". Objetivo: salvar fácil e sem erro toda hora.
+
+===============================================================================
+(A) AUTO-RESYNC RESILIENTE  — LIGADO, sem dependência externa
+===============================================================================
+index.html:
+- _setSyncFailed: ao falhar, AGENDA re-tentativa em segundo plano; ao confirmar, cancela.
+- _scheduleAutoResync/_doAutoResync: re-chama o MESMO push idempotente (ghMergeAndPushProjects — só
+  reescreve o que difere do baseline) com backoff exponencial + jitter (2s→5→12→30→60s, teto 60s),
+  até o banco confirmar. NÃO altera merge/CAS.
+- Gatilhos imediatos: evento 'online' (rede voltou) e 'visibilitychange' (aba voltou) → tenta já.
+- setSyncDot: novo estado 'Retrying…'. renderSyncBanner: mensagem CALMA ("Saved in this browser —
+  syncing to the server automatically. Nothing is lost." / offline: "…will sync when you reconnect."),
+  preservando a verdade do produto (ainda não confirmado no servidor) sem parecer erro grave.
+Resultado: falha transitória se cura sozinha; a pessoa não precisa mais clicar em nada.
+
+===============================================================================
+(B-lite) ESCRITA ATÔMICA DE USUÁRIO VIA RPC  — entregue, DESLIGADA por padrão
+===============================================================================
+Projetos JÁ têm CAS atômico (update ... where rev = esperado). A tabela `users` não tinha coluna rev
+(a proteção era por carimbo userUpdatedAt). B-lite dá à `users` o MESMO CAS atômico, no servidor, sem
+vendor/CLI/segredo:
+- db/2026-08-11_save_rpc.sql: adiciona coluna `rev` na users + função save_user(email,payload,rev)
+  que grava só se rev==esperado (CAS atômico); RLS de quem chama (security invoker).
+- index.html: flag _USE_SAVE_RPC (false por padrão) + casWriteUser (usa sb.rpc('save_user'), re-tenta
+  em conflito, cai pro caminho antigo se a função não existir). sbPushUsers roteia pelo RPC só quando
+  o flag está ligado E o RPC disponível; caso contrário usa o caminho atual — INALTERADO.
+
+COMO ATIVAR (passo que é seu, precisa de acesso ao banco):
+  1. Supabase → SQL Editor → cole e rode db/2026-08-11_save_rpc.sql.
+  2. index.html: _USE_SAVE_RPC = true; recarregue.
+  (Enquanto não fizer isso, tudo segue no caminho atual — subir agora é inerte.)
+
+===============================================================================
+VERIFICAÇÃO (preview local)
+===============================================================================
+- Auto-resync: falha → agenda timer + dot "Retrying…" + mensagem calma + banner; sucesso → cancela
+  timer + esconde banner. (testado forçando _setSyncFailed, escrita no Supabase bloqueada)
+- B-lite inerte: _USE_SAVE_RPC===false, casWriteUser definido, caminho padrão intacto (cenário do bug
+  de papel ainda protegido pelo _threeWayMergeUser). Sem erro de sintaxe/JS.
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- index.html: auto-resync (setSyncDot 'retrying', _setSyncFailed, renderSyncBanner, _scheduleAutoResync
+  /_doAutoResync + listeners); B-lite (_USE_SAVE_RPC, _saveUserRpcOk, casWriteUser, sbPushUsers roteando).
+- db/2026-08-11_save_rpc.sql: migração do RPC save_user (aplicar 1x no Supabase pra ativar B-lite).
+
+PENDENTE (endgame, opcional): B-full (Edge Function/API dona da escrita, esconde o banco do navegador
+e absorve throttle também na LEITURA) — precisa de CLI + segredo (service role), configurado por você.
