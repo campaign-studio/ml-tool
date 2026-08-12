@@ -3128,6 +3128,19 @@ async function _plainUpsertProject(sb, p){
 }
 
 // Grava UMA linha com compare-and-swap no rev. Re-tenta em conflito (re-lê + re-mescla).
+// B-full (2º incremento): escrita de projeto pela Edge Function 'save-project'. Ligada pelo MESMO
+// flag _USE_SAVE_API (definido mais abaixo). Devolve no MESMO formato do .update().select('rev')
+// (sucesso => [{rev}], conflito => []), então o casWriteProject não muda a lógica. _saveProjApiOk
+// vira false sozinho se a função não responder → fallback pro update direto.
+let _saveProjApiOk = true;
+async function saveProjectViaApi(sb, id, payload, expected){
+  const { data, error } = await withTimeout(
+    sb.functions.invoke('save-project', { body: { id, payload, expected_rev: expected } }), 8000, 'save-project '+id);
+  if(error){ _saveProjApiOk = false; return { data:null, error }; }
+  if(!data || data.error){ _saveProjApiOk = false; return { data:null, error:{ message:(data && data.error) || 'save-project sem resposta' } }; }
+  return { data: data.ok ? [{ rev: data.rev }] : [], error: null };  // ok => grava; conflito => [] (cliente re-tenta)
+}
+
 async function casWriteProject(sb, p, tries, origContentCanon){
   tries = tries || 0;
   // Conteúdo real de origem desta gravação (fixado na 1ª chamada e preservado na recursão): serve
@@ -3154,9 +3167,18 @@ async function casWriteProject(sb, p, tries, origContentCanon){
   }
   const expected = cur.rev || 0;
   const merged = mergeTwoProjects(p, cur.payload);
-  const upd = await withTimeout(
-    sb.from('projects').update({ payload: merged, rev: expected + 1, updated_at: nowIso }).eq('id', p.id).eq('rev', expected).select('rev'),
-    8000, 'cas update '+p.id);
+  // Escrita pela Edge Function quando ligada E disponível; erro/indisponível → update direto (fallback).
+  // Com _USE_SAVE_API=false, `upd` fica null e roda EXATAMENTE o update direto de antes (byte-a-byte).
+  let upd = null;
+  if(_USE_SAVE_API && _saveProjApiOk){
+    upd = await saveProjectViaApi(sb, p.id, merged, expected);
+    if(upd.error) upd = null; // API caiu (já marcou _saveProjApiOk=false) → segue pro update direto abaixo
+  }
+  if(!upd){
+    upd = await withTimeout(
+      sb.from('projects').update({ payload: merged, rev: expected + 1, updated_at: nowIso }).eq('id', p.id).eq('rev', expected).select('rev'),
+      8000, 'cas update '+p.id);
+  }
   if(upd.error){
     if(_isMissingRevColumn(upd.error)){ _casDisabled = true; return _plainUpsertProject(sb, p); }
     throw upd.error;
