@@ -1,0 +1,79 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-12
+Tema: REQUEST ACCESS — feature própria: link compartilhável (?open={id}) + tela dedicada de
+      solicitar acesso + pedido via notificação (dono + editores) + conceder/negar + SLIDE-UP.
+
+===============================================================================
+POR QUÊ
+===============================================================================
+Quando alguém recebe um link de um projeto/pasta e NÃO tem permissão, antes não havia nada
+(o ml-tool nem tinha deep-link por URL). Agora: cai numa tela dedicada, isolada do header/nav,
+que mostra só o NOME do item e um botão "Request access". O pedido vira notificação (o MESMO
+canal cross-user do Supabase já existente) para o dono + todos os editores; qualquer um deles
+concede ou nega. Conceder = adiciona ao sharedWith (reusa o caminho de share). Quem pode conceder
+recebe um SLIDE-UP na hora que o pedido chega. Nenhum conteúdo é exposto antes da aprovação.
+
+Decisões confirmadas pelo usuário:
+- Escopo: ml-tool (este repo). Param do link: ?open={id} (cobre projeto p_ e pasta camp_).
+- Notificar: dono + TODOS os editores.
+- Quem pode conceder: dono, admin/superadmin E editores (pedido explícito).
+- Extra: slide-up (toast que sobe) a cada novo pedido pra quem pode conceder.
+
+===============================================================================
+O QUE ENTROU (tudo em index.html)
+===============================================================================
+Helpers de permissão:
+- canViewProject(p,me): dono | sharedWith | approvers | admin+ (mesma regra do dashboard).
+- isEditorOf(p,email): em sharedWith e NÃO só approver.
+- canGrantAccess(p,me): dono | admin+ | editor.
+- accessGrantRecipients(p,requester): dono + editores (exclui approver puro e o solicitante).
+
+Deep-link:
+- projectShareLink(id) = location.origin+pathname+?open={id}. Botão "🔗 Copy link" no share modal.
+- routeDeepLinkIfAny(): chamado no fim do enterApp (após goToDashboard). Lê ?open, puxa projetos
+  frescos, e: pode ver → abre (projOpen p/ projeto, openCampaignEditor p/ pasta); senão → tela de
+  solicitar acesso. Limpa a URL (history.replaceState) pra refresh não re-disparar.
+
+Tela dedicada (#requestAccessScreen, fora do header/nav, estética Ditto):
+- Mostra só o NOME do item. Estados: pedir / pendente (aguardando) / recusado (pode pedir de novo).
+- Item removido entre o clique e o load (isProjectRecentlyDeleted) ou link inválido → mensagem
+  genérica, sem botão, sem conteúdo.
+
+Pedido + conceder/negar (via notificação, sem tabela/migração nova):
+- submitAccessRequest(id): dedup (pendingAccessRequestExists varre TODAS as notifs sincronizadas);
+  notifAdd p/ cada destinatário com meta{kind:'access_request',itemId,itemName,requesterEmail,status:'pending'}.
+- grantAccessRequest(notifId): add ao sharedWith via _saveShareOrRollback+_verifyShareInDb (idempotente),
+  notifAdd(access_granted) pro solicitante, resolveAccessRequest marca TODAS as cópias como 'granted'.
+- denyAccessRequest(notifId): notifAdd(access_denied) + resolve como 'denied'.
+- renderNotifPanel: pedidos pendentes ganham botões Grant/Deny; resolvidos mostram rótulo do desfecho.
+
+Slide-up:
+- showAccessSlideUp(notif): toast que sobe (canto inferior direito) com Grant/Deny/×.
+- seedSeenAccessRequests() no enterApp (não estoura slide-up de pedido antigo) e
+  checkNewAccessRequests() no sbOnNotifsChanged (realtime) dispara pra pedidos novos.
+
+===============================================================================
+EDGE CASES COBERTOS
+===============================================================================
+- Deletado no meio / link inválido → tela genérica, sem conteúdo.
+- Pedido duplicado (mesma pessoa+item pendente) → não re-notifica; mostra "aguardando".
+- Negado → solicitante vê "recusado" + pode pedir de novo.
+- Já concedido enquanto isso → canViewProject true → abre direto.
+- Não logado → deep-link só roteia DEPOIS do login (enterApp), então sempre há identidade.
+- Conceder idempotente (se já estava no sharedWith, não duplica).
+
+===============================================================================
+VERIFICAÇÃO (preview local, SEM escrever no Supabase — só render sintético)
+===============================================================================
+- Sem erro de console no load.
+- Lógica de permissão (pura): dono vê / estranho NÃO vê / editor concede / approver puro NÃO /
+  destinatários = dono+editor (exclui approver e solicitante). Tudo OK.
+- Render da tela de solicitar acesso (dark, só o nome, botão wine) — screenshot OK.
+- Render do slide-up (Grant/Deny) — screenshot OK.
+
+===============================================================================
+NOTAS
+===============================================================================
+- 100% cliente: NÃO precisa de migração nem Edge Function nova (o pedido é uma notificação, que já
+  sincroniza cross-user). Funciona igual na produção (GitHub Pages) — o link usa a URL real da página.
+- Branch: feature/request-access.
