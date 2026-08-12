@@ -1,0 +1,40 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-11
+Tema: SUITE DE TESTE (rede de segurança) pro que mudou hoje no save: escrita pelo servidor
+      (Edge Functions), CAS atômico sem perda concorrente, merge que não deixa cópia velha vencer,
+      roteamento/fallback. O projeto não tem test runner — é executável no navegador, contra o app real.
+
+===============================================================================
+O QUE
+===============================================================================
+tests/save-and-concurrency.test.js — define window.runSaveTests({projectId?, userEmail?}). 11 checagens:
+  A) MERGE (função pura): cópia velha não sobrescreve (sem ancestral); role pelo carimbo mais novo
+     (com ancestral); empate mantém o remoto; edição disjunta sobrevive; (A5 opcional roda o
+     runMergeInvariantTests se estiver carregado).
+  B) SAVE-USER pelo servidor: casWriteUser → Edge Function grava, rev+1, role intacto, sem fallback.
+  C) SAVE-PROJECT pelo servidor: grava atômico (rev+1) com conteúdo intacto; rev VELHO = CONFLITO
+     (data vazio, projeto intacto); casWriteProject (caminho completo) grava pelo servidor.
+  D) ROTEAMENTO/FALLBACK: API ligada e disponível; função inexistente responde não-2xx (o helper
+     marcaria _saveApiOk=false e cairia no RPC/direto).
+  E) SANIDADE (leitura): Dani (daniele.lara) é editora no projeto de teste.
+
+NÃO-DESTRUTIVO: os testes ao vivo re-salvam CONTEÚDO IGUAL (só o rev sobe) do usuário logado/hiago e
+de UM projeto de teste — nenhuma tradução muda, nada é apagado. Leituras são resilientes (readOne
+re-tenta 5x em leitura vazia/throttle).
+
+COMO RODAR:
+  App aberto e logado → console → cole o arquivo (ou fetch('/tests/save-and-concurrency.test.js')
+  .then(r=>r.text()).then(t=>{eval(t);return runSaveTests();})) → await runSaveTests(). failed===0 = OK.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+Rodado no preview contra as funções reais + Edge Functions deployadas: 11 PASS / 0 FAIL.
+Observação: na 1ª rodada B1/C1 falharam por LEITURA VAZIA transitória (throttle de egress do
+Supabase) — não bug do app (o save passou). Isso motivou o readOne resiliente e reforça o valor do
+próximo incremento (leitura pelo servidor). Sem erro de console.
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- tests/save-and-concurrency.test.js (novo).
