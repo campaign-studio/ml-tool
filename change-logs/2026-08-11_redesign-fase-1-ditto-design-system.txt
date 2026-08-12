@@ -1,0 +1,74 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-11
+Tema: REDESIGN Fase 1 — alinhar a plataforma ao padrão de COMPONENTE do In-app Builder (Ditto),
+      não só cor. Toda a Fase 1 vive na branch redesign/foundation — NADA foi pra main/produção.
+
+ATENÇÃO: exigência do pedido = staging obrigatório. Modelo adotado: branch separada + preview local
+(nada em main sem aprovação). Testes feitos com a escrita no Supabase BLOQUEADA (só reskin visual).
+
+===============================================================================
+REFERÊNCIA
+===============================================================================
+Benchmark = In-app Builder (/Users/hiago.branco/projects/inapp-builder), cujo design system central
+é core/shared.css (+ ui.js/nav.js/logo.js). O ml-tool já usava a cor de marca (--accent == wine
+#D8385E) e Inter; a lacuna era SISTEMA/COMPONENTE, não paleta.
+
+===============================================================================
+O QUE MUDOU (só CSS/markup de chrome; nenhuma lógica de grid/canvas/merge tocada)
+===============================================================================
+FUNDAÇÃO
+- :root ganhou os tokens do Ditto com valores IDÊNTICOS ao core/shared.css: escalas de espaçamento
+  (--sp-1..16, base 8px), raio (--radius-lg/md/sm), sombra (--shadow-1/2/3), tipografia (--fs-*),
+  motion (--ease-out, --dur*), e aliases de marca (--brand/-hover/-soft/-tint/-focus, --indigo,
+  --muted, --subtle, --ground, --success/--warning/--info). Aditivo — tokens antigos seguem válidos.
+- Primitivas Ditto: .btn (+ --primary/--ghost/--soft/--danger/--sm/--lg), .glass (com fallback
+  @supports), .amb-glow (glows ambiente wine+índigo), focus ring wine.
+
+TEMA CLARO/ESCURO (como no Ditto UX Audit)
+- Tokens dark via prefers-color-scheme + data-theme (light/dark). Init sem flash (localStorage);
+  toggleTheme() persiste. Botão ◐ no Login e GLOBAL no top bar.
+- Dark 100% nas telas migradas (baseadas em token); telas ainda não migradas completam depois.
+
+TELAS
+- Login: painel navy escuro REMOVIDO -> card claro Ditto sobre glow ambiente, mark wine, .btn--primary.
+- Top bar: barra navy -> nav claro Ditto (surface + borda, marca/links escuros, avatar wine, toggle).
+- Botões primários app-wide: .btn-next/.btn-go navy -> wine. Botão secundário .btn-back -> .btn neutro
+  Ditto (cascata em Close/Cancel/Back de vários modais). .tbtn (toolbars) -> spec do .btn Ditto.
+- Dashboard: cards de pasta/projeto com hover/realce wine, ícone de pasta wine-soft, foco wine na
+  busca; segmented (dash-sort-btn) ativo wine.
+- Editor de CSV (ALTO RISCO — só chrome, wireGridController intacto): banner azul -> wine; hovers/
+  foco/seleção-range azul/creme -> wine + tokens (dark-safe); toolbar via .tbtn Ditto.
+- Galeria de pasta: cards + botões viraram COMPONENTES .btn reais (Approve primary, Edit neutro,
+  Remove ghost, Delete danger); abas de tipo ativas wine; footer/spacing Ditto.
+- Modais: os 2 "rebeldes" (noImgModal, csvUpdateErrorModal) entraram no sistema padrão (.modal-ov
+  com blur, z 9000, .card.modal-card, .modal-head, botões .btn).
+- Approval canvas (ALTO RISCO — só chrome): header/sidebar já tokenizados; abas de locale wine;
+  verify-btn dark-safe; secundário via .btn-back.
+- Bulk/By-locale: hover roxo do approve -> wine; pill "Approved" -> tokens de verde.
+- Edit Tagged HTML: já em componentes Ditto via cascata; + focus ring wine na textarea.
+
+VARREDURA DE ROXO
+- Todo o roxo de chrome (#6d28d9/#8b5cf6/tints) -> Ditto: WINE em ações/seleções (Approve, aba de
+  locale, ícone de confirmação, avatar de presença, histórico), ÍNDICE (--info) em pills de info
+  (badge VML, tag "shared", pills "reviewing"/"approver"). Único roxo mantido: a cor de DADO da
+  paleta de locale "L1on" (#8b5cf6), que não é chrome.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+Preview local (localhost:3000, branch): Login (claro+escuro), top bar, Dashboard (dados reais),
+galeria, editor de CSV, modal noImg, Edit Tagged HTML — todos capturados/conferidos, sem erro de
+sintaxe/JS em nenhum reload. Approval canvas: chrome alinhado por token/classe, mas não aberto ao
+vivo (precisa de projeto real com aprovação) — a confirmar logado.
+
+===============================================================================
+COMMITS (branch redesign/foundation)
+===============================================================================
+70ea94d tokens+primitivas+Login · cfb1ee1 tema+toggle · c614443 top bar+botões primários ·
+f363b48 dashboard cards · 8dee776 editor de CSV (chrome) · c67d28d galeria (componentes) ·
+1b2487d toolbars .tbtn Ditto · 66330e2 modais+varredura roxo · 0ff1487 approval canvas+.btn-back ·
+306cd51 bulk/by-locale + edit tagged html (fecha Fase 1).
+
+PENDENTE (fora da Fase 1): abrir approval ao vivo p/ conferir; cobertura de dark nas telas não
+migradas; decisão de MERGE p/ main (= ir pro ar) após aprovação; telas que o Ditto tem e o ml-tool
+não (Account/galeria global) se entrarem no escopo.
