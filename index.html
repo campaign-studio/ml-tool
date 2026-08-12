@@ -2558,8 +2558,10 @@ async function enterApp(user) {
   await ghPullNotifications();
   renderNotifBell();
   seedSeenAccessRequests();  // não estourar slide-up de pedidos antigos ao logar
-  await goToDashboard();
-  routeDeepLinkIfAny();      // se veio de um link ?open={id}, abre ou mostra "solicitar acesso"
+  const _bootSearch = location.search; // captura ANTES do dashboard mexer na URL
+  _suppressUrlSync = true;
+  try { await goToDashboard(); } finally { _suppressUrlSync = false; }
+  await routeFromUrl(_bootSearch); // reflete o que a URL pedia (abre projeto/pasta/item ou "solicitar acesso")
 }
 
 // Bolinha com a inicial no topo, cor consistente por pessoa (mesmo hash usado nos
@@ -4280,33 +4282,71 @@ function pendingAccessRequestExists(itemId, requesterEmail) {
     && n.meta.status === 'pending');
 }
 
-// ── Roteamento do deep-link (chamado no fim do enterApp) ──
-let _deepLinkHandled = false;
-async function routeDeepLinkIfAny() {
-  if(_deepLinkHandled) return;
-  let id = null;
-  try { id = new URLSearchParams(location.search).get('open'); } catch(e) {}
-  if(!id) return;
-  _deepLinkHandled = true;
-  // limpa a URL pra um refresh não re-disparar de forma inesperada
-  try { history.replaceState(null, '', location.origin + location.pathname); } catch(e) {}
-
-  if(ghConfigured()) { try { await ghPullProjects(); } catch(e){} }
-  const me = authCurrentUser();
-  const p = projGetAll().find(x => x.id === id);
-
-  if(p && me && canViewProject(p, me)) {
-    dispatchOpenItem(p);
-    return;
-  }
-  // Sem acesso (ou item indisponível) → tela dedicada de solicitar acesso.
-  openRequestAccess(id, p || null);
+// ── Roteamento por URL: a URL reflete ONDE você está e muda conforme navega ──
+//   dashboard → (sem query) ; projeto/pasta → ?open={id} ; item da pasta → ?open={campId}&item={itemId}
+//   Query-param (não path /folder/..) DE PROPÓSITO: o app é um index.html estático (GitHub Pages),
+//   então /folder/x daria 404 num refresh; ?open= mantém o path em / e sempre carrega.
+let _suppressUrlSync = false; // true durante boot/back-forward pra não empilhar histórico duplicado
+let _urlRouteBusy = false;
+function _pushNavUrl(qs) {
+  if(_suppressUrlSync) return;
+  const target = location.pathname + (qs ? ('?' + qs) : '');
+  const current = location.pathname + (location.search || '');
+  if(target === current) return;
+  try { history.pushState(null, '', target); } catch(e) {}
 }
+// Sync a partir do estado atual (usado pelos hooks de navegação).
+function syncNavUrlProject(id) { _pushNavUrl('open=' + encodeURIComponent(id)); }
+function syncNavUrlFolder(id)  { _pushNavUrl('open=' + encodeURIComponent(id)); }
+function syncNavUrlFolderItem(campId, itemId) { _pushNavUrl('open=' + encodeURIComponent(campId) + '&item=' + encodeURIComponent(itemId)); }
+function syncNavUrlDashboard() { _pushNavUrl(''); }
+
+// Abre o que a URL descreve (boot, back/forward, e clique em link).
+async function routeFromUrl(search) {
+  if(_urlRouteBusy) return;
+  _urlRouteBusy = true;
+  try {
+    let params; try { params = new URLSearchParams(search || ''); } catch(e) { params = new URLSearchParams(); }
+    const id = params.get('open');
+    const itemId = params.get('item');
+    const me = authCurrentUser();
+
+    if(!id) { // dashboard
+      _suppressUrlSync = true;
+      try { hideRequestAccess(); await goToDashboard(); } finally { _suppressUrlSync = false; }
+      return;
+    }
+    if(ghConfigured()) { try { await ghPullProjects(); } catch(e){} }
+    const p = projGetAll().find(x => x.id === id);
+    if(!(p && me && canViewProject(p, me))) { openRequestAccess(id, p || null); return; }
+
+    _suppressUrlSync = true; // durante a abertura programática não empilha histórico novo
+    try {
+      hideRequestAccess();
+      if(p.kind === 'campaign') {
+        await openCampaignEditor(p.id);
+        if(itemId && typeof _campaign !== 'undefined' && _campaign && Array.isArray(_campaign.items)) {
+          const idx = _campaign.items.findIndex(it => it.id === itemId);
+          if(idx >= 0) openCampaignItemEdit(idx);
+        }
+      } else {
+        await projOpen(p.id);
+      }
+    } finally { _suppressUrlSync = false; }
+  } finally { _urlRouteBusy = false; }
+}
+// Compat: o enterApp chamava routeDeepLinkIfAny(); agora delega pro roteador de URL.
+async function routeDeepLinkIfAny() { return routeFromUrl(location.search); }
+
+// Abre um item conhecido (usado quando o acesso acabou de ser concedido) — muda a URL normalmente.
 function dispatchOpenItem(p) {
   hideRequestAccess();
   if(p.kind === 'campaign') openCampaignEditor(p.id);
   else projOpen(p.id);
 }
+
+// Back/forward do navegador → re-renderiza o estado da URL (sem empilhar histórico novo).
+window.addEventListener('popstate', () => { routeFromUrl(location.search); });
 
 // ── Tela de Solicitar Acesso (isolada) ──
 function hideRequestAccess() {
@@ -5617,6 +5657,7 @@ async function goToDashboard() {
   }
   renderNotifBell();
   renderDashboard();
+  syncNavUrlDashboard(); // URL volta pra raiz (sem ?open) ao voltar pro dashboard
 }
 
 // Pasta é só uma tag de texto no próprio projeto (p.folder) — a lista de pastas
@@ -6160,6 +6201,7 @@ async function openCampaignEditor(id) {
     document.getElementById('campaignScreenTitle').textContent = p.name;
     renderCampaignTabs();
     renderCampaignMain();
+    syncNavUrlFolder(p.id); // URL reflete a pasta aberta
   } finally {
     setCampaignBusy(false);
   }
@@ -6338,6 +6380,8 @@ function openCampaignItemEdit(idx) {
   _campaignItemIndex = idx;
   _campaignViewMode = 'edit';
   renderCampaignMain();
+  // URL reflete o item aberto dentro da pasta (ex: ?open=camp_..&item=..)
+  if(_campaign && _campaign.items && _campaign.items[idx]) syncNavUrlFolderItem(_campaign.id, _campaign.items[idx].id);
 }
 
 function openCampaignItemApprove(idx) {
@@ -8099,6 +8143,7 @@ async function projOpen(id, btn) {
 
   currentProjectId = id;
   _lockTakeoverShown = false;
+  syncNavUrlProject(id);   // URL reflete o projeto aberto (compartilhável, back/forward)
   presenceSetProject(id); // presença ao vivo — anuncia que estou neste projeto agora
   undoClear();             // undo é por-projeto: começa limpo ao abrir
 

@@ -1,0 +1,55 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-12
+Tema: ROTEAMENTO POR URL — a URL reflete ONDE você está e muda conforme navega (dashboard,
+      projeto, pasta, item dentro da pasta). Back/forward do navegador funcionam. Todo lugar
+      vira link compartilhável (integra com a feature Request Access).
+
+===============================================================================
+POR QUÊ
+===============================================================================
+O usuário pediu: "tudo com link — conforme a pessoa anda no produto (folder, inapp, etc.),
+a URL vai mudando". Antes só existia o ?open={id} (abrir por link). Agora a URL é sincronizada
+com o estado de navegação, e o botão voltar/avançar do navegador reconstrói o estado.
+
+===============================================================================
+ESQUEMA DE URL (query-param, de propósito)
+===============================================================================
+- Dashboard ............... /              (sem query)
+- Projeto avulso .......... /?open={p_id}
+- Pasta (folder) .......... /?open={camp_id}
+- Item dentro da pasta .... /?open={camp_id}&item={itemId}
+
+Por que query (?open=) e NÃO path (/folder/x): o app é um index.html estático (GitHub Pages).
+Um path /folder/x daria 404 no refresh; com ?open= o path continua "/" e sempre carrega.
+
+===============================================================================
+O QUE ENTROU (index.html)
+===============================================================================
+- _pushNavUrl(qs): history.pushState idempotente (não empilha estado igual), respeita
+  _suppressUrlSync (usado no boot e no back/forward pra não criar histórico duplicado).
+- syncNavUrlProject / syncNavUrlFolder / syncNavUrlFolderItem / syncNavUrlDashboard: chamados
+  nos pontos de navegação (projOpen, openCampaignEditor, openCampaignItemEdit, goToDashboard).
+- routeFromUrl(search): abre o que a URL descreve — puxa projetos frescos, checa permissão
+  (canViewProject); se pode ver → abre projeto/pasta(+item); senão → tela de Solicitar Acesso;
+  id inexistente/removido → tela genérica. Reusado no boot (enterApp) e no popstate.
+- popstate listener: back/forward → routeFromUrl re-renderiza o estado (suprimindo novo push).
+- enterApp: captura location.search ANTES do dashboard e chama routeFromUrl(bootSearch).
+
+===============================================================================
+VERIFICAÇÃO (preview local, sandbox — ZERO escrita/lock no Supabase)
+===============================================================================
+- Builders de URL: projeto → ?open=p_abc ; item → ?open=camp_1&item=it_9 ; dashboard → vazio ;
+  suppress respeitado ; sem push duplicado. OK.
+- Roteador (stub das funções de abertura, grava quem seria chamado): 7/7
+  vazio→dashboard / projeto→projOpen / pasta→openCampaignEditor / pasta+item→editor+itemEdit /
+  item inexistente→só a pasta / sem permissão→Request Access(known) / id inexistente→(null). OK.
+- Sem erro de console.
+
+===============================================================================
+FORA DE ESCOPO (por ora — dá pra adicionar depois)
+===============================================================================
+- Sub-modos NÃO mudam a URL ainda: Approval View, Previewer, editor de Tagged HTML, e o
+  "voltar pra galeria" dentro de uma pasta (mantém &item até a próxima navegação).
+- Modais (Share, Members, Histórico) não têm URL — correto (não são lugares navegáveis).
+
+Branch: feature/request-access (mesma da Request Access).
