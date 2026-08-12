@@ -3262,9 +3262,30 @@ async function ghMergeAndPushProjects(localProjects, opts) {
 // payload inteiro (html+csv) de TODO projeto, toda vez — ver comentário abaixo.
 let _lastProjectsPullAt = null;
 
+// ─── AUTO-RETRY do PULL de projetos: se a leitura falha (throttle/egress/rede), re-tenta em
+// segundo plano com backoff até voltar — e re-renderiza a home. Sem isso, uma leitura ruim deixava
+// a home VAZIA até um refresh manual (o susto do "SOS"). Só leitura; não escreve nada. ───
+let _pullRetryTimer = null, _pullRetryAttempt = 0;
+function _cancelPullRetry(){ if(_pullRetryTimer){ clearTimeout(_pullRetryTimer); _pullRetryTimer = null; } _pullRetryAttempt = 0; }
+function _schedulePullRetry(){
+  if(_pullRetryTimer || !ghConfigured()) return;
+  const delays = [3000, 8000, 20000, 45000, 60000]; // teto 60s
+  const base = delays[Math.min(_pullRetryAttempt, delays.length - 1)];
+  const delay = base + Math.floor(base * 0.25 * Math.random());
+  _pullRetryTimer = setTimeout(async () => {
+    _pullRetryTimer = null;
+    if(navigator.onLine === false){ _schedulePullRetry(); return; }
+    const okp = await ghPullProjects();
+    if(okp){ _pullRetryAttempt = 0; try{ renderDashboardIfChanged(); }catch(e){} }
+    else { _pullRetryAttempt++; _schedulePullRetry(); }
+  }, delay);
+}
+window.addEventListener('online', () => { if(_pullRetryTimer!==null || _pullRetryAttempt>0){ _cancelPullRetry(); _schedulePullRetry(); } });
+
 async function ghPullProjects() {
   const sb = sbClient();
   if(!sb) return false;
+  const _prevLocalCount = (function(){ try{ return projGetAll().length; }catch(e){ return 0; } })();
   // Se tiver um push recente ainda em voo, espera ele terminar primeiro — senão
   // este pull pode buscar a versão ANTIGA do servidor e apagar o salvamento que
   // acabou de acontecer localmente.
@@ -3299,6 +3320,14 @@ async function ghPullProjects() {
     // recém-feito, e sobrescrever a edição na hora, mesmo com o "await _pendingProjectsPush"
     // acima (que só cobre o push ainda em voo, não a defasagem de leitura logo depois).
     const merged = mergeProjectsForSave(projects);
+    // Guarda-chão: NUNCA esvaziar o cache local a partir de um pull. mergeProjectsForSave já preserva
+    // os projetos locais que não vieram na resposta, então merged vazio com cache não-vazio antes só
+    // pode ser leitura ruim/estado inesperado — mantém o que tínhamos e re-tenta (evita a home vazia).
+    if(merged.length === 0 && _prevLocalCount > 0){
+      console.warn('ghPullProjects: merge vazio com cache local não-vazio — mantendo local e re-tentando.');
+      _schedulePullRetry();
+      return false;
+    }
     _lsSetLarge(PROJ_KEY, JSON.stringify(merged)); // era setItem cru (estourava no Safari sem guarda)
     // Baseline do CAS: registra o que o banco tem AGORA pra cada linha recebida, pra o próximo
     // push só reescrever o que mudou de verdade. Canônico (chaves ordenadas) porque o jsonb
@@ -3319,10 +3348,12 @@ async function ghPullProjects() {
       _lastProjectsPullAt = pullStartedAt; // banco vazio na 1ª vez — evita re-full toda hora
     }
     setSyncDot('on');
+    _cancelPullRetry();       // pull voltou → cancela qualquer re-tentativa pendente
     return true;
   } catch(e) {
     console.warn('Supabase sync (pull projects) error:', e);
     setSyncDot('error');
+    _schedulePullRetry();     // leitura falhou → re-tenta em segundo plano (backoff) até voltar
     return false;
   }
 }
