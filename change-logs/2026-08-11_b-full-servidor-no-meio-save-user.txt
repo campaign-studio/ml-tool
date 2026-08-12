@@ -1,0 +1,58 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-11
+Tema: B-FULL (1º incremento) — SERVIDOR NO MEIO pra escrita de usuário (Supabase Edge Function).
+      O navegador para de falar DIRETO com o banco pra salvar usuário: passa a chamar uma função que
+      roda no Supabase, é dona da escrita (service_role) e faz CAS atômico + merge no servidor.
+      Entregue PRONTO e DESLIGADO por padrão (ativa após 1 deploy seu).
+
+DECISÕES (confirmadas): runtime = Supabase Edge Functions (nenhum vendor novo; service_role é
+injetada automaticamente). Auth = "reliability agora, auth de verdade depois" (a função exige o
+header Authorization/anon key que o app já manda; validar QUEM chama fica pra um passo separado).
+
+===============================================================================
+O QUE MUDOU
+===============================================================================
+supabase/functions/save-user/index.ts (Deno / Edge Function):
+- Recebe { email, payload }; usa o service_role; faz read (payload,rev) → merge (mergeUser, mesma
+  regra do cliente no ramo sem-ancestral: newest-wins por userUpdatedAt; role pelo roleUpdatedAt) →
+  UPDATE ... where email e rev=esperado (CAS atômico) → 0 linhas = conflito → re-tenta. Usuário novo
+  = insert (rev 0). Exige Authorization (não fica aberta).
+supabase/functions/save-user/DEPLOY.md: passo-a-passo de ativação (supabase functions deploy save-user
+  + _USE_SAVE_API=true).
+
+index.html:
+- Flag _USE_SAVE_API (false por padrão) + saveUserViaApi (chama sb.functions.invoke('save-user'),
+  usa o payload MESCLADO que o servidor devolve pra atualizar baseline/local; marca _saveApiOk=false
+  e cai no fallback se a função não responder).
+- sbPushUsers roteia: SERVIDOR (Edge Function) → se indisponível, RPC save_user (B-lite, já ativo) →
+  se não, caminho antigo. Com o flag false, nada muda (o RPC continua fazendo o trabalho).
+
+===============================================================================
+COMO ATIVAR (você, 1x)
+===============================================================================
+1. supabase login && supabase link --project-ref <ref>
+2. supabase functions deploy save-user   (service_role é automática nas Edge Functions)
+3. index.html: _USE_SAVE_API = true; recarregar.
+Rollback: _USE_SAVE_API = false (volta na hora pro caminho atual).
+
+===============================================================================
+VERIFICAÇÃO (preview local)
+===============================================================================
+- Inerte com flag off: _USE_SAVE_API===false, saveUserViaApi definido, RPC segue ativo
+  (_USE_SAVE_RPC===true), sb.functions.invoke disponível, sem erro de sintaxe/JS.
+- Teste AO VIVO da função exige o deploy (feito por você) — a lógica espelha exatamente o
+  casWriteUser/save_user já validado, então a confiança é alta mesmo sem rodar ainda.
+
+===============================================================================
+PRÓXIMOS INCREMENTOS (quando quiser)
+===============================================================================
+- save-project (mesma ideia, com o merge de projeto server-side) → aí o banco some de vez das
+  ESCRITAS do navegador.
+- Leitura via função (esconde o banco na LEITURA também; mata o throttle de egress no cliente).
+- Autenticação forte (o servidor valida a identidade) — o "auth depois" combinado.
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- supabase/functions/save-user/index.ts, supabase/functions/save-user/DEPLOY.md
+- index.html: _USE_SAVE_API/_saveApiOk/saveUserViaApi; sbPushUsers (roteamento API→RPC→antigo).

@@ -3783,6 +3783,23 @@ function _threeWayMergeUser(base, mine, remote){
 // caindo pro fallback automaticamente.
 let _USE_SAVE_RPC = true;   // ATIVADO: db/2026-08-11_save_rpc.sql aplicado no Supabase (users.rev + save_user RPC)
 let _saveUserRpcOk = true;
+
+// ─── B-full (1º incremento): escrita de usuário via SERVIDOR (Edge Function 'save-user'). ───
+// DESLIGADO por padrão. Ligue _USE_SAVE_API=true SÓ depois de: supabase functions deploy save-user.
+// Prioridade: API (servidor dono da escrita) → se indisponível, RPC (B-lite) → se não, caminho atual.
+// _saveApiOk vira false sozinho se a função não responder (404/rede), caindo pro fallback.
+let _USE_SAVE_API = false;
+let _saveApiOk = true;
+async function saveUserViaApi(sb, key, mine){
+  const { data, error } = await withTimeout(
+    sb.functions.invoke('save-user', { body: { email: key, payload: mine } }), 8000, 'save-user '+key);
+  if(error){ _saveApiOk = false; throw error; }                       // função não deployada / erro HTTP / rede
+  if(!data || data.error){ _saveApiOk = false; throw new Error((data && data.error) || 'save-user sem resposta'); }
+  const saved = data.payload || mine;                                  // servidor devolve o payload JÁ mesclado
+  _syncedUserJson[key] = _canonJson(saved);
+  _updateLocalUserPayload(saved);
+}
+
 async function casWriteUser(sb, key, mine, tries){
   tries = tries || 0;
   const sel = await withTimeout(sb.from('users').select('payload,rev').eq('email', key).maybeSingle(), 8000, 'user cas read '+key);
@@ -3819,6 +3836,11 @@ async function sbPushUsers(users) {
       const changed = candidates.filter(u => _canonJson(u) !== (_syncedUserJson[_userKey(u)] || ''));
       for(const u of changed){
         const key = _userKey(u);
+        // Caminho SERVIDOR (Edge Function) quando ligado E disponível; indisponível → tenta RPC/antigo.
+        if(_USE_SAVE_API && _saveApiOk){
+          try { await saveUserViaApi(sb, key, u); continue; }
+          catch(e){ if(_saveApiOk) throw e; /* API ficou indisponível → segue pro RPC/fallback abaixo */ }
+        }
         // Caminho RPC (CAS atômico) quando ligado E disponível; erro de RPC-indisponível cai no antigo.
         if(_USE_SAVE_RPC && _saveUserRpcOk){
           try { await casWriteUser(sb, key, u); continue; }
