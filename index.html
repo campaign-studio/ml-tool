@@ -2338,6 +2338,9 @@ function departmentTagHtml(key) {
 }
 
 const AUTH_USERS_KEY = 'mlt_users_v1';
+// Flag "já vimos a tabela users POPULADA": trava o bootstrap re-semeador do sbPullUsers pra um read
+// vazio por throttle/RLS não re-empurrar uma lista local velha e rebaixar papéis (ver sbPullUsers).
+const USERS_SEEN_KEY = 'mlt_users_seen_v1';
 
 // Admin inicial — troque o e-mail/senha abaixo antes de compartilhar o arquivo.
 // Papéis de conta, em ordem de poder: member < admin < superadmin.
@@ -3654,11 +3657,27 @@ function _threeWayMergeUser(base, mine, remote){
   const out = Object.assign({}, remote);
   const keys = new Set([...Object.keys(base), ...Object.keys(mine)]);
   keys.forEach(k => {
+    if(k === 'role' || k === 'roleUpdatedAt') return; // 'role' é resolvido por timestamp abaixo, não por "changedByMe"
     const changedByMe = _canonJson(mine[k]) !== _canonJson(base[k]);
     if(!changedByMe) return;              // não mexi → mantém o remoto
     if(!(k in mine)) delete out[k];       // eu removi o campo
     else out[k] = mine[k];                // eu mudei o campo → o meu vale
   });
+  // ── ROLE: resolvido pelo CARIMBO mais novo (roleUpdatedAt), nunca por "meu difere do remoto". ──
+  // Era aqui que uma cópia local VELHA sobrescrevia o papel novo do banco (bug "admin vira approver
+  // todo dia"): sem ancestral confiável (base=remote), qualquer diferença era lida como "eu editei".
+  // Agora: o lado com carimbo mais novo vence; sem carimbo dos dois lados, MANTÉM o remoto (uma cópia
+  // velha jamais rebaixa). Uma troca legítima (dashSetUserRole) sempre carimba Date.now(), então vence
+  // um remoto antigo/sem carimbo; e um clique concorrente ainda mais novo (remoto) vence o meu.
+  const mineTs = Number(mine && mine.roleUpdatedAt) || 0;
+  const remoteTs = Number(remote && remote.roleUpdatedAt) || 0;
+  if(mine && ('role' in mine) && mineTs > remoteTs){
+    out.role = mine.role;
+    out.roleUpdatedAt = mineTs;
+  } else {
+    if(remote && ('role' in remote)) out.role = remote.role;
+    if(remote && ('roleUpdatedAt' in remote)) out.roleUpdatedAt = remote.roleUpdatedAt;
+  }
   return out;
 }
 
@@ -3726,10 +3745,20 @@ async function sbPullUsers() {
       localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(dbUsers));
       // Baseline pro merge 3-way do próximo push: registra o que acabamos de ver no banco.
       dbUsers.forEach(u => { _syncedUserJson[_userKey(u)] = _canonJson(u); });
+      try{ localStorage.setItem(USERS_SEEN_KEY, '1'); }catch(e){}   // já vimos a tabela POPULADA ao menos uma vez
     } else {
-      // Bootstrap: se a DB está vazia, empurra o que já temos localmente.
-      const local = authGetUsers();
-      if(local.length > 0) await sbPushUsers(local);
+      // Bootstrap SÓ na primeiríssima vez (tabela genuinamente vazia). Se JÁ vimos a tabela populada
+      // antes, um read vazio aqui é quase certamente throttle de egress do Supabase / RLS / falha
+      // transitória — re-empurrar a lista local (possivelmente DESATUALIZADA) por cima re-semeava o
+      // banco e REBAIXAVA papéis (bug "admin vira approver todo dia"). Nesse caso NÃO empurra nada.
+      let everSeen = false; try{ everSeen = localStorage.getItem(USERS_SEEN_KEY) === '1'; }catch(e){}
+      if(!everSeen){
+        const local = authGetUsers();
+        if(local.length > 0) await sbPushUsers(local);
+      } else {
+        console.warn('sbPullUsers: leitura de users veio VAZIA, mas a tabela já foi vista populada — ' +
+          'ignorando (provável throttle/RLS transitório); NÃO re-empurrando a lista local pra não rebaixar papéis.');
+      }
     }
     return true;
   } catch(e) {
@@ -6835,6 +6864,8 @@ async function dashSetUserRole(email, newRole) {
     }
 
     target.role = newRole;
+    target.roleUpdatedAt = Date.now();               // carimbo monotônico: o merge usa isto pra NUNCA
+                                                     // deixar uma cópia velha rebaixar (ver _threeWayMergeUser)
     await withTimeout(authSaveUsers(users), 8000, 'authSaveUsers (role)'); // ESPERA o banco confirmar
     notifAdd(email, me.email, `${me.email} changed your account role to ${roleLabel(newRole)}.`);
     _pendingRoleFlip = { email };                    // confirmado → anima pra nova seção no finally

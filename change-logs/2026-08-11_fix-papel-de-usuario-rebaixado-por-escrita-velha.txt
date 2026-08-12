@@ -1,0 +1,60 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-11
+Tema: BUG DE PRODUÇÃO — papel de usuário (ex: Karla) era REBAIXADO de admin de volta pra um papel
+      antigo ("approver") todo dia. Causa: escrita concorrente sem versão/timestamp na tabela users
+      deixava uma cópia LOCAL VELHA sobrescrever o papel novo do banco.
+
+===============================================================================
+DIAGNÓSTICO
+===============================================================================
+A tabela `users` (Supabase) NÃO tinha versão/timestamp/CAS (ao contrário de projects, que usa
+compare-and-swap por rev). Dois pontos deixavam uma cópia velha vencer:
+
+1) _threeWayMergeUser (index.html): sem ancestral confiável fazia base = remote, e QUALQUER campo em
+   que o local diferisse do remoto era lido como "eu editei" → o valor velho (ex: role:'approver')
+   sobrescrevia o novo (role:'admin'). Não distinguia "eu mudei" de "minha cópia é velha".
+
+2) sbPullUsers (bootstrap): se o SELECT da tabela viesse VAZIO (throttle de egress do Supabase / RLS
+   / falha transitória — condição real já documentada), o cliente RE-EMPURRAVA a lista local inteira
+   por cima do banco (re-semeando), carimbando papéis velhos de volta.
+
+Como só um superadmin pode rebaixar um admin pela UI, e nada é agendado no código, a cadência "todo
+dia" batia com o primeiro login/sync do dia de algum navegador com snapshot desatualizado.
+(Confirmado no banco: hoje karla.solorzano@gympass.com está 'admin'; não existe papel org 'approver'
+— os papéis org são superadmin/admin/member; "approver" é papel de PROJETO / valor legado no payload.)
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+Fix 1 — carimbo monotônico de papel + merge por timestamp:
+- dashSetUserRole: ao trocar o papel, grava target.roleUpdatedAt = Date.now().
+- _threeWayMergeUser: o campo `role` (e `roleUpdatedAt`) saem do laço genérico "changedByMe" e são
+  resolvidos pelo CARIMBO mais novo: só sobrescreve o remoto se mine.roleUpdatedAt > remote.roleUpdatedAt;
+  senão MANTÉM o remoto. Sem carimbo dos dois lados (linhas legadas) → mantém o remoto (uma cópia
+  velha JAMAIS rebaixa). Troca legítima sempre carimba agora, então vence remoto antigo; clique
+  concorrente ainda mais novo (remoto) vence o meu.
+
+Fix 2 — endurecer o bootstrap re-semeador (sbPullUsers):
+- Nova flag persistente USERS_SEEN_KEY ('mlt_users_seen_v1'): setada sempre que a tabela vem POPULADA.
+- Se o SELECT vier vazio E a flag já existe (tabela já foi vista populada antes), NÃO re-empurra a
+  lista local (loga um warn). Bootstrap só na primeiríssima vez (tabela genuinamente vazia).
+
+Reforço opcional NÃO feito nesta leva (fica como follow-up): dar CAS/updated_at à tabela users igual
+aos projects, protegendo TODOS os campos (não só role) contra escrita concorrente perdida.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Função real _threeWayMergeUser no navegador (pura, sem banco), 5 cenários — 5/5 PASS:
+  A) local velho 'approver' (sem carimbo) NÃO rebaixa remoto 'admin' -> mantém 'admin' (BUG CORRIGIDO).
+  B) troca legítima carimbada 'admin' vence remoto 'approver' sem carimbo.
+  C) remoto mais novo (clique concorrente) vence o meu.
+  D) campo disjunto (name) ainda mescla; role mantém remoto.
+  E) sem remoto -> retorna mine.
+- Sem erro de sintaxe/JS no load. Leitura do banco: read-only (nenhuma escrita feita na investigação).
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- index.html: + USERS_SEEN_KEY; dashSetUserRole (+roleUpdatedAt); _threeWayMergeUser (role por
+  timestamp); sbPullUsers (bootstrap guardado por USERS_SEEN_KEY).
