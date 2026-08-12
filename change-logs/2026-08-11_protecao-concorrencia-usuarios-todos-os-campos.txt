@@ -1,0 +1,61 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-11
+Tema: CONCORRÊNCIA — estender a proteção contra "escrita velha sobrescreve dado novo" de APENAS o
+      campo `role` para TODOS os campos de usuário (nome, senha, departamento, papel). Segue o fix do
+      mesmo dia (papel rebaixado da Karla) e o pedido "faz pra tudo o que tiver no projeto".
+
+===============================================================================
+CONTEXTO
+===============================================================================
+- `projects`: JÁ tem trava de concorrência real (compare-and-swap por coluna `rev`, casWriteProject).
+- Tabelas de tombstone (deleted_project_ids / deleted_notification_ids / deleted_user_emails): upsert
+  idempotente por id — sem problema de perda.
+- `users`: era o único store SEM proteção. O fix anterior blindou só `role`; faltavam nome/senha/
+  departamento — uma cópia local velha ainda podia sobrescrevê-los na sincronização.
+
+Nota: NÃO dá pra adicionar coluna `rev` na tabela users sem migração de schema (acesso DDL ao
+Supabase). Em vez disso, generalizamos a MESMA abordagem já usada no `role`: carimbo monotônico por
+registro (userUpdatedAt) + merge que nunca deixa cópia velha vencer. Protege todos os campos sem
+migração. (CAS atômico por linha via coluna `rev` fica como follow-up SE um dia rodarmos a migração.)
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+index.html:
+1) authSaveUsers (ponto ÚNICO por onde passa toda edição de usuário): carimba userUpdatedAt=Date.now()
+   nos registros que REALMENTE mudaram vs o localStorage anterior (comparação ignorando o próprio
+   carimbo). Pega papel/senha/departamento/novo usuário automaticamente, sem tocar em cada mutator.
+   NÃO é chamado pelo pull/bootstrap, então não carimba sync passivo.
+
+2) _threeWayMergeUser reescrito em dois ramos claros:
+   - COM ancestral confiável (já dei pull): merge por CAMPO — só os campos que EU mudei (mine vs base)
+     vão por cima do remoto; edição disjunta de outro admin sobrevive. `role` resolvido pelo
+     roleUpdatedAt mais novo; userUpdatedAt = max (via _resolveUserStamps).
+   - SEM ancestral confiável (aba que não fez pull — o caso que causava o bug): NÃO faz mais merge por
+     campo. Vence o registro com userUpdatedAt mais novo; empate OU sem carimbo → mantém o REMOTO
+     inteiro. Uma cópia velha não sobrescreve NENHUM campo; uma edição legítima (sempre carimbada)
+     vence um remoto antigo.
+   + helper _resolveUserStamps (role por timestamp + userUpdatedAt=max).
+
+Combinado com os fixes anteriores do mesmo dia (roleUpdatedAt + bootstrap guardado por USERS_SEEN_KEY),
+a tabela users agora resiste a re-escrita por cópia desatualizada em qualquer campo.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+Funções reais no navegador (escrita no Supabase BLOQUEADA no teste), 7/7 PASS:
+ 1) SEM ancestral: cópia velha (sem carimbo) NÃO sobrescreve remoto mais novo em NENHUM campo.
+ 2) SEM ancestral: meu registro mais novo vence e ainda preserva campo que só o remoto tem.
+ 3) COM ancestral: edição disjunta (eu mudo dept, outro muda name) — ambos sobrevivem.
+ 4) COM ancestral: role resolvido pelo timestamp.
+ 5) sem remoto → retorna mine.
+ 6) SEM ancestral, empate de carimbo → mantém o remoto (velho não ganha no empate).
+ 7) authSaveUsers carimba userUpdatedAt SÓ no registro que mudou (localStorage save/restore no teste).
+Sem erro de sintaxe/JS no load. Nenhuma escrita feita no banco (Karla segue 'admin'; carimbo entra
+no próximo edit real de cada usuário).
+
+===============================================================================
+ARQUIVOS
+===============================================================================
+- index.html: authSaveUsers (carimbo userUpdatedAt); + _resolveUserStamps; _threeWayMergeUser
+  (ramos com/sem ancestral).

@@ -2421,6 +2421,23 @@ function reconcileSeedUsers(users) {
 }
 
 function authSaveUsers(users) {
+  // Carimba userUpdatedAt nos registros que REALMENTE mudaram vs o que já estava salvo. authSaveUsers
+  // é o ponto ÚNICO por onde passa toda edição de usuário (papel/senha/departamento/novo), então
+  // carimbar aqui pega tudo sem tocar em cada mutator. O merge (_threeWayMergeUser) usa esse carimbo
+  // pra NUNCA deixar uma cópia velha sobrescrever campos de usuário — a mesma proteção do 'role',
+  // agora pra TODOS os campos. (Não é chamado pelo pull/bootstrap, então não carimba sync passivo.)
+  try{
+    const prevRaw = localStorage.getItem(AUTH_USERS_KEY);
+    const prev = prevRaw ? JSON.parse(prevRaw) : [];
+    const prevByKey = {}; prev.forEach(u => { prevByKey[(u.email||'').toLowerCase()] = u; });
+    const _canonNoStamp = x => { if(!x) return ''; const c = Object.assign({}, x); delete c.userUpdatedAt; return _canonJson(c); };
+    const now = Date.now();
+    users.forEach(u => {
+      if(!u) return;
+      const before = prevByKey[(u.email||'').toLowerCase()];
+      if(!before || _canonNoStamp(before) !== _canonNoStamp(u)) u.userUpdatedAt = now;
+    });
+  }catch(e){}
   localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
   // Devolve a promise do push — a maioria dos chamadores ignora (sync em segundo plano), mas
   // quem PRECISA saber que o banco confirmou (ex: troca de papel, pra travar/destravar a tela)
@@ -3642,43 +3659,48 @@ function _updateLocalUserPayload(u){
   }catch(e){}
 }
 
-// Merge 3-way de UM registro de usuário: aplica SOMENTE os campos que EU mudei (mine vs base) por
-// cima do remoto atual. Campos que eu não toquei ficam com o valor do remoto (outro admin pode ter
-// mudado). Sem base (nunca sincronizei) → prefere o meu, mas preserva campos que só existem no
-// remoto. Sem remoto → grava o meu.
+// Resolve os CARIMBOS num merge de usuário: 'role' pelo roleUpdatedAt mais novo (nunca deixa cópia
+// velha rebaixar), e userUpdatedAt = o mais novo dos dois lados. Usado no ramo COM ancestral.
+function _resolveUserStamps(out, mine, remote){
+  const mRt = Number(mine && mine.roleUpdatedAt) || 0, rRt = Number(remote && remote.roleUpdatedAt) || 0;
+  if(mine && ('role' in mine) && mRt > rRt){ out.role = mine.role; out.roleUpdatedAt = mRt; }
+  else { if(remote && ('role' in remote)) out.role = remote.role; if(remote && ('roleUpdatedAt' in remote)) out.roleUpdatedAt = remote.roleUpdatedAt; }
+  const uMax = Math.max(Number(mine && mine.userUpdatedAt) || 0, Number(remote && remote.userUpdatedAt) || 0);
+  if(uMax) out.userUpdatedAt = uMax;
+}
+
+// Merge de UM registro de usuário. Proteção contra escrita concorrente perdida em TODOS os campos
+// (papel/senha/departamento/nome), via carimbo userUpdatedAt (ver authSaveUsers) + roleUpdatedAt:
+//   • COM ancestral confiável (já dei pull): merge por CAMPO — só os campos que EU mudei (mine vs
+//     base) vão por cima do remoto; o resto fica do remoto (edição disjunta de outro admin sobrevive).
+//   • SEM ancestral confiável (aba que não fez pull): era AQUI que uma cópia VELHA sobrescrevia campo
+//     a campo (bug "admin vira approver"). Agora NÃO faz merge por campo — vence o registro com
+//     userUpdatedAt mais novo; empate ou sem carimbo → mantém o REMOTO inteiro (cópia velha não
+//     sobrescreve NADA). Uma edição legítima sempre carimba Date.now(), então vence um remoto antigo.
+//   • Sem remoto (usuário novo) → grava o meu.
 function _threeWayMergeUser(base, mine, remote){
   if(!remote) return mine;
-  // Sem ancestral confiável (aba que não fez pull) mas a linha JÁ existe no remoto: usa o REMOTO
-  // como base. Assim só sobrescrevo os campos que de fato mudei vs o remoto e preservo o resto —
-  // antes era Object.assign(remote, mine), que deixava "mine" vencer TODO campo e revertia a
-  // edição concorrente de outro admin no mesmo usuário (campo disjunto). Usuário novo (remote null)
-  // já retornou "mine" acima.
-  if(!base) base = remote;
-  const out = Object.assign({}, remote);
-  const keys = new Set([...Object.keys(base), ...Object.keys(mine)]);
-  keys.forEach(k => {
-    if(k === 'role' || k === 'roleUpdatedAt') return; // 'role' é resolvido por timestamp abaixo, não por "changedByMe"
-    const changedByMe = _canonJson(mine[k]) !== _canonJson(base[k]);
-    if(!changedByMe) return;              // não mexi → mantém o remoto
-    if(!(k in mine)) delete out[k];       // eu removi o campo
-    else out[k] = mine[k];                // eu mudei o campo → o meu vale
-  });
-  // ── ROLE: resolvido pelo CARIMBO mais novo (roleUpdatedAt), nunca por "meu difere do remoto". ──
-  // Era aqui que uma cópia local VELHA sobrescrevia o papel novo do banco (bug "admin vira approver
-  // todo dia"): sem ancestral confiável (base=remote), qualquer diferença era lida como "eu editei".
-  // Agora: o lado com carimbo mais novo vence; sem carimbo dos dois lados, MANTÉM o remoto (uma cópia
-  // velha jamais rebaixa). Uma troca legítima (dashSetUserRole) sempre carimba Date.now(), então vence
-  // um remoto antigo/sem carimbo; e um clique concorrente ainda mais novo (remoto) vence o meu.
-  const mineTs = Number(mine && mine.roleUpdatedAt) || 0;
-  const remoteTs = Number(remote && remote.roleUpdatedAt) || 0;
-  if(mine && ('role' in mine) && mineTs > remoteTs){
-    out.role = mine.role;
-    out.roleUpdatedAt = mineTs;
-  } else {
-    if(remote && ('role' in remote)) out.role = remote.role;
-    if(remote && ('roleUpdatedAt' in remote)) out.roleUpdatedAt = remote.roleUpdatedAt;
+  if(base){
+    // Ancestral confiável: merge por campo. 'role'/carimbos saem do laço e vão por _resolveUserStamps.
+    const out = Object.assign({}, remote);
+    const keys = new Set([...Object.keys(base), ...Object.keys(mine)]);
+    keys.forEach(k => {
+      if(k === 'role' || k === 'roleUpdatedAt' || k === 'userUpdatedAt') return;
+      const changedByMe = _canonJson(mine[k]) !== _canonJson(base[k]);
+      if(!changedByMe) return;              // não mexi → mantém o remoto
+      if(!(k in mine)) delete out[k];       // eu removi o campo
+      else out[k] = mine[k];                // eu mudei o campo → o meu vale
+    });
+    _resolveUserStamps(out, mine, remote);
+    return out;
   }
-  return out;
+  // Sem ancestral: newest-wins do REGISTRO inteiro. Uma cópia velha (carimbo <= remoto, ou sem
+  // carimbo) não sobrescreve nada; o meu só entra se for comprovadamente mais novo (e ainda assim
+  // preserva campos que só o remoto tem).
+  const mineTs = Number(mine && mine.userUpdatedAt) || 0;
+  const remoteTs = Number(remote && remote.userUpdatedAt) || 0;
+  if(mineTs > remoteTs) return Object.assign({}, remote, mine);
+  return remote;
 }
 
 async function sbPushUsers(users) {
