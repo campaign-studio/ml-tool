@@ -609,7 +609,7 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .folder-card-body{flex:1;min-width:0;}
 .folder-card-name{display:flex;align-items:center;gap:8px;font-size:14.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .folder-card-summary{margin-top:3px;font-size:12px;color:var(--text3);font-weight:600;}
-.folder-shared-tag{font-size:10px;font-weight:700;color:#6d28d9;background:#f5f3ff;border:1px solid #e9e5ff;border-radius:20px;padding:1px 8px;white-space:nowrap;}
+.folder-shared-tag{font-size:10px;font-weight:700;color:var(--info);background:var(--info-soft);border:1px solid rgba(99,102,241,.25);border-radius:20px;padding:1px 8px;white-space:nowrap;}
 .folder-card-actions{display:flex;gap:6px;flex-shrink:0;opacity:0;transition:opacity .14s;}
 .folder-card:hover .folder-card-actions{opacity:1;}
 .folder-icon-btn{width:32px;height:32px;border-radius:9px;border:1px solid var(--border-s);background:var(--surface);color:var(--text2);
@@ -655,7 +655,7 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .abl-card-preview-push{min-height:120px;background:#eef1f6;}
 .abl-card-foot{display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid var(--border);}
 .abl-card-name{flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.abl-approve-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:9px;border:none;background:#6d28d9;color:#fff;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;box-shadow:0 2px 8px rgba(109,40,217,.25);}
+.abl-approve-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:none;background:var(--brand);color:#fff;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;box-shadow:0 1px 2px rgba(216,56,94,.15);}
 .abl-approve-btn:hover{background:#5b21b6;}
 
 /* ═══════════ CARD DE ITEM DENTRO DA PASTA (e-mail/in-app/push) — cores sólidas ═══════════ */
@@ -817,13 +817,13 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .ui-pop.t-error   .ui-nicon{background:#fee2e2;color:#b91c1c;}
 .ui-pop.t-warning .ui-nicon{background:#fef3c7;color:#b45309;}
 .ui-pop.t-info    .ui-nicon{background:#dbeafe;color:#1d4ed8;}
-.ui-pop.t-confirm .ui-nicon{background:#ede9fe;color:#6d28d9;}
+.ui-pop.t-confirm .ui-nicon{background:var(--brand-soft);color:var(--brand);}
 .ui-pop{border-top:4px solid transparent;}
 .ui-pop.t-success{border-top-color:#22c55e;}
 .ui-pop.t-error{border-top-color:#ef4444;}
 .ui-pop.t-warning{border-top-color:#f59e0b;}
 .ui-pop.t-info{border-top-color:#3b82f6;}
-.ui-pop.t-confirm{border-top-color:#8b5cf6;}
+.ui-pop.t-confirm{border-top-color:var(--brand);}
 /* contador de "mais N pop-ups na fila" (enfileiramento, um de cada vez) */
 .ui-queue-count{display:none;margin-top:12px;font-size:11.5px;color:var(--muted,#8a8a94);text-align:center;}
 .ui-queue-count.show{display:block;}
@@ -852,7 +852,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
    fica verde por um instante e depois some, sem precisar recarregar a tabela. */
 .text-warn-badge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;font-size:10px;border-radius:50%;background:#FEF3C7;color:#92400e;border:1px solid #FDE68A;cursor:pointer;margin-right:4px;flex-shrink:0;vertical-align:middle;transition:background .3s,color .3s,border-color .3s,opacity .3s;}
 .text-warn-badge:hover{background:#FDE68A;}
-.vml-badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:1px 5px;margin:0 4px 2px 0;border-radius:3px;background:#ede9fe;color:#6d28d9;border:1px solid #ddd6fe;vertical-align:middle;white-space:nowrap;font-family:var(--sans);}
+.vml-badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:1px 5px;margin:0 4px 2px 0;border-radius:3px;background:var(--info-soft);color:var(--info);border:1px solid rgba(99,102,241,.3);vertical-align:middle;white-space:nowrap;font-family:var(--sans);}
 .text-warn-badge.checked{background:#DCFCE7;color:#166534;border-color:#BBF7D0;}
 .text-warn-badge.fading{opacity:0;}
 .tl-inner{display:flex;align-items:flex-start;gap:2px;width:100%;}
@@ -947,7 +947,7 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 .av-locale-tabs{display:flex;align-items:center;gap:4px;margin-left:18px;flex-wrap:nowrap;overflow-x:auto;max-width:52vw;}
 .av-locale-tab{flex-shrink:0;padding:6px 13px;border:1px solid var(--border);border-radius:8px;background:var(--s2);color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans);white-space:nowrap;}
 .av-locale-tab:hover{color:var(--accent);}
-.av-locale-tab.active{background:#6d28d9;border-color:#6d28d9;color:#fff;}
+.av-locale-tab.active{background:var(--brand);border-color:var(--brand);color:#fff;}
 .av-body{flex:1;display:flex;overflow:hidden;}
 
 /* Infinite pannable/zoomable canvas — all country frames laid out side by side, like a Figma page */
@@ -1463,15 +1463,15 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
   #vhList .vh-empty{padding:24px 16px;font-size:12px;color:var(--text3);text-align:center;line-height:1.5;}
   .presence-badge{display:inline-flex;align-items:center;gap:6px;margin-right:2px;}
   .presence-badge .presence-avs{display:inline-flex;}
-  .presence-badge .presence-av{width:22px;height:22px;border-radius:50%;background:#6d28d9;color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;border:2px solid var(--bg,#fff);margin-left:-6px;}
+  .presence-badge .presence-av{width:22px;height:22px;border-radius:50%;background:var(--brand);color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;border:2px solid var(--bg,#fff);margin-left:-6px;}
   .presence-badge .presence-av:first-child{margin-left:0;}
   .presence-badge .presence-more{font-size:10px;font-weight:700;color:var(--text3);margin-left:2px;align-self:center;}
   .presence-badge .presence-lbl{font-size:11px;color:var(--text3);white-space:nowrap;}
-  #vhList .tbtn-primary{background:#6d28d9;color:#fff;border-color:#6d28d9;}
+  #vhList .tbtn-primary{background:var(--brand);color:#fff;border-color:var(--brand);}
   #vhList .df-top{display:flex;justify-content:space-between;gap:8px;padding:4px 4px 10px;position:sticky;top:0;background:var(--bg,#fff);}
   #vhList .df-intro{font-size:11px;color:var(--text3);padding:0 4px 6px;}
   #vhList .df-summary{font-size:12px;font-weight:600;color:var(--text2);padding:0 4px 10px;}
-  #vhList .df-item-note{font-size:11px;color:var(--text2);padding:3px 6px;background:#f5f3ff;border-radius:5px;margin:0 4px 4px;}
+  #vhList .df-item-note{font-size:11px;color:var(--text2);padding:3px 6px;background:var(--s2);border-radius:5px;margin:0 4px 4px;}
   #vhList .df-sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:12px 4px 6px;}
   #vhList .df-cell{border-left:3px solid var(--border);padding:5px 8px;margin:0 4px 4px;border-radius:0 5px 5px 0;background:#fafafa;}
   #vhList .df-cell.df-add{border-left-color:#10b981;background:#ecfdf5;}
@@ -2207,30 +2207,34 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
 </div>
 
 <!-- No images selected modal -->
-<div id="noImgModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;align-items:center;justify-content:center;">
-  <div style="background:var(--surface);border-radius:14px;padding:28px;max-width:400px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.18);">
-    <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px;">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
-      No images selected
+<div id="noImgModal" class="modal-ov" style="display:none;">
+  <div class="card modal-card" style="max-width:400px;width:90%;padding:24px;box-shadow:var(--shadow-3);">
+    <div class="modal-head">
+      <h1 style="display:flex;align-items:center;gap:8px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        No images selected
+      </h1>
     </div>
-    <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:20px;">Are you sure you want to continue without localising any images?</p>
+    <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:20px;">Are you sure you want to continue without localising any images?</p>
     <div style="display:flex;gap:8px;justify-content:flex-end;">
-      <button onclick="closeNoImgModal()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border-s);background:var(--surface);font-size:13px;font-weight:600;cursor:pointer;color:var(--text2);font-family:var(--sans);">No, go back</button>
-      <button onclick="confirmNoImg()" style="padding:8px 18px;border-radius:8px;border:none;background:var(--accent);font-size:13px;font-weight:600;cursor:pointer;color:#fff;font-family:var(--sans);">Yes, continue</button>
+      <button class="btn" onclick="closeNoImgModal()">No, go back</button>
+      <button class="btn btn--primary" onclick="confirmNoImg()">Yes, continue</button>
     </div>
   </div>
 </div>
 
 <!-- ═══════════ "UPDATE FROM CSV" FAILED — blocking modal instead of a silent "0 cells" toast ═══════════ -->
-<div id="csvUpdateErrorModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;align-items:center;justify-content:center;">
-  <div style="background:var(--surface);border-radius:14px;padding:28px;max-width:460px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.18);">
-    <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px;">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B91C1C" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-      Couldn't update from that CSV
+<div id="csvUpdateErrorModal" class="modal-ov" style="display:none;">
+  <div class="card modal-card" style="max-width:460px;width:90%;padding:24px;box-shadow:var(--shadow-3);">
+    <div class="modal-head">
+      <h1 style="display:flex;align-items:center;gap:8px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B91C1C" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        Couldn't update from that CSV
+      </h1>
     </div>
-    <p id="csvUpdateErrorBody" style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:20px;"></p>
+    <p id="csvUpdateErrorBody" style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:20px;"></p>
     <div style="display:flex;justify-content:flex-end;">
-      <button onclick="closeCsvUpdateErrorModal()" style="padding:8px 18px;border-radius:8px;border:none;background:var(--accent);font-size:13px;font-weight:600;cursor:pointer;color:#fff;font-family:var(--sans);">Got it</button>
+      <button class="btn btn--primary" onclick="closeCsvUpdateErrorModal()">Got it</button>
     </div>
   </div>
 </div>
@@ -7064,7 +7068,7 @@ function projRowHtml(p, isOwner) {
   let approvingBadge = '';
   if(reviewers.length) {
     const names = reviewers.map(u => personTagHtml(u.email)).join(', ');
-    approvingBadge = `<span class="lock-pill ${iAmReviewing ? 'mine' : 'other'}" ${iAmReviewing ? 'style="background:#f5f3ff;border-color:#c4b5fd;color:#6d28d9;"' : ''}>${iAmReviewing ? '' : '🔒 '}${names} ${reviewers.length > 1 ? 'are' : 'is'} reviewing</span>`;
+    approvingBadge = `<span class="lock-pill ${iAmReviewing ? 'mine' : 'other'}" ${iAmReviewing ? 'style="background:var(--info-soft);border-color:rgba(99,102,241,.3);color:var(--info);"' : ''}>${iAmReviewing ? '' : '🔒 '}${names} ${reviewers.length > 1 ? 'are' : 'is'} reviewing</span>`;
   }
   const lastEdited = p.updatedAt ? ` · Last edited ${relativeTime(p.updatedAt)}` : '';
   const isApprover = !isOwner && (p.approvers || []).some(e => e.toLowerCase() === me.email.toLowerCase());
@@ -7072,7 +7076,7 @@ function projRowHtml(p, isOwner) {
   // num projeto que não é dele (ex: só compartilhado com ele). Antes era só isOwner.
   const canShare = isOwner || canShareProject(p);
   const progressBadge = translationProgressBadgeHtml(projTranslationStats(p));
-  const badges = `${progressBadge}${lockBadge}${isApprover && !reviewers.length ? `<span class="lock-pill mine" style="background:#f5f3ff;border-color:#c4b5fd;color:#6d28d9;">You're an approver</span>` : ''}${approvingBadge}`;
+  const badges = `${progressBadge}${lockBadge}${isApprover && !reviewers.length ? `<span class="lock-pill mine" style="background:var(--info-soft);border-color:rgba(99,102,241,.3);color:var(--info);">You're an approver</span>` : ''}${approvingBadge}`;
   return `
     <div class="proj-row">
       <div class="proj-body">
@@ -7094,7 +7098,7 @@ function projRowHtml(p, isOwner) {
       <div class="proj-actions">
         ${isOwner ? `<button class="btn-back" title="Move this email into a folder" onclick="openMoveToFolderModal('${p.id}')">📂 Move to folder</button>` : ''}
         ${canShare ? `<button class="btn-back" onclick="openShareModal('${p.id}')">Share with your team</button>` : ''}
-        ${isApprover ? `<button class="btn-go" style="background:#6d28d9;" ${locked ? 'disabled' : ''} onclick="approverOpenProject('${p.id}')">Approve copies</button>` : ''}
+        ${isApprover ? `<button class="btn-go" ${locked ? 'disabled' : ''} onclick="approverOpenProject('${p.id}')">Approve copies</button>` : ''}
         ${!isApprover ? `<button class="btn-go" id="openBtn-${p.id}" ${(locked && !lockedByMe) || reviewers.length ? 'disabled' : ''} onclick="projOpen('${p.id}', this)">Open Project</button>` : ''}
         ${isOwner ? `<button class="btn-danger" onclick="projDelete('${p.id}')">Delete</button>` : ''}
         ${!isOwner ? `<button class="btn-back" onclick="leaveSharedProject('${p.id}')">Leave project</button>` : ''}
