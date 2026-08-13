@@ -1,0 +1,39 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-13
+Tema: GRADE DE TRADUÇÃO — largura FIXA por coluna + scroll horizontal (não espreme mais os idiomas).
+
+===============================================================================
+PROBLEMA
+===============================================================================
+A tabela de edição forçava width:100% com table-layout:fixed, então TODAS as colunas de idioma
+eram espremidas pra caber na largura da tela — quanto mais locales, mais estreitas e difíceis de
+editar. Ia piorar ao adicionar idiomas.
+
+RAIZ (bug encontrado): buildTable() (avulso) e a render da pasta montavam o <colgroup> com as
+larguras fixas num elemento separado (#gcg / #campaignItemColgroup) e, na linha seguinte, faziam
+`table.innerHTML = thead + tbody` — o que APAGAVA o <colgroup> (ele é filho da <table>). Resultado:
+a tabela ficava SEM nenhum <col>, as larguras fixas nunca pegavam, e o table-layout:fixed
+distribuía o espaço sozinho (a coluna de origem inchava pra ~408px e os idiomas espremiam).
+
+===============================================================================
+CORREÇÃO
+===============================================================================
+1. Montar o <colgroup> DENTRO do innerHTML (sobrevive): `t.innerHTML = colgroup + thead + tbody`.
+   Feito nas DUAS tabelas: buildTable() (projeto avulso) e a render de item de pasta.
+   Removido o hack antigo `style.minWidth` (baseado em 140px/idioma) — o CSS cuida do tamanho.
+2. CSS da tabela: `width:max-content; min-width:100%` (dimensiona pela SOMA das colunas e só estica
+   pra preencher quando sobra espaço). O container .tscroll já tinha overflow:auto → scroll horizontal.
+3. Larguras fixas confortáveis: coluna de ORIGEM (src) 240px, cada IDIOMA (tl) 220px
+   (antes 170/160, espremendo). rn/cid/del inalterados (22/38/22).
+
+===============================================================================
+VERIFICAÇÃO (preview, projetos reais)
+===============================================================================
+- Projeto com 2 idiomas: colgroup sobrevive (6 <col>), src=240, cada idioma=220, tabela>container
+  → scroll horizontal. OK.
+- Projeto com 11 idiomas: 11 colunas, TODAS exatamente 220px (zero compressão), tabela 2743px num
+  container de 531px → scroll horizontal de 2212px. Rolando pra direita aparecem es_ar/es_cl/es_es
+  legíveis. OK.
+- Sem erro de console relacionado à grade.
+
+Escala: adicionar mais locales no futuro só aumenta o scroll — as colunas nunca mais espremem.
