@@ -2594,9 +2594,18 @@ async function enterApp(user) {
   renderNotifBell();
   seedSeenAccessRequests();  // não estourar slide-up de pedidos antigos ao logar
   const _bootSearch = location.search; // captura ANTES do dashboard mexer na URL
+  let _bootHasDeepLink = false;
+  try { _bootHasDeepLink = !!new URLSearchParams(_bootSearch).get('open'); } catch(e) {}
   _suppressUrlSync = true;
-  try { await goToDashboard(); } finally { _suppressUrlSync = false; }
-  await routeFromUrl(_bootSearch); // reflete o que a URL pedia (abre projeto/pasta/item ou "solicitar acesso")
+  try {
+    if(_bootHasDeepLink) {
+      // Veio de um link ?open=… → vai DIRETO pro alvo (projeto/pasta/item ou tela de acesso).
+      // Não renderiza a home antes, pra não "piscar" o dashboard e depois trocar pelo projeto.
+      await routeFromUrl(_bootSearch);
+    } else {
+      await goToDashboard();
+    }
+  } finally { _suppressUrlSync = false; }
 }
 
 // Bolinha com a inicial no topo, cor consistente por pessoa (mesmo hash usado nos
