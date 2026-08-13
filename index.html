@@ -1069,6 +1069,35 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 .av-activity-icon.edited{background:var(--accent);}
 .av-activity-text{flex:1;min-width:0;}
 .av-activity-time{color:var(--text3);white-space:nowrap;flex-shrink:0;}
+
+/* ═══════════ REQUEST ACCESS (portão do deep-link) + SLIDE-UP ═══════════
+   Feature própria: quando alguém abre um link ?open={id} sem permissão, cai NESTA tela
+   dedicada (não no header/nav). E quem pode conceder recebe um slide-up ao chegar pedido. */
+#requestAccessScreen{display:none;position:fixed;inset:0;z-index:1200;background:var(--bg);align-items:center;justify-content:center;padding:24px;}
+.ra-card{width:100%;max-width:440px;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:34px 30px;box-shadow:0 20px 60px rgba(0,0,0,.12);text-align:center;}
+.ra-ico{width:58px;height:58px;border-radius:50%;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;background:var(--brand-soft);color:var(--brand);font-size:26px;}
+.ra-title{font-size:19px;font-weight:800;color:var(--text);margin:0 0 9px;letter-spacing:-.01em;}
+.ra-sub{font-size:13.5px;color:var(--text2);line-height:1.55;margin:0;}
+.ra-name{font-weight:700;color:var(--text);}
+.ra-actions{margin-top:24px;display:flex;flex-direction:column;gap:10px;}
+.ra-actions .btn{width:100%;padding:11px 16px;font-size:14px;}
+.ra-state{margin-top:20px;padding:13px 15px;border-radius:11px;font-size:12.5px;font-weight:600;line-height:1.5;}
+.ra-state.pending{background:#FEF3C7;border:1px solid #FDE68A;color:#B45309;}
+.ra-state.denied{background:#FEE2E2;border:1px solid #FECACA;color:#B91C1C;}
+.ra-back{background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;margin-top:16px;text-decoration:underline;}
+.ra-back:hover{color:var(--text2);}
+
+#accessSlideHost{position:fixed;right:20px;bottom:20px;z-index:1400;display:flex;flex-direction:column;gap:10px;max-width:344px;pointer-events:none;}
+.access-slide{pointer-events:auto;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--brand);border-radius:12px;box-shadow:0 14px 38px rgba(0,0,0,.18);padding:14px 14px 12px;transform:translateY(150%);opacity:0;transition:transform .34s cubic-bezier(.16,1,.3,1),opacity .3s;}
+.access-slide.in{transform:translateY(0);opacity:1;}
+.access-slide-head{display:flex;align-items:flex-start;gap:10px;}
+.access-slide-ico{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--brand-soft);color:var(--brand);font-size:15px;}
+.access-slide-msg{font-size:12.5px;color:var(--text);line-height:1.45;flex:1;min-width:0;}
+.access-slide-msg b{font-weight:700;}
+.access-slide-x{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;padding:0 2px;flex-shrink:0;}
+.access-slide-x:hover{color:var(--text2);}
+.access-slide-actions{display:flex;gap:8px;margin-top:11px;}
+.access-slide-actions .btn{flex:1;padding:7px 10px;font-size:12px;}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <!-- Supabase AUTO-HOSPEDADO (mesmo domínio) — era CDN jsdelivr síncrono e sem fallback: quando o
@@ -1610,7 +1639,10 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
     <div class="ci" style="padding:28px 28px 8px;flex-shrink:0;">
       <div class="modal-head" style="margin-bottom:2px;">
         <h1 id="shareModalTitle">Share project</h1>
-        <button class="btn-back" onclick="closeShareModal()" style="padding:4px 10px;">Close</button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="shareCopyLinkBtn" class="btn btn--soft btn--sm" title="Copy a link to this project">🔗 Copy link</button>
+          <button class="btn-back" onclick="closeShareModal()" style="padding:4px 10px;">Close</button>
+        </div>
       </div>
       <p class="sub" style="margin:0 0 4px;font-size:12px;">Editors can translate and edit copy. Approvers only review and comment.</p>
       <!-- Fica FORA do #shareUserList de propósito: a lista é re-renderizada a cada mudança de
@@ -1836,6 +1868,21 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
   <div id="notifList" class="notif-list"></div>
   <div id="notifPager" class="notif-pager"></div>
 </div>
+
+<!-- ═══════════ REQUEST ACCESS — tela dedicada do deep-link (fora do header/nav) ═══════════ -->
+<div id="requestAccessScreen">
+  <div class="ra-card">
+    <div class="ra-ico" id="raIco">🔒</div>
+    <h1 class="ra-title" id="raTitle">You don't have access</h1>
+    <p class="ra-sub" id="raSub"></p>
+    <div class="ra-actions" id="raActions"></div>
+    <div class="ra-state" id="raState" style="display:none;"></div>
+    <button class="ra-back" onclick="closeRequestAccess()">← Back to your projects</button>
+  </div>
+</div>
+
+<!-- Host dos slide-ups (novo pedido de acesso pra quem pode conceder) -->
+<div id="accessSlideHost"></div>
 
 <!-- ═══════════ ROW COMMENT POPOVER (CSV editor) ═══════════ -->
 <div id="commentPopover" class="modal-ov" style="display:none;">
@@ -2510,7 +2557,11 @@ async function enterApp(user) {
   await sbPullUsers();          // mantém a lista de logins fresca e semeia a DB no primeiro uso
   await ghPullNotifications();
   renderNotifBell();
-  goToDashboard();
+  seedSeenAccessRequests();  // não estourar slide-up de pedidos antigos ao logar
+  const _bootSearch = location.search; // captura ANTES do dashboard mexer na URL
+  _suppressUrlSync = true;
+  try { await goToDashboard(); } finally { _suppressUrlSync = false; }
+  await routeFromUrl(_bootSearch); // reflete o que a URL pedia (abre projeto/pasta/item ou "solicitar acesso")
 }
 
 // Bolinha com a inicial no topo, cor consistente por pessoa (mesmo hash usado nos
@@ -3550,6 +3601,7 @@ async function sbOnNotifsChanged() {
   await ghPullNotifications();
   renderNotifBell();
   if(isNotifPanelOpen()) renderNotifPanel();
+  checkNewAccessRequests(); // slide-up p/ novos pedidos de acesso a quem pode conceder
 }
 
 /* ═══════════ NOTIFICATIONS (bell) ═══════════
@@ -4121,12 +4173,26 @@ function renderNotifPanel() {
     const quote = n.meta && n.meta.preview
       ? `<blockquote class="notif-quote">${(n.meta.preview||'').replace(/</g,'&lt;')}</blockquote>`
       : '';
+    // Pedido de acesso: botões Conceder/Negar enquanto pendente; rótulo do desfecho depois.
+    let extra = '';
+    if(n.meta && n.meta.kind === 'access_request') {
+      if(n.meta.status === 'pending') {
+        extra = `<div class="access-slide-actions" style="margin-top:9px;">
+          <button class="btn btn--primary btn--sm" onclick="event.stopPropagation();grantAccessRequest('${n.id}')">Grant</button>
+          <button class="btn btn--ghost btn--sm" onclick="event.stopPropagation();denyAccessRequest('${n.id}')">Deny</button>
+        </div>`;
+      } else {
+        const lbl = n.meta.status === 'granted' ? '✓ Access granted' : n.meta.status === 'denied' ? '✕ Request declined' : 'Resolved';
+        extra = `<div class="notif-time" style="font-weight:700;">${lbl}</div>`;
+      }
+    }
     return `
     <div class="notif-item ${n.read ? '' : 'unread'}" ${clickable}>
       <div class="notif-dot"></div>
       <div class="notif-body">
         <div class="notif-msg">${n.message}</div>
         ${quote}
+        ${extra}
         <div class="notif-time">${new Date(n.createdAt).toLocaleString('en-US')}</div>
       </div>
       <button class="notif-del" title="Delete notification" onclick="event.stopPropagation();notifDelete('${n.id}')">×</button>
@@ -4151,6 +4217,316 @@ function renderNotifPanel() {
 function notifGoPage(p) {
   notifPage = p;
   renderNotifPanel();
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   REQUEST ACCESS — feature própria (deep-link ?open={id})
+   ────────────────────────────────────────────────────────────────────────────
+   Quando alguém abre um link de projeto/pasta sem permissão, cai numa TELA
+   DEDICADA (não o header/nav) que mostra só o NOME do item + botão de solicitar.
+   O pedido vira notificação (cross-user via Supabase, o mesmo canal já existente)
+   para o DONO + todos os EDITORES; qualquer um deles pode conceder/negar. Conceder
+   = adicionar ao sharedWith (reusa o caminho de share). Quem pode conceder recebe
+   um SLIDE-UP ao chegar o pedido. Nada de conteúdo é exposto antes da aprovação.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+// ── Permissão de VER (mesma regra que o dashboard usa) e de CONCEDER ──
+function canViewProject(p, me) {
+  if(!p || !me) return false;
+  const em = me.email.toLowerCase();
+  if(isProjectOwner(p, me)) return true;
+  if(isAdminOrAbove(me.role)) return true;
+  if((p.sharedWith || []).some(e => (e||'').toLowerCase() === em)) return true;
+  if((p.approvers || []).some(e => (e||'').toLowerCase() === em)) return true;
+  return false;
+}
+// Editor = tem acesso (sharedWith) e NÃO é apenas approver.
+function isEditorOf(p, email) {
+  const em = (email||'').toLowerCase();
+  const inShared = (p.sharedWith || []).some(e => (e||'').toLowerCase() === em);
+  const isApprover = (p.approvers || []).some(e => (e||'').toLowerCase() === em);
+  return inShared && !isApprover;
+}
+// Quem pode CONCEDER: dono, admin/superadmin OU editor (pedido do usuário).
+function canGrantAccess(p, me) {
+  if(!p || !me) return false;
+  return isProjectOwner(p, me) || isAdminOrAbove(me.role) || isEditorOf(p, me.email);
+}
+// Destinatários do pedido: dono + editores (exclui approvers puros e o próprio solicitante).
+function accessGrantRecipients(p, requesterEmail) {
+  const req = (requesterEmail||'').toLowerCase();
+  const out = new Set();
+  if(p.owner) out.add(p.owner.toLowerCase());
+  (p.sharedWith || []).forEach(e => { if(isEditorOf(p, e)) out.add((e||'').toLowerCase()); });
+  out.delete(req);
+  return [...out].filter(Boolean);
+}
+
+// Link compartilhável — não existia deep-link no ml-tool; este é o formato (?open={id}).
+function projectShareLink(id) {
+  return location.origin + location.pathname + '?open=' + encodeURIComponent(id);
+}
+async function copyProjectLink(id) {
+  const url = projectShareLink(id);
+  try { await navigator.clipboard.writeText(url); uiNotify('Link copied — anyone you send it to will be asked to request access if they don’t have it yet.', { type:'success' }); }
+  catch(e) { uiNotify('Copy failed. Link: ' + url, { type:'error' }); }
+}
+
+// Dedup: já existe um pedido PENDENTE deste solicitante para este item? (varre TODAS as
+// notificações puxadas — as cópias dos destinatários vivem na mesma tabela sincronizada.)
+function pendingAccessRequestExists(itemId, requesterEmail) {
+  const req = (requesterEmail||'').toLowerCase();
+  return notifGetAll().some(n => n.meta && n.meta.kind === 'access_request'
+    && n.meta.itemId === itemId
+    && (n.meta.requesterEmail||'').toLowerCase() === req
+    && n.meta.status === 'pending');
+}
+
+// ── Roteamento por URL: a URL reflete ONDE você está e muda conforme navega ──
+//   dashboard → (sem query) ; projeto/pasta → ?open={id} ; item da pasta → ?open={campId}&item={itemId}
+//   Query-param (não path /folder/..) DE PROPÓSITO: o app é um index.html estático (GitHub Pages),
+//   então /folder/x daria 404 num refresh; ?open= mantém o path em / e sempre carrega.
+let _suppressUrlSync = false; // true durante boot/back-forward pra não empilhar histórico duplicado
+let _urlRouteBusy = false;
+function _pushNavUrl(qs) {
+  if(_suppressUrlSync) return;
+  const target = location.pathname + (qs ? ('?' + qs) : '');
+  const current = location.pathname + (location.search || '');
+  if(target === current) return;
+  try { history.pushState(null, '', target); } catch(e) {}
+}
+// Sync a partir do estado atual (usado pelos hooks de navegação).
+function syncNavUrlProject(id) { _pushNavUrl('open=' + encodeURIComponent(id)); }
+function syncNavUrlFolder(id)  { _pushNavUrl('open=' + encodeURIComponent(id)); }
+function syncNavUrlFolderItem(campId, itemId) { _pushNavUrl('open=' + encodeURIComponent(campId) + '&item=' + encodeURIComponent(itemId)); }
+function syncNavUrlDashboard() { _pushNavUrl(''); }
+
+// Abre o que a URL descreve (boot, back/forward, e clique em link).
+async function routeFromUrl(search) {
+  if(_urlRouteBusy) return;
+  _urlRouteBusy = true;
+  try {
+    let params; try { params = new URLSearchParams(search || ''); } catch(e) { params = new URLSearchParams(); }
+    const id = params.get('open');
+    const itemId = params.get('item');
+    const me = authCurrentUser();
+
+    if(!id) { // dashboard
+      _suppressUrlSync = true;
+      try { hideRequestAccess(); await goToDashboard(); } finally { _suppressUrlSync = false; }
+      return;
+    }
+    if(ghConfigured()) { try { await ghPullProjects(); } catch(e){} }
+    const p = projGetAll().find(x => x.id === id);
+    if(!(p && me && canViewProject(p, me))) { openRequestAccess(id, p || null); return; }
+
+    _suppressUrlSync = true; // durante a abertura programática não empilha histórico novo
+    try {
+      hideRequestAccess();
+      if(p.kind === 'campaign') {
+        await openCampaignEditor(p.id);
+        if(itemId && typeof _campaign !== 'undefined' && _campaign && Array.isArray(_campaign.items)) {
+          const idx = _campaign.items.findIndex(it => it.id === itemId);
+          if(idx >= 0) openCampaignItemEdit(idx);
+        }
+      } else {
+        await projOpen(p.id);
+      }
+    } finally { _suppressUrlSync = false; }
+  } finally { _urlRouteBusy = false; }
+}
+// Compat: o enterApp chamava routeDeepLinkIfAny(); agora delega pro roteador de URL.
+async function routeDeepLinkIfAny() { return routeFromUrl(location.search); }
+
+// Abre um item conhecido (usado quando o acesso acabou de ser concedido) — muda a URL normalmente.
+function dispatchOpenItem(p) {
+  hideRequestAccess();
+  if(p.kind === 'campaign') openCampaignEditor(p.id);
+  else projOpen(p.id);
+}
+
+// Back/forward do navegador → re-renderiza o estado da URL (sem empilhar histórico novo).
+window.addEventListener('popstate', () => { routeFromUrl(location.search); });
+
+// ── Tela de Solicitar Acesso (isolada) ──
+function hideRequestAccess() {
+  const el = document.getElementById('requestAccessScreen');
+  if(el) el.style.display = 'none';
+}
+function closeRequestAccess() {
+  hideRequestAccess();
+  goToDashboard();
+}
+function openRequestAccess(id, p) {
+  const me = authCurrentUser();
+  const scr = document.getElementById('requestAccessScreen');
+  if(!scr) return;
+  const icoEl = document.getElementById('raIco');
+  const titleEl = document.getElementById('raTitle');
+  const subEl = document.getElementById('raSub');
+  const actionsEl = document.getElementById('raActions');
+  const stateEl = document.getElementById('raState');
+  actionsEl.innerHTML = ''; stateEl.style.display = 'none'; stateEl.className = 'ra-state';
+
+  const gone = !p && isProjectRecentlyDeleted(id);
+  const kindLabel = p ? (p.kind === 'campaign' ? 'folder' : 'project') : 'item';
+
+  if(!p) {
+    // Item removido entre o clique e o load, ou link inválido — nada de conteúdo, mensagem genérica.
+    icoEl.textContent = gone ? '🗑️' : '🔗';
+    titleEl.textContent = gone ? 'This item was removed' : 'Link not available';
+    subEl.innerHTML = gone
+      ? 'The project or folder behind this link no longer exists.'
+      : 'This link is invalid or the item is no longer available.';
+  } else {
+    // Só o NOME (nada de conteúdo). Estado do pedido: pendente / recusado / pedir.
+    icoEl.textContent = '🔒';
+    titleEl.textContent = 'Request access';
+    subEl.innerHTML = `You don’t have access to the ${kindLabel} <span class="ra-name">“${(p.name||'').replace(/</g,'&lt;')}”</span> yet.`;
+
+    const pending = pendingAccessRequestExists(id, me.email);
+    const denied = !pending && myNotifs().some(n => n.meta && n.meta.kind === 'access_denied' && n.meta.itemId === id);
+
+    if(pending) {
+      stateEl.className = 'ra-state pending';
+      stateEl.textContent = '⏳ Request sent — waiting for an owner or editor to approve. You’ll get a notification.';
+      stateEl.style.display = '';
+    } else {
+      if(denied) {
+        stateEl.className = 'ra-state denied';
+        stateEl.textContent = 'Your previous request was declined. You can ask again below.';
+        stateEl.style.display = '';
+      }
+      const btn = document.createElement('button');
+      btn.className = 'btn btn--primary';
+      btn.textContent = denied ? 'Request access again' : 'Request access';
+      btn.onclick = () => submitAccessRequest(id);
+      actionsEl.appendChild(btn);
+    }
+  }
+  document.getElementById('dashboardScreen').style.display = 'none';
+  document.getElementById('campaignScreen').style.display = 'none';
+  scr.style.display = 'flex';
+}
+
+// ── Enviar o pedido → notificação pro dono + editores ──
+async function submitAccessRequest(id) {
+  const me = authCurrentUser();
+  if(!me) return;
+  if(ghConfigured()) { try { await ghPullProjects(); } catch(e){} }
+  const p = projGetAll().find(x => x.id === id);
+  if(!p) { openRequestAccess(id, null); return; }        // sumiu no meio do caminho
+  if(canViewProject(p, me)) { dispatchOpenItem(p); return; } // já ganhou acesso enquanto isso
+
+  if(pendingAccessRequestExists(id, me.email)) { openRequestAccess(id, p); return; } // dedup
+
+  const recipients = accessGrantRecipients(p, me.email);
+  if(!recipients.length) {
+    uiNotify('There’s no owner or editor available to approve right now. Please reach out to your team.', { type:'error' });
+    return;
+  }
+  const myName = authorName(me.email) || me.email;
+  const meta = { kind:'access_request', itemId:id, itemName:p.name, itemKind:p.kind || 'project',
+                 requesterEmail:me.email, requesterName:myName, status:'pending' };
+  const kindLabel = p.kind === 'campaign' ? 'folder' : 'project';
+  for(const to of recipients) {
+    await notifAdd(to, me.email, `${myName} is requesting access to the ${kindLabel} “${p.name}”.`, Object.assign({}, meta));
+  }
+  openRequestAccess(id, p); // re-renderiza no estado "pendente"
+  uiNotify('Access requested. The owner and editors were notified.', { type:'success' });
+}
+
+// ── Conceder / Negar (lado de quem pode compartilhar) ──
+async function grantAccessRequest(notifId) {
+  const notif = notifGetAll().find(n => n.id === notifId);
+  if(!notif || !notif.meta) return;
+  const { itemId, requesterEmail, itemName } = notif.meta;
+  const me = authCurrentUser();
+  if(ghConfigured()) { try { await ghPullProjects(); } catch(e){} }
+  const projects = projGetAll();
+  const p = projects.find(x => x.id === itemId);
+  if(!p) { uiNotify('That project no longer exists.', { type:'error' }); resolveAccessRequest(itemId, requesterEmail, 'gone'); return; }
+  if(!canGrantAccess(p, me)) { uiNotify('You don’t have permission to grant access on this project.', { type:'error' }); return; }
+
+  const already = (p.sharedWith || []).some(e => (e||'').toLowerCase() === (requesterEmail||'').toLowerCase());
+  if(!already) {
+    const beforeJson = JSON.stringify(p);
+    p.sharedWith = p.sharedWith || [];
+    p.sharedWith.push(requesterEmail);
+    const ok = await _saveShareOrRollback(projects, itemId, beforeJson,
+      () => _verifyShareInDb(itemId, requesterEmail, true));
+    if(!ok) { uiNotify(`Could not grant access to ${requesterEmail}. Nothing was saved — please try again.`, { type:'error' }); return; }
+  }
+  await notifAdd(requesterEmail, me.email, `Your access to “${itemName}” was granted. Reopen the link to get in.`, { kind:'access_granted', itemId });
+  await resolveAccessRequest(itemId, requesterEmail, 'granted');
+  uiNotify(`Access granted to ${authorName(requesterEmail) || requesterEmail}.`, { type:'success' });
+}
+async function denyAccessRequest(notifId) {
+  const notif = notifGetAll().find(n => n.id === notifId);
+  if(!notif || !notif.meta) return;
+  const { itemId, requesterEmail, itemName } = notif.meta;
+  const me = authCurrentUser();
+  await notifAdd(requesterEmail, me.email, `Your request to access “${itemName}” was declined.`, { kind:'access_denied', itemId });
+  await resolveAccessRequest(itemId, requesterEmail, 'denied');
+  uiNotify('Request declined.', { type:'info' });
+}
+// Marca TODAS as cópias do pedido (dono + editores) como resolvidas — some o "pendente"
+// e os botões pra todo mundo. As notificações são linhas compartilhadas: salvar re-empurra.
+async function resolveAccessRequest(itemId, requesterEmail, status) {
+  const req = (requesterEmail||'').toLowerCase();
+  const notifs = notifGetAll();
+  let changed = false;
+  notifs.forEach(n => {
+    if(n.meta && n.meta.kind === 'access_request' && n.meta.itemId === itemId
+       && (n.meta.requesterEmail||'').toLowerCase() === req && n.meta.status === 'pending') {
+      n.meta.status = status; changed = true;
+    }
+  });
+  if(changed) { notifSaveAll(notifs); renderNotifBell(); if(isNotifPanelOpen()) renderNotifPanel(); }
+}
+
+// ── Slide-up: novo pedido chegando pra quem pode conceder ──
+const _seenAccessReqIds = new Set();
+function seedSeenAccessRequests() {
+  // no boot, marca os pedidos já existentes como "vistos" pra NÃO estourar slide-up de coisa velha.
+  const me = authCurrentUser();
+  if(!me) return;
+  myNotifs().forEach(n => { if(n.meta && n.meta.kind === 'access_request') _seenAccessReqIds.add(n.id); });
+}
+function checkNewAccessRequests() {
+  const me = authCurrentUser();
+  if(!me) return;
+  myNotifs().forEach(n => {
+    if(n.meta && n.meta.kind === 'access_request' && n.meta.status === 'pending' && !_seenAccessReqIds.has(n.id)) {
+      _seenAccessReqIds.add(n.id);
+      showAccessSlideUp(n);
+    }
+  });
+}
+function showAccessSlideUp(notif) {
+  const host = document.getElementById('accessSlideHost');
+  if(!host || !notif.meta) return;
+  const requester = notif.meta.requesterName || notif.meta.requesterEmail || 'Someone';
+  const itemName = (notif.meta.itemName || '').replace(/</g,'&lt;');
+  const kindLabel = notif.meta.itemKind === 'campaign' ? 'folder' : 'project';
+  const el = document.createElement('div');
+  el.className = 'access-slide';
+  el.innerHTML = `
+    <div class="access-slide-head">
+      <div class="access-slide-ico">🔑</div>
+      <div class="access-slide-msg"><b>${String(requester).replace(/</g,'&lt;')}</b> is requesting access to the ${kindLabel} <b>“${itemName}”</b>.</div>
+      <button class="access-slide-x" title="Dismiss">×</button>
+    </div>
+    <div class="access-slide-actions">
+      <button class="btn btn--primary btn--sm ra-grant">Grant</button>
+      <button class="btn btn--ghost btn--sm ra-deny">Deny</button>
+    </div>`;
+  const dismiss = () => { el.classList.remove('in'); setTimeout(() => el.remove(), 340); };
+  el.querySelector('.access-slide-x').onclick = dismiss;
+  el.querySelector('.ra-grant').onclick = async () => { dismiss(); await grantAccessRequest(notif.id); };
+  el.querySelector('.ra-deny').onclick = async () => { dismiss(); await denyAccessRequest(notif.id); };
+  host.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('in'));
 }
 
 /* ═══════════ COMPRESSÃO DO CACHE LOCAL (localStorage) ═══════════
@@ -5281,6 +5657,7 @@ async function goToDashboard() {
   }
   renderNotifBell();
   renderDashboard();
+  syncNavUrlDashboard(); // URL volta pra raiz (sem ?open) ao voltar pro dashboard
 }
 
 // Pasta é só uma tag de texto no próprio projeto (p.folder) — a lista de pastas
@@ -5824,6 +6201,7 @@ async function openCampaignEditor(id) {
     document.getElementById('campaignScreenTitle').textContent = p.name;
     renderCampaignTabs();
     renderCampaignMain();
+    syncNavUrlFolder(p.id); // URL reflete a pasta aberta
   } finally {
     setCampaignBusy(false);
   }
@@ -6002,6 +6380,8 @@ function openCampaignItemEdit(idx) {
   _campaignItemIndex = idx;
   _campaignViewMode = 'edit';
   renderCampaignMain();
+  // URL reflete o item aberto dentro da pasta (ex: ?open=camp_..&item=..)
+  if(_campaign && _campaign.items && _campaign.items[idx]) syncNavUrlFolderItem(_campaign.id, _campaign.items[idx].id);
 }
 
 function openCampaignItemApprove(idx) {
@@ -7763,6 +8143,7 @@ async function projOpen(id, btn) {
 
   currentProjectId = id;
   _lockTakeoverShown = false;
+  syncNavUrlProject(id);   // URL reflete o projeto aberto (compartilhável, back/forward)
   presenceSetProject(id); // presença ao vivo — anuncia que estou neste projeto agora
   undoClear();             // undo é por-projeto: começa limpo ao abrir
 
@@ -8380,6 +8761,8 @@ function openShareModal(id, keepFilter) {
   const p = projects.find(x => x.id === id);
   if(!p) return;
   document.getElementById('shareModalTitle').textContent = 'Share: ' + p.name;
+  const copyBtn = document.getElementById('shareCopyLinkBtn');
+  if(copyBtn) copyBtn.onclick = () => copyProjectLink(id);
   const searchEl = document.getElementById('shareSearch');
   if(searchEl && !keepFilter) searchEl.value = '';
   const me = authCurrentUser();
