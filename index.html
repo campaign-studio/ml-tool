@@ -2580,7 +2580,9 @@ async function doLogin() {
 function doLogout() {
   releaseAllMyApprovingPresence();
   authClearSession();
-  location.reload();
+  // Limpa a URL (tira ?open=… do projeto) ao sair — senão a tela de login fica com o link do
+  // projeto e, ao relogar, reabriria ele. replace() não deixa o projeto no histórico do voltar.
+  location.replace(location.pathname);
 }
 
 async function enterApp(user) {
