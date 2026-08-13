@@ -37,3 +37,13 @@ VERIFICAÇÃO (preview, projetos reais)
 - Sem erro de console relacionado à grade.
 
 Escala: adicionar mais locales no futuro só aumenta o scroll — as colunas nunca mais espremem.
+
+-------------------------------------------------------------------------------
+ADENDO (mesmo dia): COLUNAS DE REFERÊNCIA CONGELADAS À ESQUERDA
+-------------------------------------------------------------------------------
+As colunas nº-da-linha (rn), id (cid) e ORIGEM (src) agora ficam FIXAS à esquerda (position:sticky
++ left em cascata: 0 / 22px / 60px) enquanto se rola os idiomas na horizontal — o texto de
+referência fica sempre visível. Cabeçalho dessas colunas é sticky em cima E à esquerda (canto,
+z-index maior). Adicionadas as classes rn/cid/src aos <th> do cabeçalho (não tinham) nas duas
+tabelas (avulso + pasta). Fundo sólido na origem + sombra de 2px marcando a linha do congelamento.
+Verificado: rolando até es_mx num projeto de 11 idiomas, a coluna en-US origin permanece à esquerda.
