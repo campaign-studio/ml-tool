@@ -2492,8 +2492,18 @@ function authSaveUsers(users) {
   return sbPushUsers(users);
 }
 
-// Sessão guardada SÓ EM MEMÓRIA — ao recarregar/reabrir a página, sempre pede login de novo.
+// Sessão PERSISTE no navegador, mas EXPIRA 1x por dia: guardamos o e-mail + o DIA (local) do
+// login. No boot, se a sessão salva for de HOJE, entra direto (não pede login a cada acesso);
+// se for de outro dia (ou não existir), pede login de novo. Auth aqui é informal/client-side
+// (a senha já vive no localStorage — ver aviso no topo do bloco AUTH), então guardar a sessão
+// segue o mesmo modelo; não é proteção de dado sensível.
+const SESSION_KEY = 'mlt_session_v1';
 let _sessionEmail = null;
+
+function _sessionDayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); // dia LOCAL
+}
 
 function authGetSession() {
   return _sessionEmail ? { email: _sessionEmail } : null;
@@ -2501,10 +2511,35 @@ function authGetSession() {
 
 function authSetSession(email) {
   _sessionEmail = email;
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify({ email, day: _sessionDayStr() })); } catch(e) {}
 }
 
 function authClearSession() {
   _sessionEmail = null;
+  try { localStorage.removeItem(SESSION_KEY); } catch(e) {}
+}
+
+// Devolve a sessão salva SÓ se ainda for do mesmo dia; senão apaga e devolve null (expira 1x/dia).
+function authReadStoredSession() {
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch(e) { raw = null; }
+  if(!raw || !raw.email || raw.day !== _sessionDayStr()) {
+    if(raw) { try { localStorage.removeItem(SESSION_KEY); } catch(e) {} } // dia virou → força novo login
+    return null;
+  }
+  return raw;
+}
+
+// No boot: se há sessão válida (de hoje), entra direto sem pedir login.
+async function tryAutoLogin() {
+  const stored = authReadStoredSession();
+  if(!stored) return false;
+  let user = authGetUsers().find(u => u.email.toLowerCase() === stored.email.toLowerCase());
+  if(!user && ghConfigured()) { try { await sbPullUsers(); } catch(e) {} user = authGetUsers().find(u => u.email.toLowerCase() === stored.email.toLowerCase()); }
+  if(!user) { authClearSession(); return false; } // usuário foi removido — cai no login
+  _sessionEmail = user.email;
+  enterApp(user);
+  return true;
 }
 
 function authCurrentUser() {
@@ -9086,6 +9121,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const le = document.getElementById('loginEmail');
   const lp = document.getElementById('loginPass');
   [le, lp].forEach(el => el && el.addEventListener('keydown', e => { if(e.key === 'Enter') doLogin(); }));
+  // Sessão do dia ainda válida → entra direto (login só 1x por dia).
+  tryAutoLogin();
 });
 
 // Botão do sino: clique próprio, com stopPropagation pra não conflitar com o listener

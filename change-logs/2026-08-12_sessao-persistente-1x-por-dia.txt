@@ -1,0 +1,38 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-12
+Tema: SESSÃO PERSISTENTE COM EXPIRAÇÃO DIÁRIA — login 1x por dia, não a cada acesso.
+
+===============================================================================
+POR QUÊ
+===============================================================================
+Antes a sessão era só em memória (_sessionEmail): qualquer reload/reabrir a aba caía no login.
+O usuário pediu: a sessão persistir, mas expirar 1x por dia (novo dia = pede login; mesmo dia =
+entra direto).
+
+===============================================================================
+COMO FUNCIONA
+===============================================================================
+- authSetSession(email) agora grava em localStorage: { email, day } onde day = DIA LOCAL
+  (YYYY-M-D) do login. Também mantém _sessionEmail em memória (comportamento atual intacto).
+- authClearSession() remove a chave (logout manual continua saindo na hora).
+- authReadStoredSession(): devolve a sessão salva SÓ se raw.day === dia de hoje; se for de outro
+  dia, apaga a chave e devolve null (expira 1x/dia).
+- tryAutoLogin(): no boot (DOMContentLoaded do login), se há sessão válida de hoje, acha o usuário
+  (puxa do banco se preciso) e chama enterApp direto — sem pedir login. Se o usuário foi removido,
+  limpa a sessão e cai no login.
+
+Chave: mlt_session_v1.
+
+Nota de segurança: a auth aqui é informal/client-side (a senha já vive no localStorage — ver aviso
+no bloco AUTH). Guardar a sessão segue o MESMO modelo; não é proteção de dado sensível. A expiração
+é por DIA DE CALENDÁRIO local (não janela de 24h deslizante) — "1x ao dia" literal.
+
+===============================================================================
+VERIFICAÇÃO (preview local)
+===============================================================================
+- Sessão de HOJE salva → reload entra DIRETO (login oculto, dashboard real). OK.
+- Sessão com day de ONTEM → reload PEDE login e APAGA a sessão velha (chave vira null). OK.
+- Sem sessão salva → login (comportamento atual). OK.
+- Funções definidas, sem erro de console.
+
+Branch: feature/daily-session.
