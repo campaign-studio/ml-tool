@@ -359,11 +359,14 @@ body{background:var(--bg);font-family:var(--sans);font-size:14px;color:var(--tex
 
 /* GSHEET TABLE */
 .tscroll{flex:1;overflow:auto;}
-table.gs{width:100% !important;border-collapse:collapse !important;font-size:12.5px;table-layout:fixed !important;}
+/* Largura FIXA por coluna: a tabela dimensiona pela SOMA das colunas (width:max-content) e só
+   estica pra preencher quando sobra espaço (min-width:100%). Com muitos idiomas ela fica mais
+   larga que a tela e o .tscroll (overflow:auto) dá o scroll horizontal — colunas nunca espremem. */
+table.gs{width:max-content !important;min-width:100% !important;border-collapse:collapse !important;font-size:12.5px;table-layout:fixed !important;}
 table.gs col.rn {width:22px !important;min-width:22px !important;max-width:22px !important;}
 table.gs col.cid{width:38px !important;min-width:38px !important;max-width:38px !important;}
-table.gs col.src{width:170px !important;min-width:170px !important;max-width:170px !important;}
-table.gs col.tl {width:160px !important;min-width:140px !important;}
+table.gs col.src{width:240px !important;min-width:240px !important;max-width:240px !important;}
+table.gs col.tl {width:220px !important;min-width:220px !important;max-width:220px !important;}
 table.gs col.del{width:22px !important;min-width:22px !important;max-width:22px !important;}
 table.gs th,table.gs td{border-right:1px solid var(--border);border-bottom:1px solid var(--border);}
 table.gs th{position:sticky;top:0;z-index:20;background:var(--s3);height:26px;text-align:left;font-size:9px;font-weight:800;color:var(--text3);letter-spacing:.06em;white-space:nowrap;padding:0 5px;vertical-align:middle;box-shadow:0 1px 0 var(--border-s);}
@@ -6655,13 +6658,10 @@ function renderCampaignGrid(item) {
   // Header/banner IDÊNTICOS ao buildTable() do editor avulso (mesmas classes/estilo inline) —
   // ver comentário da função sobre reaproveitar o motor: o objetivo é os dois grids serem
   // visualmente indistinguíveis, não só a linha de tradução.
-  const minW = 22 + 38 + 170 + (langs.length * 140) + 30 + 22;
-  table.style.minWidth = minW + 'px';
-  // MESMA sequência do buildTable() do avulso (colgroup via elemento próprio, thead+tbody juntos
-  // depois): mantém os dois pixel-a-pixel idênticos, inclusive no jeito de montar o DOM.
-  const cg = document.getElementById('campaignItemColgroup');
-  if(cg) cg.innerHTML =
-    `<col class="rn" style="width:22px;min-width:22px;max-width:22px"><col class="cid" style="width:38px;min-width:38px;max-width:38px"><col class="src" style="width:170px;min-width:170px;max-width:170px">${langs.map(()=>'<col class="tl" style="width:200px">').join('')}<col class="del" style="width:22px;min-width:22px;max-width:22px">`;
+  // Colgroup fixo DENTRO do innerHTML (mesmo motivo do buildTable avulso: o table.innerHTML abaixo
+  // apagaria um <colgroup> filho, então a largura fixa nunca pegava). Larguras vêm do CSS
+  // (col.src/col.tl); com muitos idiomas rola na horizontal no .tscroll, sem espremer colunas.
+  const colgroup = `<colgroup><col class="rn"><col class="cid"><col class="src">${langs.map(()=>'<col class="tl">').join('')}<col class="del"></colgroup>`;
   const thead = `<thead>
     <tr class="rname">
       <td class="rn"></td>
@@ -6695,7 +6695,7 @@ function renderCampaignGrid(item) {
     srcEditable: () => originEditable,
     srcWrite: 'setCampaignOrigin',
   });
-  table.innerHTML = thead + `<tbody id="campGstb">${body}</tbody>`;
+  table.innerHTML = colgroup + thead + `<tbody id="campGstb">${body}</tbody>`;
   // Aponta o controlador compartilhado pro grid da campanha e liga os listeners no host (o
   // <table> persiste entre re-renders; só o innerHTML troca, então a delegação sobrevive).
   _gridBodyId = 'campGstb';
@@ -10556,14 +10556,11 @@ function buildTable() {
   const langs = sortLangsForDisplay(S.csv.langs); // ordem fixa global (rowsHTML usa a MESMA — determinístico)
   const origC = S.allC.find(c=>c.code===S.origin);
 
-  // Set table min-width so columns never compress below 140px with many langs
-  const minW = 22 + 38 + 170 + (langs.length * 140) + 30 + 22;
-  const tbl = document.querySelector('table.gs');
-  if(tbl) tbl.style.minWidth = minW + 'px';
-
-  const gcg = document.getElementById('gcg');
-  if(gcg) gcg.innerHTML =
-    `<col class="rn" style="width:22px;min-width:22px;max-width:22px"><col class="cid" style="width:38px;min-width:38px;max-width:38px"><col class="src" style="width:170px;min-width:170px;max-width:170px">${langs.map(()=>'<col class="tl" style="width:200px">').join('')}<col class="del" style="width:22px;min-width:22px;max-width:22px">`;
+  // Colgroup FIXO montado DENTRO do innerHTML (o t.innerHTML abaixo apagaria um <colgroup> filho
+  // pré-existente — por isso as larguras fixas nunca pegavam e as colunas espremiam). Larguras da
+  // seção CSS (col.src/col.tl). Com muitos idiomas a tabela passa da largura da tela e o .tscroll
+  // (overflow:auto) dá o scroll horizontal — as colunas nunca comprimem.
+  const colgroup = `<colgroup><col class="rn"><col class="cid"><col class="src">${langs.map(()=>'<col class="tl">').join('')}<col class="del"></colgroup>`;
 
   const thead = `<thead>
     <tr class="rname">
@@ -10579,7 +10576,7 @@ function buildTable() {
     </tr>
   </thead>`;
 
-  if(t) t.innerHTML = thead + `<tbody id="gstb">${rowsHTML()}</tbody>`;
+  if(t) t.innerHTML = colgroup + thead + `<tbody id="gstb">${rowsHTML()}</tbody>`;
   wireGridController();       // liga navegação/paste estilo planilha (uma vez, delegado no #gst)
   gridReapplyHighlight();     // re-aplica o realce da célula selecionada após re-render
   setTimeout(syncAllRowHeights, 0);
