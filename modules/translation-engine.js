@@ -1106,8 +1106,8 @@ function replaceLiquidPlaceholders(html){
   const _attrPill = n => `<span class="mlt-attr-tag">${String(n).replace(/[^a-zA-Z0-9_ ]/g,'').split(/[_\s]+/).filter(Boolean).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ')}</span>`;
   // aceita tanto "content_block" (singular) quanto "content_blocks" (plural), já que
   // e-mails diferentes usam as duas grafias pra referenciar o mesmo tipo de bloco.
-  html=html.replace(/\{\{content_blocks?\.\$\{gym_quantity\}[^}]*\}\}/g, 'XXX');
-  html=html.replace(/\{\{content_blocks?\.\$\{app_quantity\}[^}]*\}\}/g, 'XXX');
+  html=html.replace(/\{\{content_blocks?\.\$\{gym_quantity\}[^}]*\}\}/g, () => _attrPill('gym_quantity'));
+  html=html.replace(/\{\{content_blocks?\.\$\{app_quantity\}[^}]*\}\}/g, () => _attrPill('app_quantity'));
   html=html.replace(/\{\{context\.first_paid_plan_price\}\}/g, '{first_paid_plan_price}');
   html=html.replace(/\{\{context\.offer_trial_duration\}\}/g, '{trial_duration}');
   html=html.replace(/\{\{content_blocks?\.\$\{currency\}[^}]*\}\}/g, '{currency}');

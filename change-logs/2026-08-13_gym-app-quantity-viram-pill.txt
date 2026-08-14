@@ -1,0 +1,16 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-13
+Tema: PREVIEW — gym_quantity e app_quantity (content_blocks) viram PILL ("Gym Quantity"/"App
+      Quantity"), igual ao pill de custom attribute — antes viravam "XXX".
+
+===============================================================================
+O QUE MUDOU (modules/translation-engine.js — SÓ preview; export/CSV inalterados)
+===============================================================================
+Em replaceLiquidPlaceholders():
+- {{content_blocks.${gym_quantity} …}} → <span class="mlt-attr-tag">Gym Quantity</span>
+- {{content_blocks.${app_quantity} …}} → <span class="mlt-attr-tag">App Quantity</span>
+(antes: os dois viravam o texto "XXX"). Reusa o mesmo _attrPill (Title Case, pill rosado) dos
+custom attributes, então fica visualmente consistente com "Client Name" etc.
+
+VERIFICAÇÃO: teste da função (gym_quantity→"Gym Quantity", app_quantity→"App Quantity") e ao vivo
+no Email 3 (WH+): preview mostra os pills e não sobra nenhum "XXX".
