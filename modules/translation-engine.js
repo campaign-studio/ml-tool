@@ -1015,12 +1015,13 @@ function resolveConditionalBranch(html, mode, revealRow){
   // (não dá pra pôr markup dentro de um atributo).
   function parseIfBlock(insideTag){
     const branches = [];
-    let stop = null;
+    let stop = null, hasElse = false; // hasElse = a condicional tem {% else %} DE VERDADE (fallback real)
     for(;;){
       const seq = parseSequence();
       branches.push(seq.out);
       stop = seq.stop;
-      if(stop === 'elsif' || stop === 'else'){ i++; continue; }
+      if(stop === 'elsif'){ i++; continue; }
+      if(stop === 'else'){ hasElse = true; i++; continue; }
       break; // endif/endunless, ou acabou sem fechar (HTML malformado) — desiste aqui
     }
     if(stop === 'endif' || stop === 'endunless') i++;
@@ -1032,15 +1033,22 @@ function resolveConditionalBranch(html, mode, revealRow){
     // lido no preview" com os e-mails de N vias do Eligible).
     // Se estamos revelando uma linha e algum ramo DESTE condicional a contém, escolhe esse ramo
     // (independente do índice global) — é o que faz linhas em ramos aninhados sempre aparecerem.
-    let chosenIdx = Math.min(mode|0, branches.length - 1);
+    // Seleção pelo "mode" (0=if, 1=elsif, …, último=else):
+    //  - mode 0 → sempre o if;  - mode dentro do range → aquele ramo;
+    //  - além do range COM {% else %} de verdade → cai no else;
+    //  - além do range SEM else (if sozinho, ou if/elsif sem else) → NÃO mostra nada.
+    //    Esse último caso era o bug: no modo "Else", conteúdo de um {% if %} sem else tem que SUMIR.
+    const m = mode|0;
+    let chosenIdx = (m <= 0) ? 0 : (m < branches.length ? m : (hasElse ? branches.length - 1 : -1));
     if(revealMark){
       const hit = branches.findIndex(b => b.indexOf(revealMark) !== -1);
-      if(hit !== -1) chosenIdx = hit;
+      if(hit !== -1) chosenIdx = hit; // clicar numa linha sempre revela o ramo que a contém
     }
+    if(chosenIdx < 0) return ''; // ramo pedido não existe e não há else → some do preview
     const chosen = branches[chosenIdx];
     if(insideTag) return chosen;
     const label = chosenIdx === 0 ? 'IF'
-      : (chosenIdx === branches.length - 1 ? 'ELSE' : 'ELSIF');
+      : ((hasElse && chosenIdx === branches.length - 1) ? 'ELSE' : 'ELSIF');
     // Rótulo INLINE, logo na frente do texto do ramo (sem <br> em volta — eles criavam um vão
     // vertical enorme, ex: dentro de um botão o "IF" ficava numa linha e o texto embaixo).
     return `<span class="mlt-cond-tag">${label}</span> ${chosen}`;
