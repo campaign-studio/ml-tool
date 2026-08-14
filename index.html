@@ -2731,6 +2731,7 @@ setInterval(() => { if(!document.hidden) checkMyLockTakeover(); }, 20000);
 // (a espera normal do próximo tick do poll) em vez de tão fresco quanto antes desta otimização.
 document.addEventListener('visibilitychange', () => {
   if(document.hidden) return;
+  _cbReset(); // voltou pra aba → dá ao banco uma chance imediata (fecha o disjuntor pra uma nova tentativa)
   const dash = document.getElementById('dashboardScreen');
   if(dash && dash.style.display !== 'none') {
     if(ghConfigured()) ghPullProjects().then(renderDashboardIfChanged);
@@ -3419,9 +3420,33 @@ function _schedulePullRetry(){
     else { _pullRetryAttempt++; _schedulePullRetry(); }
   }, delay);
 }
-window.addEventListener('online', () => { if(_pullRetryTimer!==null || _pullRetryAttempt>0){ _cancelPullRetry(); _schedulePullRetry(); } });
+window.addEventListener('online', () => { _cbReset(); if(_pullRetryTimer!==null || _pullRetryAttempt>0){ _cancelPullRetry(); _schedulePullRetry(); } });
 
+/* ── DISJUNTOR (circuit breaker) + trava de 1-pull-por-vez ───────────────────────────────────
+   Sem isto, quando o Supabase ficava lento/rate-limited, o poll de 15s + o Realtime + os retries
+   disparavam ghPullProjects EM PARALELO; cada chamada pendurava (fetch sem retorno) e as conexões
+   se acumulavam até o navegador estourar (ERR_INSUFFICIENT_RESOURCES), martelando ainda mais o
+   banco — bola de neve. Agora: (1) só UM pull roda por vez (chamadas concorrentes esperam o MESMO);
+   (2) após N falhas seguidas o disjuntor ABRE por um tempo e os pulls automáticos viram no-op até o
+   banco voltar. Um sucesso fecha o disjuntor. Voltar pra aba / rede voltar reseta na hora. */
+const _CB_THRESHOLD = 4;          // falhas seguidas p/ abrir o disjuntor
+const _CB_COOLDOWN_MS = 30000;    // 30s de descanso com o disjuntor aberto
+let _cbFailures = 0, _cbOpenUntil = 0;
+function _cbIsOpen(){ return Date.now() < _cbOpenUntil; }
+function _cbOnSuccess(){ _cbFailures = 0; _cbOpenUntil = 0; }
+function _cbOnFailure(){ _cbFailures++; if(_cbFailures >= _CB_THRESHOLD){ _cbOpenUntil = Date.now() + _CB_COOLDOWN_MS; try{ setSyncDot('retrying'); }catch(e){} } }
+function _cbReset(){ _cbFailures = 0; _cbOpenUntil = 0; } // gatilho manual (voltou pra aba / rede voltou)
+
+let _pullProjectsInFlight = null;
 async function ghPullProjects() {
+  if(!ghConfigured()) return false;
+  if(_cbIsOpen()) return false;                       // disjuntor aberto → não dispara nada
+  if(_pullProjectsInFlight) return _pullProjectsInFlight; // já tem um pull rodando → espera o mesmo
+  _pullProjectsInFlight = _ghPullProjectsInner();
+  try { return await _pullProjectsInFlight; }
+  finally { _pullProjectsInFlight = null; }
+}
+async function _ghPullProjectsInner() {
   const sb = sbClient();
   if(!sb) return false;
   const _prevLocalCount = (function(){ try{ return projGetAll().length; }catch(e){ return 0; } })();
@@ -3487,11 +3512,13 @@ async function ghPullProjects() {
       _lastProjectsPullAt = pullStartedAt; // banco vazio na 1ª vez — evita re-full toda hora
     }
     setSyncDot('on');
+    _cbOnSuccess();           // banco respondeu → fecha o disjuntor
     _cancelPullRetry();       // pull voltou → cancela qualquer re-tentativa pendente
     return true;
   } catch(e) {
     console.warn('Supabase sync (pull projects) error:', e);
     setSyncDot('error');
+    _cbOnFailure();           // conta a falha; após N seguidas o disjuntor abre (para de martelar)
     _schedulePullRetry();     // leitura falhou → re-tenta em segundo plano (backoff) até voltar
     return false;
   }
@@ -4032,6 +4059,7 @@ async function sbDeleteUser(email) {
 async function sbPullUsers() {
   const sb = sbClient();
   if(!sb) return false;
+  if(_cbIsOpen()) return false; // disjuntor aberto → não pilha pedido em cima de um banco já em apuros
   // Espera qualquer push recente ainda em voo terminar primeiro — senão este pull
   // pode buscar a versão ANTIGA do servidor e apagar a edição que acabou de ser salva.
   if(_pendingUsersPush) { try { await _pendingUsersPush; } catch(e) {} }
@@ -4068,6 +4096,7 @@ async function sbPullUsers() {
 async function ghPullNotifications() {
   const sb = sbClient();
   if(!sb) return false;
+  if(_cbIsOpen()) return false; // disjuntor aberto → não pilha pedido em cima de um banco já em apuros
   if(_pendingNotifsPush) { try { await _pendingNotifsPush; } catch(e) {} }
   try {
     const { data, error } = await sb.from('notifications').select('id,payload');
