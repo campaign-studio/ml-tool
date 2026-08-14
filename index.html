@@ -2495,6 +2495,10 @@ function authSaveUsers(users) {
       if(!u) return;
       const before = prevByKey[(u.email||'').toLowerCase()];
       if(!before || _canonNoStamp(before) !== _canonNoStamp(u)) u.userUpdatedAt = now;
+      // Backfill do carimbo de PAPEL: nenhum registro pode ficar sem roleUpdatedAt — sem ele o
+      // merge cai no "remoto ganha" e uma cópia velha pode rebaixar (foi o bug do papel da Karla
+      // revertendo todo dia). Assim, todo usuário salvo/criado passa a ter o papel protegido.
+      if(u.role && !u.roleUpdatedAt) u.roleUpdatedAt = now;
     });
   }catch(e){}
   localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
