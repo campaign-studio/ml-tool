@@ -1,0 +1,33 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-13
+Tema: RE-SCAN de linhas perdidas — botão no editor que acha linhas que o extrator ATUAL captura
+      mas o projeto (extraído por versão antiga) não tem, e ANEXA no fim (últimas tags).
+
+===============================================================================
+POR QUÊ
+===============================================================================
+Projetos criados com uma versão antiga do extrator podem ter linhas faltando — ex: no
+"Eligible_-_Phase_1_-_Non_WH__Flow_-_Email_2", a frase "Sign up for free to explore the app before
+you commit – plans start at {currency}{first_paid_plan_price}/month." não virou linha traduzível
+porque a parte dinâmica estava dentro de um <code> (tag que a extração pula). O extrator de hoje já
+trata isso, mas reabrir um projeto NÃO re-extrai — carrega as linhas salvas.
+
+===============================================================================
+O QUE ENTROU (index.html)
+===============================================================================
+- rescanMissedLines(): re-extrai (motor atual) do HTML que o projeto já guarda; compara com as
+  linhas salvas; o que o motor acha, ainda não está tageado (src sem "{%translation") e não existe
+  nas salvas = FALTANDO. Mostra a lista, pede confirmação, e ANEXA no fim (nextRowId = últimas tags)
+  com traduções vazias. NÃO renumera nem toca no que já existe. Idempotente (rodar de novo não duplica).
+- Botão "Re-scan" na barra do editor avulso (ao lado de History/Save backup).
+
+===============================================================================
+VERIFICAÇÃO (preview, sem save real)
+===============================================================================
+- Dry-run no Email 2 Non WH+: detecta exatamente as 2 linhas da frase (ela se divide em duas por
+  causa da tag ignorada {content_blocks.currency} no meio):
+    1) "Sign up for free to explore the app before you commit – plans start at"
+    2) "{first_paid_plan_price}/month."
+  Ambas ANCORAM no buildTaggedHtml (viram {%translation idN%} de verdade) — testado com ids de teste,
+  wrapped=true, e depois desfeito sem salvar.
+- Botão presente e funcional. O SAVE real acontece quando o usuário confirma no diálogo.
