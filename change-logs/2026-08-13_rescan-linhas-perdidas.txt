@@ -31,3 +31,13 @@ VERIFICAÇÃO (preview, sem save real)
   Ambas ANCORAM no buildTaggedHtml (viram {%translation idN%} de verdade) — testado com ids de teste,
   wrapped=true, e depois desfeito sem salvar.
 - Botão presente e funcional. O SAVE real acontece quando o usuário confirma no diálogo.
+
+-------------------------------------------------------------------------------
+CORREÇÃO (mesmo dia): re-scan precisava RE-TAGUEAR o S.rawHtml
+-------------------------------------------------------------------------------
+Bug encontrado no teste ponta-a-ponta: só anexar em S.csv.rows não persistia — o autosave grava
+data.html = S.rawHtml, e o LOAD reconstrói as linhas a partir do HTML tagueado. Como o S.rawHtml
+não tinha as tags novas, ao reabrir as linhas sumiam (voltava pra 39). Correção: rescanMissedLines
+agora faz S.rawHtml = buildTaggedHtml(true) depois de anexar — assim o data.html salvo já contém
+{%translation idN%} das novas linhas. Verificado ponta-a-ponta no Email 2 Non WH+: aplicar → salvar
+→ RELOAD → 41 linhas, id51 ("Sign up for free…") e id52 ("/month.") persistem, carregadas do banco.

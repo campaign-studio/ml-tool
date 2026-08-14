@@ -10619,6 +10619,11 @@ async function rescanMissedLines(){
       translations: Object.fromEntries(langs.map(l => [l, '']))
     });
   }
+  // CRÍTICO: re-tagueia o HTML salvo pra INCLUIR as novas tags. Sem isto o autosave gravava
+  // data.html = S.rawHtml (sem as tags novas) e, ao reabrir, o load reconstrói do HTML tagueado
+  // → as linhas somem. buildTaggedHtml ancora todas as linhas (inclusive as novas) e é o mesmo
+  // artefato do export, então S.rawHtml passa a conter {%translation idN%} das linhas adicionadas.
+  S.rawHtml = buildTaggedHtml(true);
   buildTable();
   try { scheduleAutosave(); } catch(e){}
   uiNotify(`Added ${missing.length} line(s) at the end — fill in the translations (saves automatically).`, {type:'success'});
