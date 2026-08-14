@@ -1,34 +1,36 @@
 MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
 Data: 2026-08-13
-Tema: PREVIEW — first_name vira "John Doe" e custom_attribute vira um PILL pequeno (ex: "Client Name").
+Tema: PREVIEW — TODO custom attribute vira um PILL pequeno com o NOME do atributo (ex: "First Name",
+      "Client Name"). (Revertido o "John Doe" que existia numa versão intermediária.)
 
 ===============================================================================
-PEDIDO
+PEDIDO (final)
 ===============================================================================
-No previewer, as tags Liquid de first_name deviam aparecer como um nome escrito (John Doe), e as de
-custom_attribute (ex: client_name) como uma tag pequena "Client Name", no mesmo espírito do if/else.
+No previewer, TODAS as tags de custom attribute (first_name, client_name, last_name, …) devem
+virar uma tag pequena escrita só com o NOME do atributo — no mesmo espírito do rótulo if/else.
+(Uma versão anterior trocava first_name por "John Doe"; isso foi REVERTIDO a pedido.)
 
 ===============================================================================
 O QUE MUDOU (modules/translation-engine.js — SÓ PREVIEW, nunca toca HTML/CSV/export)
 ===============================================================================
-Em replaceLiquidPlaceholders() (roda só na montagem do preview):
-- first_name em QUALQUER forma vira "John Doe":
-    {{first_name}} , {{ ${first_name} }} , {{first_name | default:'there'}} ,
-    {{custom_attribute.${first_name} | default:'there'}} , {{custom_attribute.first_name}}
-- custom_attribute (ex: client_name) vira um PILL pequeno com o nome HUMANIZADO:
-    {{custom_attribute.${client_name} | default:'your company'}} → <span class="mlt-attr-tag">Client Name</span>
-    (humaniza: client_name → "Client Name"; split por _/espaço + Title Case)
-- CSS .mlt-attr-tag adicionado no injectCondStyle() (mesmo lugar do .mlt-cond-tag do if/else):
-  mesmo tamanho pequeno, Title Case (sem uppercase), tom rosado pra distinguir de lógica (if/else cinza).
+Em replaceLiquidPlaceholders():
+- Qualquer custom attribute vira <span class="mlt-attr-tag">Nome Humanizado</span>:
+    {{custom_attribute.${client_name} | default:'your company'}} → PILL "Client Name"
+    {{custom_attribute.${first_name}  | default:'there'}}         → PILL "First Name"
+    {{ ${first_name} }} / {{ ${last_name} | default:'' }}         → PILL "First Name" / "Last Name"
+    {{first_name}}                                                 → PILL "First Name"
+  Humaniza o nome: split por _/espaço + Title Case (client_name → "Client Name").
+- CSS .mlt-attr-tag no injectCondStyle() (mesmo lugar do .mlt-cond-tag do if/else): pill pequeno,
+  Title Case, tom rosado (distingue "dado da pessoa" da lógica if/else, que é cinza).
+- NÃO existe mais nenhum valor de exemplo tipo "John Doe".
 
-context.* e content_blocks.* seguem virando {placeholder} como antes (não são atributos da pessoa).
+context.* e content_blocks.* seguem virando {placeholder} (não são atributos da pessoa/cliente).
 
 ===============================================================================
 VERIFICAÇÃO
 ===============================================================================
-- Teste da função (5 casos): first_name→"John Doe" nas 3 formas; client_name→pill "Client Name". OK.
-- Ao vivo no e-mail "Eligible_-_Phase_1_-_WH__Flow_-_Email_2" (p_1785191506852): preview mostra
-  "...gym membership, John Doe?" e o pill rosa "Client Name" no corpo; 0 {first_name} cru; 2 pills. OK.
-- A grade de edição e o CSV mantêm o Liquid CRU ({{custom_attribute.${client_name}}}) — export inalterado.
-- 404 de imagem e "about:srcdoc" no console são pré-existentes (imagens placeholder + iframe sandboxed),
-  não têm relação com esta mudança.
+- Teste da função (5 formas): first_name (3 formas) → "First Name"; client_name → "Client Name";
+  last_name → "Last Name". Sem "John Doe" em lugar nenhum.
+- Ao vivo no "Eligible_-_Phase_1_-_WH__Flow_-_Email_2" (p_1785191506852): o preview (#vf) mostra
+  3 pills — "First Name" e "Client Name" — e 0 placeholder cru / 0 "John Doe".
+- Grade de edição e CSV mantêm o Liquid CRU ({{custom_attribute.${client_name}}}) — export inalterado.
