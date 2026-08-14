@@ -1,0 +1,38 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-13
+Tema: PREVIEW — {% if %} SEM else agora SOME no modo "Else" (antes continuava aparecendo).
+
+===============================================================================
+BUG (reportado no Eligible_-_Phase_1_-_WH__Flow_-_Email_3)
+===============================================================================
+Uma frase dentro de um {% if ... %}...{%endif%} SEM {% else %} continuava aparecendo quando o
+previewer estava no modo "Else" (e "Elsif"). O correto: conteúdo condicional sem else tem que
+SUMIR nesses modos — só aparece no "If".
+
+Raiz: em resolveConditionalBranch/parseIfBlock, a escolha do ramo era
+  chosenIdx = Math.min(mode, branches.length - 1)
+Pra um if sozinho (1 ramo), isso GRAMPEAVA sempre no ramo 0 (o if), em qualquer modo — o código
+não distinguia "tem {% else %} de verdade" de "não tem".
+
+===============================================================================
+CORREÇÃO (modules/translation-engine.js — SÓ preview/approval, o export mantém o {% if %} inteiro)
+===============================================================================
+- parseIfBlock passa a rastrear hasElse (viu um {% else %} de verdade no parse).
+- Nova seleção:
+    mode 0            → sempre o if
+    mode dentro range → aquele ramo (elsif)
+    além do range + hasElse → cai no else
+    além do range SEM else  → chosenIdx = -1 → NÃO mostra nada
+- Rótulo corrigido: só marca "ELSE" quando é else de verdade (senão "ELSIF"/"IF").
+- revealMark (clicar numa linha revela o ramo dela) preservado.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+Teste unitário nos 4 casos:
+  if sozinho      → If:[IF]AAA  Elsif:(vazio)  Else:(vazio)
+  if/else         → If:[IF]AAA  Elsif:[ELSE]BBB  Else:[ELSE]BBB
+  if/elsif/else   → If:[IF]AAA  Elsif:[ELSIF]CCC Else:[ELSE]BBB
+  if/elsif s/ else→ If:[IF]AAA  Elsif:[ELSIF]CCC Else:(vazio)
+Ao vivo no Email 3: no modo Else a frase do trial ({% if %} sem else) SOME; condicionais com else
+de verdade seguem corretas. Export inalterado (buildTaggedHtml mantém todos os ramos).
