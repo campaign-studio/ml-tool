@@ -10088,13 +10088,13 @@ function onFile(f) {
 // precisa ver e poder reposicionar a tag, não só um buraco onde ela costumava estar.
 function isRecognizedMergeTag(val) {
   if(/\{\{\s*(?:custom_attribute|context|event_properties|recipient)\s*\./.test(val)) return true;
-  // Uma tag "solta" tipo {{ ${first_name} | default: 'Hey' }} — sem namespace, mas COM um
-  // filtro "| default:" — é bem provavelmente um merge tag de negócio de verdade (ex:
-  // personalização de nome), só escrito num atalho sem o prefixo "custom_attribute.". Bem
-  // diferente de uma referência pura de {% assign %} (ex: {{ partner_1_name }}), que quase
-  // nunca vem acompanhada de um "| default:" — a presença do default é o sinal de que isso
-  // é conteúdo real que precisa ficar visível/traduzível, não uma referência interna.
-  if(/\{\{\s*\$\{[^}]+\}\s*\|\s*default\s*:/.test(val)) return true;
+  // Tag "solta" no formato ${...} (ex: {{ ${first_name} }} ou {{ ${first_name} | default: 'Hey' }})
+  // — a sintaxe ${...} é SEMPRE um atributo do Braze (personalização = conteúdo real), COM ou SEM
+  // filtro "| default:". É diferente de uma referência de {% assign %} (ex: {{ partner_1_name }}),
+  // que NÃO usa ${...} — então reconhecer todo {{ ${...} }} é seguro (não pega assign refs).
+  // Reconhecer = manter INLINE na linha traduzível junto com o texto e a PONTUAÇÃO ao redor (ex:
+  // "…membership, {{${first_name}}}." vira UMA linha com o ponto dentro, em vez de perder o ".").
+  if(/\{\{\s*\$\{[^}]+\}\s*(?:\|[^}]*)?\}\}/.test(val)) return true;
   return false;
 }
 
