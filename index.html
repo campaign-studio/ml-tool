@@ -2156,6 +2156,7 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
               Edit Tagged HTML
             </button>
             <button class="tbtn" onclick="openVersionHistory()" data-i18n-title="versionHistory.historyBtnTitle" title="Version history — restore an earlier point or save a backup"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg><span data-i18n="versionHistory.historyBtn">History</span></button><button class="tbtn" onclick="saveManualBackup()" data-i18n-title="versionHistory.saveBackupBtnTitle" title="Save a backup — mark a restore point you can always come back to"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><span data-i18n="versionHistory.saveBackupBtn">Save backup</span></button>
+            <button class="tbtn" onclick="rescanMissedLines()" title="Re-scan the original HTML for translatable lines that weren’t captured, and add any missing ones at the end (won’t touch existing lines)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Re-scan</button>
             <div class="dl-dropdown-wrap">
               <button class="tbtn csv" onclick="event.stopPropagation();toggleDlDropdown()">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
@@ -10582,6 +10583,45 @@ function renderConfirm() {
   // Button label
   const btnLabel = document.getElementById('btnBuildCsvLabel');
   if(btnLabel) btnLabel.textContent = S.isImport ? 'Open editor' : 'Yes, build CSV';
+}
+
+// ── RE-SCAN: acha linhas que o motor de extração ATUAL captura mas o projeto (extraído por uma
+//    versão antiga) não tem, e ANEXA no fim (como as últimas tags), com traduções vazias. Não
+//    renumera nem toca no que já existe. Idempotente: rodar de novo não duplica. ──────────────
+async function rescanMissedLines(){
+  if(typeof S==='undefined' || !S || !S.rawHtml || !S.csv){ uiNotify('Open a project first.', {type:'info'}); return; }
+  const norm = s => String(s||'').replace(/\s+/g,' ').trim();
+  const savedSrc = new Set((S.csv.rows||[]).map(r => norm(r.src)));
+  // Extração com o motor atual. extractStr() popula S.strings — guardo e restauro (não altero o
+  // estado até o usuário confirmar). Linhas JÁ tageadas voltam com "{%translation" no src (o HTML
+  // salvo já está tageado), então filtramos essas fora: o que interessa é o texto AINDA sem tag.
+  const prevStrings = S.strings;
+  let fresh = [];
+  try { extractStr(); fresh = (S.strings || []).slice(); }
+  catch(e){ S.strings = prevStrings; uiNotify('Re-scan could not read this project.', {type:'error'}); return; }
+  S.strings = prevStrings;
+  const missing = fresh.filter(s =>
+    !s.isImg && norm(s.src) && !/\{%translation/.test(s.src) && !savedSrc.has(norm(s.src))
+  );
+  if(!missing.length){ uiNotify('Re-scan: nothing missing — every line is already captured here.', {type:'success'}); return; }
+  const list = missing.map(s => '• ' + norm(toLiquidPlaceholder(s.src)).slice(0,90)).join('\n');
+  const ok = await uiConfirm(
+    `Re-scan found ${missing.length} line(s) that weren’t captured before. Add them at the END of the list (as the last tags), with empty translations?\n\n${list}`,
+    { title:'Re-scan for missed lines', okLabel:'Add line'+(missing.length>1?'s':'') }
+  );
+  if(!ok) return;
+  const langs = S.csv.langs || [];
+  for(const s of missing){
+    S.csv.rows.push({
+      id: nextRowId(), src: s.src, display: toLiquidPlaceholder(s.src),
+      isStyle:false, outerKey:null, openTag:null, closeTag:null,
+      isImg:false, imgTag:null, vmlTag:null,
+      translations: Object.fromEntries(langs.map(l => [l, '']))
+    });
+  }
+  buildTable();
+  try { scheduleAutosave(); } catch(e){}
+  uiNotify(`Added ${missing.length} line(s) at the end — fill in the translations (saves automatically).`, {type:'success'});
 }
 
 function buildTable() {
