@@ -1075,6 +1075,7 @@ function maxCondBranchCount(html){
 function injectCondStyle(html){
   const style = `<style>
 .mlt-cond-tag{display:inline-block;font-size:9px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;padding:1px 5px;margin:0 2px;border-radius:3px;font-family:-apple-system,sans-serif;color:#8a8a82;background:#e8e8e5;border:1px solid #d8d8d2;white-space:nowrap;vertical-align:middle;}
+.mlt-attr-tag{display:inline-block;font-size:9px;font-weight:600;letter-spacing:.02em;padding:1px 5px;margin:0 2px;border-radius:3px;font-family:-apple-system,sans-serif;color:#b3306b;background:#fbe6f0;border:1px solid #f2c4da;white-space:nowrap;vertical-align:middle;}
 .mlt-footer-block, .mlt-footer-block *{pointer-events:none!important;cursor:not-allowed!important;user-select:none!important;}
 .mlt-footer-block{position:relative;}
 .mlt-footer-block::before{content:"Footer preview — not selectable";position:absolute;top:6px;left:50%;transform:translateX(-50%);background:rgba(20,20,40,.72);color:#fff;font:700 9px/1 -apple-system,sans-serif;letter-spacing:.03em;text-transform:uppercase;padding:4px 9px;border-radius:20px;pointer-events:none;z-index:20;white-space:nowrap;}
@@ -1091,6 +1092,14 @@ function injectCondStyle(html){
 // mais de um lugar. Sem isso, tags Liquid cruas apareciam como texto enorme sem quebra de
 // linha, estourando o layout onde quer que o e-mail fosse exibido.
 function replaceLiquidPlaceholders(html){
+  // first_name (qualquer forma: {{first_name}}, {{ ${first_name} }}, {{custom_attribute.${first_name}|default:'there'}})
+  // vira um NOME DE EXEMPLO legível — a arte fica natural pra quem revisa. SÓ preview: nunca toca o HTML/CSV/export.
+  const SAMPLE_NAME = 'John Doe';
+  html = html.replace(/\{\{[^{}]*\$\{first_name\}[^{}]*\}\}/gi, SAMPLE_NAME);
+  html = html.replace(/\{\{\s*(?:custom_attribute\.)?first_name\s*(?:\|[^}]*)?\}\}/gi, SAMPLE_NAME);
+  // custom_attribute (ex: client_name) → PILL pequeno com o nome humanizado ("Client Name"), no
+  // mesmo espírito das tags de if/else. Deixa claro que ali entra um dado dinâmico da pessoa/cliente.
+  const _attrPill = n => `<span class="mlt-attr-tag">${String(n).replace(/[^a-zA-Z0-9_ ]/g,'').split(/[_\s]+/).filter(Boolean).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ')}</span>`;
   // aceita tanto "content_block" (singular) quanto "content_blocks" (plural), já que
   // e-mails diferentes usam as duas grafias pra referenciar o mesmo tipo de bloco.
   html=html.replace(/\{\{content_blocks?\.\$\{gym_quantity\}[^}]*\}\}/g, 'XXX');
@@ -1098,7 +1107,7 @@ function replaceLiquidPlaceholders(html){
   html=html.replace(/\{\{context\.first_paid_plan_price\}\}/g, '{first_paid_plan_price}');
   html=html.replace(/\{\{context\.offer_trial_duration\}\}/g, '{trial_duration}');
   html=html.replace(/\{\{content_blocks?\.\$\{currency\}[^}]*\}\}/g, '{currency}');
-  html=html.replace(/\{\{custom_attribute\.\$\{([^}]+)\}[^}]*\}\}/g, '{$1}');
+  html=html.replace(/\{\{custom_attribute\.\$\{([^}]+)\}[^}]*\}\}/g, (_,n)=>_attrPill(n));
   // Mesma forma ${...} pra context.* — ex: {{context.${first_paid_plan_price}}} vinha CRU no
   // preview (as regras acima só cobriam {{context.NOME}} sem ${}), poluindo a arte. Vira {NOME}.
   html=html.replace(/\{\{context\.\$\{([^}]+)\}[^}]*\}\}/g, '{$1}');
@@ -1121,7 +1130,7 @@ function replaceLiquidPlaceholders(html){
   // Mesma rede de segurança, agora pra QUALQUER context.* (ou custom_attribute sem "${}")
   // que sobrou sem regra específica — ex: {{context.last_free_plan_name}}.
   html=html.replace(/\{\{\s*context\.([a-zA-Z0-9_]+)\s*\}\}/g, '{$1}');
-  html=html.replace(/\{\{\s*custom_attribute\.([a-zA-Z0-9_]+)\s*\}\}/g, '{$1}');
+  html=html.replace(/\{\{\s*custom_attribute\.([a-zA-Z0-9_]+)\s*\}\}/g, (_,n)=>_attrPill(n));
 
   // SÓ VISUAL, pra quem está aprovando — nunca muda o HTML/CSV reais (essa função só
   // roda no preview, depois das duas passadas de Pass A/B). Às vezes o template original
