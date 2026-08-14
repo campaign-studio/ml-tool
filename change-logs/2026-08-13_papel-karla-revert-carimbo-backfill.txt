@@ -1,0 +1,37 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-13
+Tema: PAPEL DE USUÁRIO REVERTENDO (Karla admin -> approver/member todo dia) — causa raiz e fix
+      DEFINITIVO: carimbo (roleUpdatedAt) + backfill de todos os usuários.
+
+===============================================================================
+CAUSA RAIZ (achada com evidência no banco)
+===============================================================================
+O merge de usuário resolve o PAPEL por roleUpdatedAt (carimbo) mais novo (_resolveUserStamps).
+Registros criados ANTES do fix de carimbo (24/jul) ficaram SEM roleUpdatedAt (=0). Com carimbo 0:
+- empate → "remoto ganha", então o papel fica instável (quem escreve por último vence);
+- pior: qualquer cópia velha "member" que tenha um roleUpdatedAt de VERDADE (de uma demoção
+  passada) VENCE o admin sem carimbo e re-empurra member → reverte.
+No banco, a Karla estava admin MAS sem roleUpdatedAt (rev 0, parada desde 24/jul).
+E a UI não conseguia consertar: setUserRole tem `if(target.role === newRole) return` ("nada mudou"),
+então re-clicar "admin" quando ela já aparece admin localmente NÃO re-carimbava nem re-enviava —
+por isso "conserta e nunca fica".
+Diagnóstico: 19 dos 20 usuários estavam SEM carimbo (todos os outros admins + superadmin inclusos)
+— mesmo risco latente pra todo mundo.
+
+===============================================================================
+FIX
+===============================================================================
+1. DADOS (feito no banco agora): carimbado o papel ATUAL de TODOS os 20 usuários
+   (roleUpdatedAt = agora), sem mudar papel nenhum. Karla: admin + carimbo novo (rev 0->1).
+   Com carimbo recente, admin vence qualquer cópia velha pra sempre.
+2. CÓDIGO (index.html, authSaveUsers): backfill — todo usuário salvo/criado que tiver `role` e
+   não tiver `roleUpdatedAt` recebe o carimbo na hora. Nenhum registro nasce/fica sem carimbo,
+   então essa reversão não pode mais acontecer com ninguém.
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Banco: Karla role=admin, roleUpdatedAt setado; após pull no app, local também admin+carimbo.
+- Backfill: fixedCount 19, failed 0, stillWithoutStamp []. Todos os 20 com carimbo.
+- Merge (unit): admin carimbado(now) vence member sem carimbo E member com carimbo mais velho,
+  nos dois sentidos (local/remoto).
