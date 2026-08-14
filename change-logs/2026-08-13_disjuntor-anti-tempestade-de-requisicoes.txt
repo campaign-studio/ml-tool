@@ -1,0 +1,41 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-13
+Tema: BLINDAGEM ANTI-TEMPESTADE — disjuntor (circuit breaker) + trava de 1-pull-por-vez.
+
+===============================================================================
+PROBLEMA (relatado: "não baixa nada do banco" + "save failed")
+===============================================================================
+O Supabase estava NO AR (verificado: curl REST/Auth/Edge Function todos 200; leitura em aba fresca
+em 244ms). O que quebrava era uma TEMPESTADE de requisições DENTRO da aba: quando o banco fica lento
+ou rate-limited (rajada de uso — inclusive testes pesados no mesmo projeto), o poll de 15s + o
+Realtime + os retries disparavam ghPullProjects EM PARALELO; sem trava de concorrência, cada chamada
+pendurava (fetch sem retorno) e as conexões se acumulavam até o navegador estourar
+(ERR_INSUFFICIENT_RESOURCES) e martelar ainda mais o banco (500/504) — bola de neve.
+
+Nenhum dado foi perdido: "save failed" é a trava de segurança recusando gravar sem confirmação do banco.
+
+===============================================================================
+CORREÇÃO (index.html)
+===============================================================================
+1. TRAVA DE 1-PULL-POR-VEZ (mutex): ghPullProjects vira um wrapper que coalesce chamadas
+   concorrentes — se já há um pull rodando, os demais esperam o MESMO promise (só um round de rede).
+   O corpo antigo virou _ghPullProjectsInner().
+2. DISJUNTOR (circuit breaker): após 4 falhas seguidas (_CB_THRESHOLD) o disjuntor ABRE por 30s
+   (_CB_COOLDOWN_MS). Enquanto aberto, ghPullProjects/ghPullNotifications/sbPullUsers viram no-op
+   (não disparam nada), quebrando a bola de neve. Um sucesso fecha o disjuntor. Voltar pra aba
+   (visibilitychange) ou a rede voltar (online) reseta o disjuntor na hora (nova tentativa imediata).
+
+Os retries com backoff (_schedulePullRetry / _scheduleAutoResync) continuam — agora respeitam o
+disjuntor, então re-tentam sem martelar.
+
+===============================================================================
+VERIFICAÇÃO (preview)
+===============================================================================
+- Disjuntor: abre após 4 falhas; enquanto aberto ghPullProjects retorna sem disparar requisição;
+  fecha no _cbReset(). OK.
+- Mutex: 8 ghPullProjects concorrentes → UM promise líder em voo → todas retornam o mesmo resultado
+  (1 round de rede em vez de 8). OK.
+- Leitura normal em aba fresca: ~244ms. Sem erro de console.
+
+AÇÃO IMEDIATA pro usuário quando a aba já está em tempestade: fechar as abas e abrir UMA nova
+(carga fresca zera o estado). A blindagem impede a bola de neve dali pra frente.
