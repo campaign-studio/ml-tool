@@ -1,0 +1,34 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-13
+Tema: PREVIEW — first_name vira "John Doe" e custom_attribute vira um PILL pequeno (ex: "Client Name").
+
+===============================================================================
+PEDIDO
+===============================================================================
+No previewer, as tags Liquid de first_name deviam aparecer como um nome escrito (John Doe), e as de
+custom_attribute (ex: client_name) como uma tag pequena "Client Name", no mesmo espírito do if/else.
+
+===============================================================================
+O QUE MUDOU (modules/translation-engine.js — SÓ PREVIEW, nunca toca HTML/CSV/export)
+===============================================================================
+Em replaceLiquidPlaceholders() (roda só na montagem do preview):
+- first_name em QUALQUER forma vira "John Doe":
+    {{first_name}} , {{ ${first_name} }} , {{first_name | default:'there'}} ,
+    {{custom_attribute.${first_name} | default:'there'}} , {{custom_attribute.first_name}}
+- custom_attribute (ex: client_name) vira um PILL pequeno com o nome HUMANIZADO:
+    {{custom_attribute.${client_name} | default:'your company'}} → <span class="mlt-attr-tag">Client Name</span>
+    (humaniza: client_name → "Client Name"; split por _/espaço + Title Case)
+- CSS .mlt-attr-tag adicionado no injectCondStyle() (mesmo lugar do .mlt-cond-tag do if/else):
+  mesmo tamanho pequeno, Title Case (sem uppercase), tom rosado pra distinguir de lógica (if/else cinza).
+
+context.* e content_blocks.* seguem virando {placeholder} como antes (não são atributos da pessoa).
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+- Teste da função (5 casos): first_name→"John Doe" nas 3 formas; client_name→pill "Client Name". OK.
+- Ao vivo no e-mail "Eligible_-_Phase_1_-_WH__Flow_-_Email_2" (p_1785191506852): preview mostra
+  "...gym membership, John Doe?" e o pill rosa "Client Name" no corpo; 0 {first_name} cru; 2 pills. OK.
+- A grade de edição e o CSV mantêm o Liquid CRU ({{custom_attribute.${client_name}}}) — export inalterado.
+- 404 de imagem e "about:srcdoc" no console são pré-existentes (imagens placeholder + iframe sandboxed),
+  não têm relação com esta mudança.
