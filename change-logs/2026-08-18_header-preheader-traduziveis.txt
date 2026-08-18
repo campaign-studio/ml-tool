@@ -138,3 +138,33 @@ assign apareciam crus no card. Verificado: ramo IF → "IF …"; virar o toggle 
 custom attribute → pill "First Name"; content block → {nome}. Screenshot conferido. Zero erro.
 (Edge: {{g}} — referência a var de assign — segue crua no card, igual ao corpo; não dá pra saber o
 valor em runtime.)
+
+===============================================================================
+REVISÃO (mesmo dia) — E-MAIL DE PASTA USA O MESMO WIZARD DO AVULSO (unificação)
+===============================================================================
+Pedido: dentro da pasta (campanha), criar e-mail deve usar O MESMO wizard do e-mail avulso
+(mesmo código/arquivo), pra qualquer ajuste futuro valer nos dois. O mini-fluxo faseado do modal
+(html→origin→targets) NÃO é o mesmo wizard — daí o header/preheader (e o resto) divergia.
+
+Mudanças (index.html):
+- _wizardFolderTarget: guarda o id da campanha quando o wizard é aberto de dentro de uma pasta.
+- startFolderEmailWizard(): abre o WIZARD completo (page1…page5, tela cheia) a partir da pasta.
+- buildFolderEmailFromWizard(): no fim do wizard, converte o estado (S) num ITEM de e-mail
+  (rawHtml cru + rows, meta rows já inclusas via applyMetaDraft), adiciona na campanha e volta
+  pro editor da pasta com o item aberto. buildAndGo() faz o branch por _wizardFolderTarget.
+- Aba "Email" do modal Manage Content: agora é só um botão "Add email" → startFolderEmailWizard
+  (bypassa o mini-fluxo). Push/in-app SEGUEM no mini-fluxo faseado (não têm wizard de HTML).
+- Revertido o passo "meta" que fora colocado no mini-fluxo: addItemTotalSteps/addItemStepKind
+  voltaram ao original; removidos o corpo do passo meta, setAddItemMeta, _addItemState.meta e o
+  bloco de meta rows do confirmAddItem (email não passa mais por ali).
+- goToDashboard limpa _wizardFolderTarget (cancela um "add email na pasta" em andamento).
+- Mantidos (compartilhados): setCampaignMetaOrigin + metaOriginWrite (editar origem da meta row
+  inline na grade da campanha), branch isMeta da grade, buildMetaCardHtml, exclusão no
+  buildTaggedHtml, parseBrazeCsv.
+
+Resultado: UM wizard só pra e-mail (avulso e pasta). Mudou o wizard, mudou nos dois.
+
+VERIFICAÇÃO (localhost, em memória): boot limpo, 0 erro de console; conversão wizard→item ok
+([header, preheader, id1, id2], rawHtml cru, corpo exclui meta, card com pill); aba Email do modal
+mostra "Add email" chamando o wizard (sem mini-fluxo); merge invariants 9/9; meta regression 4/4.
+(E2E clicando o fluxo real de pasta exige login/banco real.)

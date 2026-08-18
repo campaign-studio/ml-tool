@@ -5763,6 +5763,7 @@ async function goToDashboard() {
   document.getElementById('editHtmlEditorScreen').style.display = 'none';
   _editHtmlCurrentTarget = null;
   _editHtmlReturnTo = null;
+  _wizardFolderTarget = null; // saiu pro dashboard → cancela um "add email na pasta" em andamento
   document.getElementById('dashboardScreen').style.display = 'block';
   document.getElementById('hdrBar').style.display = 'none';
   document.getElementById('hdrProgress').style.width = '0%';
@@ -6965,7 +6966,7 @@ function manageContentTypeLabel(type) {
 }
 
 function resetAddItemState() {
-  _addItemState = { html: null, htmlName: null, origin: '', targets: [], meta: { header:'', preheader:'' } };
+  _addItemState = { html: null, htmlName: null, origin: '', targets: [] };
   _addItemStep = 1;
 }
 
@@ -7068,15 +7069,12 @@ async function removeFromFolderViaModal(folderId, itemId) {
 // em vez de mostrar upload+origem+destino tudo junto de uma vez só. Email/in-app têm
 // um passo a mais no início (subir o HTML); push começa direto na origem.
 function addItemTotalSteps() {
-  if(_manageContentTab === 'push') return 2;      // origin → targets
-  if(_manageContentTab === 'email') return 4;     // html → origin → header/preheader → targets
-  return 3;                                       // in-app: html → origin → targets
-}
+  return _manageContentTab === 'push' ? 2 : 3; // push: origin→targets · in-app: html→origin→targets
+}                                              // (e-mail usa o wizard completo, não este mini-fluxo)
 function addItemStepKind() {
-  const t = _manageContentTab;
-  if(t === 'push')  return _addItemStep === 1 ? 'origin' : 'targets';
-  if(t === 'email') return _addItemStep === 1 ? 'html' : _addItemStep === 2 ? 'origin' : _addItemStep === 3 ? 'meta' : 'targets';
-  return _addItemStep === 1 ? 'html' : _addItemStep === 2 ? 'origin' : 'targets'; // in-app
+  const needsHtml = _manageContentTab !== 'push';
+  if(needsHtml) return _addItemStep === 1 ? 'html' : _addItemStep === 2 ? 'origin' : 'targets';
+  return _addItemStep === 1 ? 'origin' : 'targets';
 }
 function addItemNextStep() {
   const total = addItemTotalSteps();
@@ -7092,6 +7090,22 @@ function renderManageContentAddArea() {
   if(!wrap) return;
   const type = _manageContentTab;
   const typeSingular = manageContentTypeLabel(type).replace(/s$/, '');
+  // E-mail usa o WIZARD completo (mesmo do avulso: upload → origin → header/preheader → países →
+  // imagens → confirmar), pra os dois fluxos compartilharem o MESMO código. Aqui só o botão que
+  // o abre. Push/in-app seguem no mini-fluxo faseado abaixo (não têm wizard de HTML).
+  if(type === 'email'){
+    wrap.innerHTML = `
+      <div style="border-top:1px solid var(--border);padding-top:16px;">
+        <div class="sec-lbl">Add new email</div>
+        <button class="btn-next" style="margin-top:12px;width:100%;" onclick="startFolderEmailWizard()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V3m0 0l-4 4m4-4l4 4"/></svg>
+          Add email
+        </button>
+        <p style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;">Same wizard as a standalone email: upload → origin → header/preheader → countries → images → confirm.</p>
+      </div>
+    `;
+    return;
+  }
   const total = addItemTotalSteps();
   const kind = addItemStepKind();
   const isFirstStep = _addItemStep === 1;
@@ -7120,22 +7134,6 @@ function renderManageContentAddArea() {
         <button class="btn-next" style="flex:1;margin-top:0;" ${!_addItemState.origin ? 'disabled' : ''} onclick="addItemNextStep()">Continue</button>
       </div>
     `;
-  } else if(kind === 'meta') { // header/preheader (só email) — opcional
-    const m = _addItemState.meta || { header:'', preheader:'' };
-    body = `
-      <div class="meta-step-field" style="margin-bottom:12px;">
-        <label>Header <span>subject</span></label>
-        <input id="addItemMetaHeader" type="text" autocomplete="off" placeholder="Email subject / header…" value="${escHtml(m.header||'')}" oninput="setAddItemMeta('header',this.value)">
-      </div>
-      <div class="meta-step-field" style="margin-bottom:2px;">
-        <label>Preheader <span>preview text</span></label>
-        <input id="addItemMetaPreheader" type="text" autocomplete="off" placeholder="Preheader / preview text…" value="${escHtml(m.preheader||'')}" oninput="setAddItemMeta('preheader',this.value)">
-      </div>
-      <div style="display:flex;gap:10px;margin-top:14px;">
-        <button class="btn-back" style="flex:1;" onclick="addItemPrevStep()">← Back</button>
-        <button class="btn-next" style="flex:1;margin-top:0;" onclick="addItemNextStep()">Continue</button>
-      </div>
-    `;
   } else { // targets — último passo
     body = `
       <div class="field" style="margin-bottom:0;">
@@ -7162,12 +7160,6 @@ function setAddItemOrigin(code) {
   _addItemState.origin = code;
   _addItemState.targets = _addItemState.targets.filter(c => c !== code);
   renderManageContentAddArea();
-}
-
-// Header/Preheader do item (passo do add-item). Não re-renderiza (não perde foco do input).
-function setAddItemMeta(kind, value) {
-  _addItemState.meta = _addItemState.meta || { header:'', preheader:'' };
-  _addItemState.meta[kind] = value;
 }
 
 function renderAddItemTargets() {
@@ -7234,22 +7226,10 @@ async function confirmAddItem() {
       id: 'id' + (i + 1), src: s.src, isImg: !!s.isImg, imgTag: s.imgTag || null,
       translations: Object.fromEntries(targetLangs.map(l => [l, '']))
     }));
-    // Header/Preheader (só email): materializa como meta rows no TOPO de item.rows — reusa grade/
-    // CSV/preview do item; ficam fora do buildTaggedHtml do corpo (subject/preheader são à parte).
-    const metaRows = [];
-    if(type === 'email'){
-      const m = _addItemState.meta || { header:'', preheader:'' };
-      [['header','header'],['preheader','preheader']].forEach(([k, id]) => {
-        const src = String(m[k] || '').trim();
-        if(!src) return;
-        metaRows.push({ id, isMeta: k, src, text: src, display: toLiquidPlaceholder(src),
-          isImg: false, imgTag: null, translations: Object.fromEntries(targetLangs.map(l => [l, ''])) });
-      });
-    }
     item = {
       id: 'item_' + Date.now(), type,
       name: nm,
-      rawHtml: _addItemState.html, origin: _addItemState.origin, langs: targetLangs, rows: [...metaRows, ...rows]
+      rawHtml: _addItemState.html, origin: _addItemState.origin, langs: targetLangs, rows
     };
   }
 
@@ -9876,7 +9856,61 @@ function buildCSV() {
   applyMetaDraft();    // materializa Header/Preheader (capturados no wizard) como meta rows
 }
 
+// Quando o wizard é aberto DE DENTRO de uma pasta (campanha) pra adicionar um e-mail, guarda o id
+// da campanha-alvo. Ao final (buildAndGo) o estado do wizard vira um ITEM de e-mail nessa campanha,
+// em vez de um projeto avulso — assim e-mail avulso e e-mail de pasta usam O MESMO wizard/código.
+let _wizardFolderTarget = null;
+
+// Abre o wizard completo (page1…) pra adicionar um e-mail à pasta atualmente aberta.
+function startFolderEmailWizard() {
+  if(!_campaign) return;
+  _wizardFolderTarget = _campaign.id;
+  currentProjectId = null;        // o wizard trata como projeto novo (resetAll no goTo(1))
+  _openedFromDashboard = false;
+  closeManageContentModal();
+  document.getElementById('campaignScreen').style.display = 'none';
+  document.getElementById('appBody').style.display = '';
+  document.getElementById('hdrBar').style.display = '';
+  const dashBtn = document.getElementById('dashBtn'); if(dashBtn) dashBtn.classList.remove('active');
+  goTo(1);
+}
+
+// Converte o estado do wizard (S) num item de e-mail e adiciona na campanha-alvo, depois volta
+// pro editor da pasta com o item aberto. rawHtml fica CRU (item de campanha tageia no preview);
+// as meta rows (header/preheader) já vêm em S.csv.rows via applyMetaDraft.
+async function buildFolderEmailFromWizard() {
+  buildCSV();
+  const camp = _campaign;
+  if(!camp) { _wizardFolderTarget = null; goToDashboard(); return; }
+  const n = (camp.items || []).filter(x => x.type === 'email').length + 1;
+  const nm = ((await uiPrompt('Name this email:', { title: 'Content name', def: 'Email ' + n })) || '').trim();
+  if(!nm) return; // cancelou o nome → fica no wizard
+  const item = {
+    id: 'item_' + Date.now(), type: 'email', name: nm,
+    rawHtml: S.rawHtml, origin: S.origin, langs: [...S.csv.langs],
+    rows: S.csv.rows.map(r => {
+      const o = { id: r.id, src: r.src, text: r.text, display: r.display,
+        isImg: !!r.isImg, imgTag: r.imgTag || null, translations: { ...r.translations } };
+      if(r.isMeta) o.isMeta = r.isMeta;
+      return o;
+    })
+  };
+  touchCampaignItem(item);
+  camp.items = camp.items || [];
+  camp.items.push(item);
+  _campaignItemIndex = camp.items.length - 1;
+  _campaignViewMode = 'edit';
+  _campaignActiveType = 'email';
+  _wizardFolderTarget = null;
+  saveCampaignProject();
+  document.getElementById('appBody').style.display = 'none';
+  document.getElementById('campaignScreen').style.display = 'flex';
+  renderCampaignTabs();
+  renderCampaignMain();
+}
+
 function buildAndGo() {
+  if(_wizardFolderTarget) { buildFolderEmailFromWizard(); return; } // e-mail de pasta → item de campanha
   const wasImport = S.isImport;   // buildCSV() abaixo pode zerar essa flag — guardamos antes
   const alreadyTagged = wasImport || S.htmlAlreadyTagged; // "Start from scratch" também não deve ser re-tageado
   buildCSV();                      // monta S.csv.rows/langs ANTES de salvar (senão salva vazio)
