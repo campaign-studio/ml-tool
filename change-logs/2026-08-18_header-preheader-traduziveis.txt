@@ -234,3 +234,21 @@ com Copy subject junto do Copy Tagged HTML e um passo-a-passo (subject → HTML 
 VERIFICAÇÃO (localhost): modal com Subject/Preheader separados + HTML + CSV (screenshot); toggle
 If/Else renderiza nos dois wraps (2 botões cada); merge invariants 9/9; meta (segmentos + tag↔CSV)
 ok; boot limpo, 0 erro de console.
+
+===============================================================================
+REVISÃO (mesmo dia) — UNIFICA O CABEÇALHO DA GRADE (avulso + pasta num construtor só)
+===============================================================================
+Pedido: unificar o editor pra "mudou um, muda os dois". Achado: o CONTEÚDO já era unificado
+(buildPreviewHtml + renderTranslationGridBody) e o toggle If/Else foi unificado antes. A
+duplicação real restante era o CABEÇALHO da grade (colgroup + thead), montado 2x (buildTable
+avulso vs renderCampaignGrid pasta) — mudar coluna/cabeçalho exigia editar os dois.
+
+- Novo buildGridHead(cfg{name, origLangName, langs, delLangFn}) — construtor ÚNICO do colgroup +
+  thead. buildTable e renderCampaignGrid agora chamam ele; a única diferença por tela é a função
+  de deletar idioma (delLang vs campDelLang). Corpo das linhas já vinha do renderTranslationGridBody.
+- Escopo confirmado: só Preview + Grade. Preview ficou como está (já unificado no conteúdo + toggle);
+  o script injetado do iframe é interação específica por tela (não é duplicação) e ficou de fora.
+
+VERIFICAÇÃO (localhost): buildGridHead gera cabeçalhos idênticos pros dois (só muda a fn de deletar
+idioma); grade avulsa renderiza (thead, colgroup certo, linhas ok); merge invariants 9/9; meta
+(segmentos) ok; boot limpo, 0 erro de console.

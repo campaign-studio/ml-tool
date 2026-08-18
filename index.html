@@ -6791,30 +6791,37 @@ function toggleCampaignBulkApprove(idx, lang) {
 // (renderTranslationGridBody, ver modules/translation-engine.js) pra manter os dois editores
 // idênticos: badge de imagem/mismatch/VML, botão de deletar linha, etc. valem pros dois sem
 // duplicar markup — uma correção futura no motor se aplica automaticamente aqui também.
-function renderCampaignGrid(item) {
-  const table = document.getElementById('campaignItemTable');
-  const langs = sortLangsForDisplay(item.langs || []); // ordem fixa global (bate com renderCampaignLangBar)
-  const origLangName = item.origin ? (COUNTRIES.find(c => c.code === item.origin)?.lang) : null;
-  // Header/banner IDÊNTICOS ao buildTable() do editor avulso (mesmas classes/estilo inline) —
-  // ver comentário da função sobre reaproveitar o motor: o objetivo é os dois grids serem
-  // visualmente indistinguíveis, não só a linha de tradução.
-  // Colgroup fixo DENTRO do innerHTML (mesmo motivo do buildTable avulso: o table.innerHTML abaixo
-  // apagaria um <colgroup> filho, então a largura fixa nunca pegava). Larguras vêm do CSS
-  // (col.src/col.tl); com muitos idiomas rola na horizontal no .tscroll, sem espremer colunas.
+// Construtor ÚNICO do cabeçalho da grade (colgroup + thead), usado pelo editor avulso (buildTable)
+// E pela grade de item de campanha (renderCampaignGrid) — os dois ficam idênticos por construção.
+// O <colgroup> vai DENTRO do innerHTML de propósito (senão o table.innerHTML apagaria um colgroup
+// filho pré-existente e as larguras fixas do CSS col.src/col.tl nunca pegariam). cfg: { name,
+// origLangName, langs, delLangFn }.
+function buildGridHead(cfg){
+  const langs = cfg.langs || [];
   const colgroup = `<colgroup><col class="rn"><col class="cid"><col class="src">${langs.map(()=>'<col class="tl">').join('')}<col class="del"></colgroup>`;
   const thead = `<thead>
     <tr class="rname">
       <td class="rn"></td>
-      <td class="tname" colspan="${2+langs.length+2}">${escHtml(item.name)}</td>
+      <td class="tname" colspan="${2+langs.length+2}">${escHtml(cfg.name || '')}</td>
     </tr>
     <tr>
       <th class="rn" style="width:22px!important;max-width:22px!important"></th>
       <th class="cid" style="width:38px!important;max-width:38px!important;background:var(--s3);color:var(--text3);">id</th>
-      <th class="src">${origLangName||langs[0]||'src'} <span style="font-size:9px;background:var(--green);color:#fff;border-radius:3px;padding:1px 5px;margin-left:3px;font-weight:700;vertical-align:middle;">origin</span></th>
-      ${langs.map(l=>`<th>${toBrazeLang(l)} <button onclick="campDelLang('${escJsAttr(l)}')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:10px;padding:1px 4px;border-radius:3px;vertical-align:middle;" title="Remove">×</button></th>`).join('')}
+      <th class="src">${escHtml(cfg.origLangName || langs[0] || 'src')} <span style="font-size:9px;background:var(--green);color:#fff;border-radius:3px;padding:1px 5px;margin-left:3px;font-weight:700;vertical-align:middle;">origin</span></th>
+      ${langs.map(l=>`<th>${toBrazeLang(l)} <button onclick="${cfg.delLangFn}('${escJsAttr(l)}')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:10px;padding:1px 4px;border-radius:3px;vertical-align:middle;" title="Remove">×</button></th>`).join('')}
       <th></th>
     </tr>
   </thead>`;
+  return colgroup + thead;
+}
+
+function renderCampaignGrid(item) {
+  const table = document.getElementById('campaignItemTable');
+  const langs = sortLangsForDisplay(item.langs || []); // ordem fixa global (bate com renderCampaignLangBar)
+  const origLangName = item.origin ? (COUNTRIES.find(c => c.code === item.origin)?.lang) : null;
+  // Cabeçalho (colgroup + thead) do MESMO construtor do editor avulso (buildGridHead) — os dois
+  // grids são idênticos por construção; mudar coluna/cabeçalho num lugar só reflete nos dois.
+  const head = buildGridHead({ name: item.name, origLangName, langs, delLangFn: 'campDelLang' });
   // Push não vem de upload de HTML — não existe "origem" pra extrair, então essa
   // coluna precisa ser editável (a pessoa escreve o texto original ali mesmo).
   // Email/in-app continuam com a origem travada (vem do HTML tageado).
@@ -6835,7 +6842,7 @@ function renderCampaignGrid(item) {
     srcEditable: () => originEditable,
     srcWrite: 'setCampaignOrigin',
   });
-  table.innerHTML = colgroup + thead + `<tbody id="campGstb">${body}</tbody>`;
+  table.innerHTML = head + `<tbody id="campGstb">${body}</tbody>`;
   // Aponta o controlador compartilhado pro grid da campanha e liga os listeners no host (o
   // <table> persiste entre re-renders; só o innerHTML troca, então a delegação sobrevive).
   _gridBodyId = 'campGstb';
@@ -10900,27 +10907,10 @@ function buildTable() {
   const langs = sortLangsForDisplay(S.csv.langs); // ordem fixa global (rowsHTML usa a MESMA — determinístico)
   const origC = S.allC.find(c=>c.code===S.origin);
 
-  // Colgroup FIXO montado DENTRO do innerHTML (o t.innerHTML abaixo apagaria um <colgroup> filho
-  // pré-existente — por isso as larguras fixas nunca pegavam e as colunas espremiam). Larguras da
-  // seção CSS (col.src/col.tl). Com muitos idiomas a tabela passa da largura da tela e o .tscroll
-  // (overflow:auto) dá o scroll horizontal — as colunas nunca comprimem.
-  const colgroup = `<colgroup><col class="rn"><col class="cid"><col class="src">${langs.map(()=>'<col class="tl">').join('')}<col class="del"></colgroup>`;
-
-  const thead = `<thead>
-    <tr class="rname">
-      <td class="rn"></td>
-      <td class="tname" colspan="${2+langs.length+2}">${S.csv.name}</td>
-    </tr>
-    <tr>
-      <th class="rn" style="width:22px!important;max-width:22px!important"></th>
-      <th class="cid" style="width:38px!important;max-width:38px!important;background:var(--s3);color:var(--text3);">id</th>
-      <th class="src">${origC?.lang||langs[0]||'src'} <span style="font-size:9px;background:var(--green);color:#fff;border-radius:3px;padding:1px 5px;margin-left:3px;font-weight:700;vertical-align:middle;">origin</span></th>
-      ${langs.map(l=>`<th>${toBrazeLang(l)} <button onclick="delLang('${l}')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:10px;padding:1px 4px;border-radius:3px;vertical-align:middle;" title="Remove">×</button></th>`).join('')}
-      <th></th>
-    </tr>
-  </thead>`;
-
-  if(t) t.innerHTML = colgroup + thead + `<tbody id="gstb">${rowsHTML()}</tbody>`;
+  // Cabeçalho (colgroup + thead) vem do MESMO construtor da grade de campanha (buildGridHead) —
+  // muda o cabeçalho/coluna num lugar só, reflete nos dois.
+  if(t) t.innerHTML = buildGridHead({ name: S.csv.name, origLangName: origC?.lang, langs, delLangFn: 'delLang' })
+    + `<tbody id="gstb">${rowsHTML()}</tbody>`;
   wireGridController();       // liga navegação/paste estilo planilha (uma vez, delegado no #gst)
   gridReapplyHighlight();     // re-aplica o realce da célula selecionada após re-render
   setTimeout(syncAllRowHeights, 0);
