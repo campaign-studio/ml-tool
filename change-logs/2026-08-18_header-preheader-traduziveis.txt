@@ -1,0 +1,140 @@
+MULTILANGUAGE TOOL — LOG DE ALTERAÇÕES
+Data: 2026-08-18
+Tema: HEADER + PREHEADER traduzíveis (campos de subject/preview text) — Fase 1: projeto avulso.
+
+===============================================================================
+PEDIDO
+===============================================================================
+Poder "localizar" o header também: um NOVO campo de Header e Preheader, colocado ACIMA dos
+e-mails no previewer, que entrem na tradução NORMALMENTE (como o que vai no HTML) e com IDs
+ESPECÍFICOS pro header.
+
+Decisões (confirmadas): input num PAINEL acima do preview; escopo só AVULSO nesta entrega;
+ids reservados legíveis "header" / "preheader".
+
+===============================================================================
+DESIGN (por que assim)
+===============================================================================
+Na arquitetura, toda linha traduzível nasce de {%translation idN%} DENTRO do HTML do corpo
+(parseSavedProjectHtml/buildTaggedHtml), e vários regex fixam id\d+. Header/preheader NÃO existem
+no corpo — na Braze são campos separados (subject/preheader). Então eles viram "meta rows":
+
+- Linhas especiais em S.csv.rows com flag isMeta ('header'/'preheader') e ids reservados.
+- REUSAM grade, CSV e MERGE por id de graça (são linhas normais do ponto de vista desses caminhos).
+- Ficam FORA do buildTaggedHtml do corpo (subject/preheader viajam só pelo CSV, como na Braze).
+- Renderizadas como um CARD acima do e-mail no preview (dentro do iframe, topo do <body>).
+- Origem digitada no painel; traduções na grade (colunas por locale).
+- Reconstruídas do CSV no reload (o CSV é a fonte; ids reservados).
+
+===============================================================================
+O QUE MUDOU
+===============================================================================
+modules/translation-engine.js
+- parseBrazeCsv(): o filtro de linhas de dados aceita agora id\d+ E os ids reservados
+  (header|preheader). Sem isso, reload E merge (ambos passam por este parser) perdiam as
+  linhas de subject/preheader silenciosamente. [ponto central da persistência]
+- buildTaggedHtml(): allRows passa a excluir r.isMeta (&& !r.isMeta) — meta nunca entra no
+  corpo (senão viraria "missed"/aviso falso).
+- renderTranslationGridBody(): novo branch isMeta — badge "Header"/"Preheader" no lugar do id,
+  origem readonly (editada no painel), colunas de tradução normais, SEM botão de deletar.
+- buildMetaCardHtml() (novo) + injeção no fim de buildPreviewHtml(): card "Subject/Preheader"
+  no topo do <body> do preview, com o valor do locale atual (fallback pra origem) e merge tags
+  viram pills legíveis (replaceLiquidPlaceholders). Devolve '' quando não há meta (campanha/
+  dashboard não são afetados).
+
+index.html
+- restoreProjectContent(): reconstrói as meta rows a partir do CSV (ids reservados) e faz
+  prepend (header antes de preheader, ambos antes do corpo). Feito depois de S.strings pra não
+  poluir o mirror de extração.
+- Painel de input (#metaPanel) acima do preview (#vbody): campos Header e Preheader.
+- setMetaSrc()/onMetaInput()/reorderMetaFirst()/renderMetaPanel() (novos): criam/atualizam/
+  removem a meta row conforme o texto do painel; removem a linha só quando origem E traduções
+  estão vazias (não polui projetos que não usam o recurso). buildTable/refreshViewer chamam
+  renderMetaPanel; setCellV dá debR() quando a linha editada é meta (atualiza o card).
+- verifyAllRowsPositionable(): isenta r.isMeta do "segment doesn't appear" (meta não está no
+  HTML tageado, aparece no card).
+- CSS: .meta-panel/.meta-panel-field (painel), tr.meta-row + .meta-badge (grade).
+
+Persistência: nenhuma mudança de autosave necessária — o CSV (buildCsvStringForSave) já inclui
+as meta rows (ficam em S.csv.rows), e o merge (mergeLooseData via parseBrazeCsv) as funde por id.
+
+===============================================================================
+VERIFICAÇÃO (localhost, em memória, sem tocar produção)
+===============================================================================
+- Criação/ordem: setMetaSrc('preheader') depois setMetaSrc('header') → ordem final
+  [header, preheader, id1, id2]. OK.
+- Export corpo: buildTaggedHtml NÃO contém header/preheader; corpo segue com os idN. OK.
+- CSV: buildCsvStringForSave inclui linhas header,/preheader,. OK.
+- Card no preview (pt-BR): mostra "Bem-vindo, {First Name} !" (pill) + preheader traduzido; e
+  na origem mostra "Welcome, ...". OK.
+- Reload (parseBrazeCsv → reconstrução): meta rows voltam com src + traduções por locale. OK.
+- Merge (duas cópias, header divergente): mescla por id e mantém o valor mais novo. OK.
+- Render DOM: grade com 2 meta-rows, badges Header/Preheader, sem botão de deletar; painel
+  visível (flex) com inputs preenchidos; card dentro do #vf. Screenshot conferido. OK.
+- Integridade: verifyAllRowsPositionable não falseia (missing = []). Zero erro de console.
+
+===============================================================================
+ESCOPO / PRÓXIMOS PASSOS
+===============================================================================
+- Fase 2 (futuro): header/preheader POR ITEM de e-mail nas campanhas (mesmo motor).
+- Edge conhecido: sem idiomas-alvo, o CSV fica vazio e o texto de origem do meta não persiste
+  (igual ao corpo) — aceitável, pois sem locales não há o que traduzir.
+
+===============================================================================
+REVISÃO (mesmo dia) — INPUT MOVIDO PRO WIZARD (avulso + pastas), não mais no editor
+===============================================================================
+Pedido: o input de Header/Preheader NÃO deve ficar no editor. Deve aparecer no FLUXO DE CRIAÇÃO,
+logo APÓS escolher a origin e ANTES de escolher os países — tanto no avulso quanto dentro das
+pastas (campanha). "Selecionou a origin → insere header/preheader → escolhe os países."
+
+Mudanças:
+AVULSO (wizard)
+- Novo passo page2h ("Header & preheader") entre origin (page2) e targets (page3). PAGES/goTo
+  atualizados (step 2.5 → renderMetaStep; breadcrumb 'header' ~30%). page2 Continue (projeto novo)
+  vai pra goTo(2.5); reabertura (isImport) segue direto pro confirm.
+- S.metaDraft guarda o texto do passo (rows ainda não existem — extração só no buildCSV).
+- buildCSV chama applyMetaDraft() (nos DOIS caminhos: fresh e rebuild) pra materializar as meta
+  rows a partir de S.metaDraft. restoreProjectContent sincroniza S.metaDraft com as rows ao reabrir.
+- Painel do editor REMOVIDO (#metaPanel + renderMetaPanel + CSS .meta-panel). A origem das meta
+  rows agora é EDITÁVEL INLINE na coluna de origem da grade (setMetaOrigin) pra corrigir depois.
+- Funções: setMetaDraft/renderMetaStep/applyMetaDraft/_upsertMetaRow/setMetaOrigin (subst. o
+  setMetaSrc/onMetaInput/renderMetaPanel da versão anterior).
+
+PASTAS / CAMPANHA (add-item faseado)
+- Passo "meta" (header/preheader) inserido SÓ pra email: html → origin → HEADER/PREHEADER → targets
+  (email=4 passos; in-app=3; push=2). addItemTotalSteps/addItemStepKind atualizados.
+- _addItemState.meta {header,preheader} + setAddItemMeta (sem re-render, não perde foco).
+- confirmAddItem (branch email): materializa as meta rows no TOPO de item.rows.
+- Grade de campanha: metaOriginWrite:'setCampaignMetaOrigin' (edição inline da origem do item).
+- Card no preview + grade + export do item reusam o mesmo motor (S.csv.rows = item.rows quando o
+  item está aberto) — sem código novo de exibição.
+
+VERIFICAÇÃO (localhost, em memória)
+- Wizard avulso: page2h renderiza no estilo dos outros passos, campos pré-preenchidos; buildCSV
+  materializa [header, preheader, id1, id2]; corpo exclui meta. Screenshot conferido.
+- Custom attribute + content block no header: pill "First Name" + placeholder {plan_name} no card
+  (origem e pt-BR), mesmo tratamento do corpo. Screenshot conferido. Zero erro de console.
+- Campanha: funções presentes; lógica de passos (email=4/inapp=3/push=2) por inspeção; exibição
+  idêntica ao avulso (mesmo motor). E2E completo de campanha exige login (banco real).
+
+===============================================================================
+REVISÃO (mesmo dia) — CSV do subject + card resolvendo if/else/assign como o corpo
+===============================================================================
+Pedido: verificar como fica no CSV com custom attribute, assign, if/else, content block no subject.
+
+CSV (coluna de origem das meta rows) — fica CRU/verbatim, que é o certo pra Braze (subject é um
+campo único com Liquid inline). Casos verificados via buildCsvStringForSave():
+- custom attribute: Hi {{custom_attribute.${first_name} | default: 'there'}}, your plan is ready
+- if/else:        {% if custom_attribute.${plan} == 'premium' %}Your premium perks{% else %}Upgrade today{% endif %}
+- assign:         {% assign g = 'Welcome' %}{{g}}, {{custom_attribute.${first_name}}}!
+- content block:  {{content_blocks.${subject_prefix}}} — big news inside
+As aspas do Liquid ('there'/'premium') NÃO viram curly (protegidas por curlifyApostrophes); células
+bem escapadas. csvSourceText() das meta rows usa row.text (texto cru), então nada é stripado.
+
+Card do preview (buildMetaCardHtml) — passou a aplicar o MESMO tratamento visual do corpo (só
+preview; o CSV segue cru): tira {% comment %}, resolve if/else pro ramo do toggle (S.condBranch) com
+o label IF/ELSE, esconde {% assign %}, e troca merge tags por pills/placeholders. Antes if/else e
+assign apareciam crus no card. Verificado: ramo IF → "IF …"; virar o toggle → "ELSE …";
+custom attribute → pill "First Name"; content block → {nome}. Screenshot conferido. Zero erro.
+(Edge: {{g}} — referência a var de assign — segue crua no card, igual ao corpo; não dá pra saber o
+valor em runtime.)

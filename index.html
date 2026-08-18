@@ -506,6 +506,16 @@ td.del button:hover{color:#b52a2a;background:#fdeaea;}
 .mail-body-wrap{flex:1;overflow-y:auto;overflow-x:hidden;background:#fff;}
 .mail-body-wrap iframe{border:none;width:680px;max-width:100%;height:100%;min-height:500px;display:block;margin:0 auto;}
 
+/* Header / Preheader — campos no passo do wizard + badge na grade */
+.meta-step-field{display:flex;flex-direction:column;gap:4px;margin-bottom:14px;text-align:left;}
+.meta-step-field label{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text3,#8a8a82);}
+.meta-step-field label span{font-weight:500;text-transform:none;letter-spacing:0;color:var(--text3,#a5a59d);}
+.meta-step-field input{font-size:13.5px;padding:9px 11px;border:1px solid var(--line,#dcdcd4);border-radius:8px;background:var(--s1,#fff);color:var(--text1,#1a1a17);font-family:inherit;}
+.meta-step-field input:focus{outline:none;border-color:var(--green,#57b894);box-shadow:0 0 0 2px rgba(87,184,148,.18);}
+tr.meta-row{background:var(--s2,#faf9f6);}
+tr.meta-row .src textarea{background:transparent;}
+.meta-badge{display:inline-block;font-size:8.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#b3306b;background:#fbe6f0;border:1px solid #f2c4da;border-radius:4px;padding:1px 4px;line-height:1.3;}
+
 /* empty viewer state */
 .v-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;opacity:.35;}
 .v-empty svg{width:32px;height:32px;color:rgba(0,0,0,.4);}
@@ -2064,7 +2074,7 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
             <div class="cg" id="cgOrigin"></div>
             <div class="frow">
               <button class="btn-back" onclick="goTo(1)">← Back</button>
-              <button class="btn-go" id="btnP2" disabled onclick="S.isImport ? goTo(4) : goTo(3)">
+              <button class="btn-go" id="btnP2" disabled onclick="S.isImport ? goTo(4) : goTo(2.5)">
                 Confirm origin <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               </button>
             </div>
@@ -2073,6 +2083,32 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
       </div>
     </div>
 
+
+    <!-- P2H — HEADER / PREHEADER (após a origin, antes dos destinos) -->
+    <div id="page2h" class="page">
+      <div class="cw" style="padding-top:36px;">
+        <div class="card" style="max-width:560px;">
+          <div class="ci">
+            <h1>Header &amp; preheader</h1>
+            <p class="sub">The email subject and preview text. They're translated per country like the rest of the copy. Optional — leave blank to skip.</p>
+            <div class="meta-step-field">
+              <label for="metaHeaderStep">Header <span>subject</span></label>
+              <input id="metaHeaderStep" type="text" autocomplete="off" placeholder="Email subject / header…" oninput="setMetaDraft('header', this.value)">
+            </div>
+            <div class="meta-step-field">
+              <label for="metaPreheaderStep">Preheader <span>preview text</span></label>
+              <input id="metaPreheaderStep" type="text" autocomplete="off" placeholder="Preheader / preview text…" oninput="setMetaDraft('preheader', this.value)">
+            </div>
+            <div class="frow">
+              <button class="btn-back" onclick="goTo(2)">← Back</button>
+              <button class="btn-go" onclick="goTo(3)">
+                Continue <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- P3 — TARGETS (New Project only) -->
     <div id="page3" class="page">
@@ -6736,6 +6772,7 @@ function renderCampaignGrid(item) {
     onclickHighlight: false,
     srcEditable: () => originEditable,
     srcWrite: 'setCampaignOrigin',
+    metaOriginWrite: 'setCampaignMetaOrigin',
   });
   table.innerHTML = colgroup + thead + `<tbody id="campGstb">${body}</tbody>`;
   // Aponta o controlador compartilhado pro grid da campanha e liga os listeners no host (o
@@ -6783,6 +6820,19 @@ function campDelRow(ri) {
   renderCampaignLangBar(item);
   renderCampaignPreview(item, item._activeLang || (item.langs && item.langs[0]) || null);
   scheduleCampaignAutosave();
+}
+
+// Edição inline da ORIGEM de uma meta row (header/preheader) de um item de campanha.
+function setCampaignMetaOrigin(ri, value) {
+  const item = _campaign && _campaign.items[_campaignItemIndex]; if(!item) return;
+  const row = (item.rows || [])[ri]; if(!row || !row.isMeta) return;
+  const hasText = !!String(value || '').trim();
+  row.src = value; row.text = value; row.display = toLiquidPlaceholder(value);
+  const anyTrans = Object.values(row.translations || {}).some(v => String(v || '').trim());
+  if(!hasText && !anyTrans) item.rows = item.rows.filter(r => r !== row); // vazio total → remove
+  touchCampaignItem(item);
+  saveCampaignProject();
+  renderCampaignMain();
 }
 
 function setCampaignOrigin(ri, value) {
@@ -6915,7 +6965,7 @@ function manageContentTypeLabel(type) {
 }
 
 function resetAddItemState() {
-  _addItemState = { html: null, htmlName: null, origin: '', targets: [] };
+  _addItemState = { html: null, htmlName: null, origin: '', targets: [], meta: { header:'', preheader:'' } };
   _addItemStep = 1;
 }
 
@@ -7018,12 +7068,15 @@ async function removeFromFolderViaModal(folderId, itemId) {
 // em vez de mostrar upload+origem+destino tudo junto de uma vez só. Email/in-app têm
 // um passo a mais no início (subir o HTML); push começa direto na origem.
 function addItemTotalSteps() {
-  return _manageContentTab === 'push' ? 2 : 3;
+  if(_manageContentTab === 'push') return 2;      // origin → targets
+  if(_manageContentTab === 'email') return 4;     // html → origin → header/preheader → targets
+  return 3;                                       // in-app: html → origin → targets
 }
 function addItemStepKind() {
-  const needsHtml = _manageContentTab !== 'push';
-  if(needsHtml) return _addItemStep === 1 ? 'html' : _addItemStep === 2 ? 'origin' : 'targets';
-  return _addItemStep === 1 ? 'origin' : 'targets';
+  const t = _manageContentTab;
+  if(t === 'push')  return _addItemStep === 1 ? 'origin' : 'targets';
+  if(t === 'email') return _addItemStep === 1 ? 'html' : _addItemStep === 2 ? 'origin' : _addItemStep === 3 ? 'meta' : 'targets';
+  return _addItemStep === 1 ? 'html' : _addItemStep === 2 ? 'origin' : 'targets'; // in-app
 }
 function addItemNextStep() {
   const total = addItemTotalSteps();
@@ -7067,6 +7120,22 @@ function renderManageContentAddArea() {
         <button class="btn-next" style="flex:1;margin-top:0;" ${!_addItemState.origin ? 'disabled' : ''} onclick="addItemNextStep()">Continue</button>
       </div>
     `;
+  } else if(kind === 'meta') { // header/preheader (só email) — opcional
+    const m = _addItemState.meta || { header:'', preheader:'' };
+    body = `
+      <div class="meta-step-field" style="margin-bottom:12px;">
+        <label>Header <span>subject</span></label>
+        <input id="addItemMetaHeader" type="text" autocomplete="off" placeholder="Email subject / header…" value="${escHtml(m.header||'')}" oninput="setAddItemMeta('header',this.value)">
+      </div>
+      <div class="meta-step-field" style="margin-bottom:2px;">
+        <label>Preheader <span>preview text</span></label>
+        <input id="addItemMetaPreheader" type="text" autocomplete="off" placeholder="Preheader / preview text…" value="${escHtml(m.preheader||'')}" oninput="setAddItemMeta('preheader',this.value)">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="btn-back" style="flex:1;" onclick="addItemPrevStep()">← Back</button>
+        <button class="btn-next" style="flex:1;margin-top:0;" onclick="addItemNextStep()">Continue</button>
+      </div>
+    `;
   } else { // targets — último passo
     body = `
       <div class="field" style="margin-bottom:0;">
@@ -7093,6 +7162,12 @@ function setAddItemOrigin(code) {
   _addItemState.origin = code;
   _addItemState.targets = _addItemState.targets.filter(c => c !== code);
   renderManageContentAddArea();
+}
+
+// Header/Preheader do item (passo do add-item). Não re-renderiza (não perde foco do input).
+function setAddItemMeta(kind, value) {
+  _addItemState.meta = _addItemState.meta || { header:'', preheader:'' };
+  _addItemState.meta[kind] = value;
 }
 
 function renderAddItemTargets() {
@@ -7159,10 +7234,22 @@ async function confirmAddItem() {
       id: 'id' + (i + 1), src: s.src, isImg: !!s.isImg, imgTag: s.imgTag || null,
       translations: Object.fromEntries(targetLangs.map(l => [l, '']))
     }));
+    // Header/Preheader (só email): materializa como meta rows no TOPO de item.rows — reusa grade/
+    // CSV/preview do item; ficam fora do buildTaggedHtml do corpo (subject/preheader são à parte).
+    const metaRows = [];
+    if(type === 'email'){
+      const m = _addItemState.meta || { header:'', preheader:'' };
+      [['header','header'],['preheader','preheader']].forEach(([k, id]) => {
+        const src = String(m[k] || '').trim();
+        if(!src) return;
+        metaRows.push({ id, isMeta: k, src, text: src, display: toLiquidPlaceholder(src),
+          isImg: false, imgTag: null, translations: Object.fromEntries(targetLangs.map(l => [l, ''])) });
+      });
+    }
     item = {
       id: 'item_' + Date.now(), type,
       name: nm,
-      rawHtml: _addItemState.html, origin: _addItemState.origin, langs: targetLangs, rows
+      rawHtml: _addItemState.html, origin: _addItemState.origin, langs: targetLangs, rows: [...metaRows, ...rows]
     };
   }
 
@@ -9197,6 +9284,7 @@ const S = {
   rawHtml: null, filename: '', strings: [],
   allC: [], origin: null, targets: [],
   csv: { name:'', rows:[], langs:[] },
+  metaDraft: { header:'', preheader:'' }, // Header/Preheader capturados no wizard (materializados no buildCSV)
   // Contador MONOTÔNICO de ids já emitidos (high-water mark). Novo id = maxIdIssued+1; nunca
   // decrementa, nunca recalcula das linhas atuais — assim uma imagem "esquecida" adicionada
   // depois pega sempre o próximo número livre e NUNCA reusa o de um id removido (que ainda pode
@@ -9323,7 +9411,7 @@ const CHK_SVG = `<svg width="9" height="9" viewBox="0 0 12 12" fill="none" strok
 // Origin · Targets · Images · Confirm · Edit
 function updateBreadcrumb(page) {
   const steps = [
-    { id:'bc2',  clickTo: 2,    pages: ['targets','images','confirm','edit'] },
+    { id:'bc2',  clickTo: 2,    pages: ['header','targets','images','confirm','edit'] },
     { id:'bc2b', clickTo: 3,    pages: ['images','confirm','edit'] },
     { id:'bc2c', clickTo: 3.5,  pages: ['confirm','edit'] },
     { id:'bc3',  clickTo: 4,    pages: ['edit'] },
@@ -9342,12 +9430,12 @@ function updateBreadcrumb(page) {
   });
 
   // Progress bar
-  const pct = {origin:20, targets:40, images:60, confirm:80, edit:100};
+  const pct = {origin:20, header:30, targets:40, images:60, confirm:80, edit:100};
   const prog = document.getElementById('hdrProgress');
   if(prog) prog.style.width = (pct[page] || 0) + '%';
 }
 
-const PAGES = ['page1','page2','page3','page3i','page4','page5'];
+const PAGES = ['page1','page2','page2h','page3','page3i','page4','page5'];
 
 function goTo(step) {
   // Passo 1 (Upload) zera tudo SÓ no fluxo de projeto NOVO. Num projeto já existente (aberto do
@@ -9385,6 +9473,7 @@ function goTo(step) {
     document.getElementById(id).classList.toggle('active',
       id==='page1'  ? step===1   :
       id==='page2'  ? step===2   :
+      id==='page2h' ? step===2.5 :
       id==='page3'  ? step===3   :
       id==='page3i' ? step===3.5 :
       id==='page4'  ? step===4   :
@@ -9392,9 +9481,10 @@ function goTo(step) {
     );
   });
   // Breadcrumb page mapping
-  const stepPageMap = {1:'home', 2:'origin', 3:'targets', 3.5:'images', 4:'confirm', 5:'edit'};
+  const stepPageMap = {1:'home', 2:'origin', 2.5:'header', 3:'targets', 3.5:'images', 4:'confirm', 5:'edit'};
   updateBreadcrumb(stepPageMap[step] || 'home');
   if (step===2)   renderOriginGrid();
+  if (step===2.5) renderMetaStep();
   if (step===3)   renderTargetGrid();
   if (step===3.5) renderImgGrid();
   if (step===4)   renderConfirm();
@@ -9415,6 +9505,7 @@ function resetAll() {
   S.isImport = false;
   S.htmlAlreadyTagged = false;
   S.csv = { name:'', rows:[], langs:[] };
+  S.metaDraft = { header:'', preheader:'' }; // rascunho do Header/Preheader capturado no wizard
   S.selImgs = new Set();
   S.vLang = null;
   S.condBranch = 0;
@@ -9754,6 +9845,7 @@ function buildCSV() {
     const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
     S.vLang = origLang;
     S.isImport = false;
+    applyMetaDraft();  // mantém Header/Preheader em sincronia no rebuild (add/remove destino, etc.)
     return;
   }
 
@@ -9781,6 +9873,7 @@ function buildCSV() {
   const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
   S.vLang = origLang;
   ensureMaxIdIssued(); // primeira montagem: contador passa a refletir o maior id atribuído
+  applyMetaDraft();    // materializa Header/Preheader (capturados no wizard) como meta rows
 }
 
 function buildAndGo() {
@@ -9939,6 +10032,29 @@ function restoreProjectContent(data, readOnly) {
   S.htmlAlreadyTagged = true;
   S.selImgs = new Set(S.csv.rows.filter(r => r.isImg).map(r => r.imgKey || r.src));
   S.vLang = langs[0] || null;
+
+  // ── Header/Preheader (meta rows) ── reconstruídas do CSV (ids reservados 'header'/'preheader').
+  // Não vêm do HTML tageado (parseSavedProjectHtml) porque são campos separados na Braze — o CSV é
+  // a fonte. src = coluna de origem; traduções = colunas por locale. Prepend (header antes de
+  // preheader, ambos antes do corpo). Feito DEPOIS de S.strings pra não poluir o mirror de extração.
+  (function restoreMetaRows(){
+    const RESERVED = ['header','preheader'];
+    const metaSrc = {};
+    langs.forEach(lang => (parsedCsv.byLang[lang] || []).forEach(r => {
+      if(RESERVED.includes(r.id) && metaSrc[r.id] === undefined) metaSrc[r.id] = r.src || '';
+    }));
+    const metaRows = RESERVED.filter(id => metaSrc[id] !== undefined).map(id => ({
+      id, isMeta: id, src: metaSrc[id] || '', text: metaSrc[id] || '', display: toLiquidPlaceholder(metaSrc[id] || ''),
+      isImg: false, imgTag: null, isStyle: false, outerKey: null, openTag: null, closeTag: null, vmlTag: null,
+      translations: Object.fromEntries(langs.map(l => [l, (byId[id] && byId[id][l]) || '']))
+    }));
+    if(metaRows.length) S.csv.rows = [...metaRows, ...S.csv.rows];
+    // Sincroniza o rascunho do wizard (usado se a pessoa voltar ao passo Header pela breadcrumb).
+    S.metaDraft = {
+      header: (metaRows.find(r => r.isMeta === 'header') || {}).src || '',
+      preheader: (metaRows.find(r => r.isMeta === 'preheader') || {}).src || ''
+    };
+  })();
 
   // Restaura comentários por célula (casando pelo id da linha)
   if(data.comments) {
@@ -10633,6 +10749,66 @@ async function rescanMissedLines(){
   uiNotify(`Added ${missing.length} line(s) at the end — fill in the translations (saves automatically).`, {type:'success'});
 }
 
+// ── Header / Preheader (meta rows) ────────────────────────────────────────────
+// Subject/preheader traduzíveis. A ORIGEM é capturada no WIZARD (passo logo após a Origin) e
+// guardada em S.metaDraft até o buildCSV materializar as meta rows em S.csv.rows (isMeta + id
+// reservado 'header'/'preheader'). Daí reusam grade/CSV/merge por id; ficam FORA do buildTaggedHtml
+// do corpo (subject/preheader são campos separados na Braze); e aparecem no card acima do e-mail.
+// A origem também é editável inline na coluna de origem da grade (pra corrigir depois).
+const META_ORDER = { header: 0, preheader: 1 };
+function reorderMetaFirst(){
+  const meta = S.csv.rows.filter(r => r.isMeta).sort((a,b) => (META_ORDER[a.isMeta] ?? 9) - (META_ORDER[b.isMeta] ?? 9));
+  const body = S.csv.rows.filter(r => !r.isMeta);
+  S.csv.rows = [...meta, ...body];
+}
+// Wizard: guarda o texto de origem enquanto as rows ainda não existem (extração só no buildCSV).
+function setMetaDraft(kind, value){
+  S.metaDraft = S.metaDraft || { header:'', preheader:'' };
+  S.metaDraft[kind] = value;
+}
+// Popula os inputs do passo do wizard (de S.metaDraft, ou das meta rows se já existirem).
+function renderMetaStep(){
+  const draft = S.metaDraft || { header:'', preheader:'' };
+  [['header','metaHeaderStep'], ['preheader','metaPreheaderStep']].forEach(([k, id]) => {
+    const inp = document.getElementById(id);
+    if(!inp || document.activeElement === inp) return;
+    const row = S.csv.rows.find(r => r.isMeta === k);
+    inp.value = row ? (row.src || '') : (draft[k] || '');
+  });
+}
+// Cria/atualiza/remove uma meta row a partir de um texto de origem. langs = idiomas atuais.
+function _upsertMetaRow(kind, text){
+  const langs = S.csv.langs || [];
+  let row = S.csv.rows.find(r => r.isMeta === kind);
+  const hasText = !!String(text || '').trim();
+  if(!row && hasText){
+    row = { id: kind, isMeta: kind, src:'', text:'', display:'',
+      isImg:false, imgTag:null, isStyle:false, outerKey:null, openTag:null, closeTag:null, vmlTag:null,
+      translations: Object.fromEntries(langs.map(l => [l, ''])) };
+    S.csv.rows.push(row); reorderMetaFirst();
+  }
+  if(row){
+    row.src = text; row.text = text; row.display = toLiquidPlaceholder(text);
+    const anyTrans = Object.values(row.translations || {}).some(v => String(v || '').trim());
+    // Origem vazia E sem nenhuma tradução → remove a linha (não polui grade/CSV de quem não usa).
+    if(!hasText && !anyTrans) S.csv.rows = S.csv.rows.filter(r => r !== row);
+  }
+}
+// Materializa as meta rows a partir de S.metaDraft (chamado no fim de buildCSV).
+function applyMetaDraft(){
+  const draft = S.metaDraft || { header:'', preheader:'' };
+  _upsertMetaRow('header', draft.header || '');
+  _upsertMetaRow('preheader', draft.preheader || '');
+}
+// Edição inline da ORIGEM de uma meta row na grade (editor avulso): sincroniza row + draft.
+function setMetaOrigin(ri, value){
+  const row = S.csv.rows[ri]; if(!row || !row.isMeta) return;
+  S.metaDraft = S.metaDraft || { header:'', preheader:'' };
+  S.metaDraft[row.isMeta] = value;
+  _upsertMetaRow(row.isMeta, value);
+  buildTable(); debR(); scheduleAutosave();
+}
+
 function buildTable() {
   _gridBodyId = 'gstb'; _gridWrite = null; // contexto do controlador = editor avulso (default)
   // Update mail chrome subject with template name
@@ -10816,6 +10992,7 @@ function setCellV(ri,l,v){
   }
   undoRecordCell('loose', null, row.id, l, before, v);
   updatePreviewText(ri,l);
+  if(row.isMeta) debR();   // meta row (header/preheader): rebuild o card acima do e-mail
   scheduleAutosave();
 }
 
@@ -12430,7 +12607,9 @@ function verifyAllRowsPositionable() {
       if(h.includes('data-tid="' + r.id + '"')) placeable.add(r.id);
     }
   } finally { S.condBranch = save; S.condRevealRow = saveReveal; }
-  const missing = S.csv.rows.filter(r => !r.isImg && !placeable.has(r.id)).map(r => r.id);
+  // Meta rows (header/preheader) nunca estão no HTML tageado do corpo (aparecem no card acima do
+  // e-mail, não como {%translation%}) — isentá-las evita um falso "segment doesn't appear".
+  const missing = S.csv.rows.filter(r => !r.isImg && !r.isMeta && !placeable.has(r.id)).map(r => r.id);
   const ids = (S.rawHtml.match(/\{%translation\s+(id\d+)%\}/g) || []).map(s => (s.match(/id\d+/)||[''])[0]);
   const dups = [...new Set(ids.filter((id,i) => ids.indexOf(id) !== i))];
   if(missing.length || dups.length) {

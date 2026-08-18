@@ -336,10 +336,12 @@ function parseBrazeCsv(text) {
   // Expand: es-419 → [es-MX, es-CL]. Final langs array has no es-419.
   const langs = rawLangs.flatMap(l => expandLang(l));
 
-  // Data rows — only valid idN rows
+  // Data rows — só ids válidos: idN do corpo + os ids reservados de meta (header/preheader).
+  // Sem incluir header/preheader aqui, o reload E o merge (ambos passam por este parser) perdiam
+  // as linhas de subject/preheader silenciosamente.
   const dataRows = lines.slice(2)
     .map(l => parseLine(l))
-    .filter(r => r[0] && /^id\d+$/i.test(r[0]));
+    .filter(r => r[0] && /^(id\d+|header|preheader)$/i.test(r[0]));
 
   if(langs.length === 0){
     // Old single-lang comma format: col1 = translation
@@ -1164,6 +1166,40 @@ function replaceLiquidPlaceholders(html){
   return html;
 }
 
+// Monta o card de Header/Preheader que aparece ACIMA do e-mail no preview (dentro do iframe,
+// no topo do <body>). Usa a tradução do idioma atual (fallback pra origem). Merge tags viram
+// pills legíveis igual ao corpo (replaceLiquidPlaceholders). Só as meta rows (isMeta) alimentam
+// isto — projetos/telas sem header/preheader (campanha, dashboard) devolvem '' e nada é injetado.
+function buildMetaCardHtml(lang, isOrig){
+  if(typeof S === 'undefined' || !S.csv || !S.csv.rows) return '';
+  const metas = S.csv.rows.filter(r => r.isMeta);
+  if(!metas.length) return '';
+  const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const valueFor = r => {
+    // Mesmo tratamento VISUAL do corpo do e-mail (só preview — o CSV/origem fica CRU): escapa
+    // texto literal, tira {% comment %}, resolve if/else pro ramo do toggle atual, esconde
+    // {% assign %} (não produz saída), e troca merge tags por pills/placeholders legíveis.
+    // O esc() só mexe em <>& — a sintaxe Liquid ({% %} / {{ }}) sobrevive e é processada depois.
+    let v = esc((!isOrig && r.translations && r.translations[lang]) ? r.translations[lang] : (r.src || ''));
+    v = v.replace(/\{%[-\s]*comment[-\s]*%\}[\s\S]*?\{%[-\s]*endcomment[-\s]*%\}/gi, '');
+    try { v = resolveConditionalBranch(v, (typeof S !== 'undefined' && S.condBranch) | 0, null); } catch(e){}
+    v = v.replace(/\{%[-\s]*assign\s+[A-Za-z0-9_.]+\s*=[^%]*?%\}/g, '');
+    return replaceLiquidPlaceholders(v).trim();
+  };
+  const header = metas.find(r => r.isMeta === 'header');
+  const pre = metas.find(r => r.isMeta === 'preheader');
+  const hv = header ? valueFor(header) : '';
+  const pv = pre ? valueFor(pre) : '';
+  if(!hv && !pv) return '';
+  const wrap = 'margin:0 0 14px;padding:12px 16px;border:1px solid #e6e6e0;border-radius:10px;background:#faf9f6;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;';
+  const tag  = 'display:inline-block;font:700 9px/1 -apple-system,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#8a8a82;margin-bottom:3px;';
+  let out = `<div class="mlt-email-meta" style="${wrap}">`;
+  if(hv) out += `<div style="margin-bottom:${pv ? '10px' : '0'}"><span style="${tag}">Subject</span><div data-tid="header" style="font:600 15px/1.35 -apple-system,sans-serif;color:#1a1a17;">${hv}</div></div>`;
+  if(pv) out += `<div><span style="${tag}">Preheader</span><div data-tid="preheader" style="font:400 13px/1.4 -apple-system,sans-serif;color:#6a6a62;">${pv}</div></div>`;
+  out += `</div>`;
+  return out;
+}
+
 function buildPreviewHtml(lang, revealRow){
   const origLang=S.allC.find(c=>c.code===S.origin)?.lang;
   const isOrig=!lang||lang===origLang;
@@ -1290,6 +1326,15 @@ function buildPreviewHtml(lang, revealRow){
     })()` + scEnd;
   })();
   html = html.includes('</body>') ? html.replace('</body>', disableLinksScript + '</body>') : html + disableLinksScript;
+
+  // ── Header/Preheader ACIMA do e-mail ── (injeta no topo do <body>, depois de todo o
+  // processamento — o card usa os valores das meta rows direto, não passa pelo pipeline de tags.)
+  const metaCard = buildMetaCardHtml(lang, isOrig);
+  if(metaCard){
+    html = /<body[^>]*>/i.test(html)
+      ? html.replace(/(<body[^>]*>)/i, `$1${metaCard}`)
+      : metaCard + html;
+  }
 
   return html;
 }
@@ -1439,7 +1484,10 @@ function buildTaggedHtml(silent) {
     (/^<!--\[if/i.test(c) || /^<!--\s*<!\[endif\]/i.test(c) || /^<!--<!\[endif\]/i.test(c))
       ? c
       : c.replace(/\{%\s*translation\s+id\d+\s*%\}/gi, '').replace(/\{%\s*endtranslation\s*%\}/gi, ''));
-  const allRows = S.csv.rows.filter(r=>r.src||(r.isStyle&&r.outerKey));
+  // Meta rows (header/preheader) NUNCA entram no HTML do corpo — são campos separados na Braze
+  // (subject/preheader), viajam só pelo CSV. Sem o !r.isMeta, buildTaggedHtml tentaria achar o
+  // texto do subject dentro do corpo, não acharia, e cairia em "missed" (aviso falso + exclusão).
+  const allRows = S.csv.rows.filter(r=>(r.src||(r.isStyle&&r.outerKey)) && !r.isMeta);
   // Linhas que não conseguimos encontrar/tagueiar no HTML final — sem isso, a linha some do
   // export em silêncio e a pessoa acha que a tradução foi aplicada quando não foi.
   const missed = [];
@@ -1669,6 +1717,28 @@ function renderTranslationGridBody(cfg) {
   const srcWrite = cfg.srcWrite || 'setSrcV';
   const comment = (ri, l, row) => commentsEnabled ? cellCommentBtn(ri, l, row) : '';
   return cfg.rows.map((row,ri)=>{
+    // ── META ROW (header/preheader) ──
+    // Campo de subject/preheader traduzível: a ORIGEM é editada no painel acima do preview
+    // (readonly aqui), as TRADUÇÕES por locale entram normalmente nas colunas. Não tem botão de
+    // deletar (removida esvaziando o painel) e o id vira um badge "Header"/"Preheader".
+    if(row.isMeta){
+      const label = row.isMeta === 'header' ? 'Header' : 'Preheader';
+      const displaySrc = csvSourceText(row).replace(/</g,'&lt;').replace(/"/g,'&quot;');
+      const metaWrite = cfg.metaOriginWrite || 'setMetaOrigin';
+      const tls = langsOrdered.map((l,ci)=> translationCellTd({
+        ri, ci, lang: l, value: row.translations[l] || '',
+        write, liveHL, wrapInner,
+        commentBtn: comment(ri, l, row),
+        valEsc: s => String(s).replace(/</g,'&lt;').replace(/"/g,'&quot;')
+      })).join('');
+      return `<tr class="meta-row">
+        <td class="rn" style="width:22px!important;max-width:22px!important">${ri+1}</td>
+        <td class="cid" style="width:38px!important;max-width:38px!important"><span class="meta-badge">${label}</span></td>
+        <td class="src"><textarea rows="1" oninput="${metaWrite}(${ri},this.value)" style="color:var(--text2);font-style:italic;">${displaySrc}</textarea></td>
+        ${tls}
+        <td class="del"></td>
+      </tr>`;
+    }
     // ── IMAGE ROW ──
     if(row.isImg){
       const id  = (idLabel(row)||'').replace(/"/g,'&quot;');
