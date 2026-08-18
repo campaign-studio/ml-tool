@@ -1436,6 +1436,10 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
               Download CSV
             </button>
+            <button class="tbtn" id="btnCopySubjectCamp" style="display:none;" onclick="copyTaggedMeta()" title="Copy the tagged subject & preheader ({%translation%}) to paste into Braze">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 7l10 7 10-7"/></svg>
+              Copy subject
+            </button>
             <button class="tbtn" onclick="openTaggedHtmlEditorForCampaignItem()" title="Manually fix a specific error in the already-tagged HTML — for emergency corrections, does not re-run extraction and does not affect approval">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
               Edit Tagged HTML
@@ -2205,6 +2209,10 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
             <button class="tbtn html" id="btnDlHtml" onclick="openHtmlModal()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
               Copy Tagged HTML
+            </button>
+            <button class="tbtn" id="btnCopySubject" style="display:none;" onclick="copyTaggedMeta()" title="Copy the tagged subject & preheader ({%translation%}) to paste into Braze">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 7l10 7 10-7"/></svg>
+              Copy subject
             </button>
             <button class="tbtn" onclick="openTaggedHtmlEditorForCurrentProject()" title="Manually fix a specific error in the already-tagged HTML — for emergency corrections, does not re-run extraction and does not affect approval">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
@@ -6434,6 +6442,10 @@ function activateCampaignItemIntoS(item) {
   S.origin = item.origin || null;
   S.allC = [...COUNTRIES];
   S.csv = { name: item.name, rows: item.rows || [], langs: item.langs || [] };
+  // Header/Preheader do item → S.metaDraft (o card e "Copy tagged subject" leem daqui).
+  S.metaDraft = (item.metaTemplates && typeof item.metaTemplates === 'object')
+    ? { header: item.metaTemplates.header || '', preheader: item.metaTemplates.preheader || '' }
+    : { header:'', preheader:'' };
   S.selImgs = new Set((item.rows || []).filter(r => r.isImg).map(r => r.src));
   S.approvalComments = Array.isArray(item.approvalComments) ? [...item.approvalComments] : [];
   S.approvalDoneByLang = (item.approvalDoneByLang && typeof item.approvalDoneByLang === 'object') ? { ...item.approvalDoneByLang } : {};
@@ -6792,7 +6804,6 @@ function renderCampaignGrid(item) {
     onclickHighlight: false,
     srcEditable: () => originEditable,
     srcWrite: 'setCampaignOrigin',
-    metaOriginWrite: 'setCampaignMetaOrigin',
   });
   table.innerHTML = colgroup + thead + `<tbody id="campGstb">${body}</tbody>`;
   // Aponta o controlador compartilhado pro grid da campanha e liga os listeners no host (o
@@ -6802,6 +6813,9 @@ function renderCampaignGrid(item) {
   wireGridController('campaignItemTable');
   gridReapplyHighlight();
   setTimeout(() => syncAllRowHeights('campGstb') , 0);
+  // "Copy subject" do item só aparece quando este e-mail tem header/preheader.
+  const btnSubjC = document.getElementById('btnCopySubjectCamp');
+  if(btnSubjC) btnSubjC.style.display = (item.type === 'email' && item.metaTemplates && (item.metaTemplates.header || item.metaTemplates.preheader)) ? '' : 'none';
 }
 
 // Remove um idioma inteiro do item de pasta — espelha delLang() do editor avulso, mas escopado
@@ -6840,19 +6854,6 @@ function campDelRow(ri) {
   renderCampaignLangBar(item);
   renderCampaignPreview(item, item._activeLang || (item.langs && item.langs[0]) || null);
   scheduleCampaignAutosave();
-}
-
-// Edição inline da ORIGEM de uma meta row (header/preheader) de um item de campanha.
-function setCampaignMetaOrigin(ri, value) {
-  const item = _campaign && _campaign.items[_campaignItemIndex]; if(!item) return;
-  const row = (item.rows || [])[ri]; if(!row || !row.isMeta) return;
-  const hasText = !!String(value || '').trim();
-  row.src = value; row.text = value; row.display = toLiquidPlaceholder(value);
-  const anyTrans = Object.values(row.translations || {}).some(v => String(v || '').trim());
-  if(!hasText && !anyTrans) item.rows = item.rows.filter(r => r !== row); // vazio total → remove
-  touchCampaignItem(item);
-  saveCampaignProject();
-  renderCampaignMain();
 }
 
 function setCampaignOrigin(ri, value) {
@@ -9923,10 +9924,11 @@ async function buildFolderEmailFromWizard() {
   const item = {
     id: 'item_' + Date.now(), type: 'email', name: nm,
     rawHtml: S.rawHtml, origin: S.origin, langs: [...S.csv.langs],
+    metaTemplates: { header: (S.metaDraft && S.metaDraft.header) || '', preheader: (S.metaDraft && S.metaDraft.preheader) || '' },
     rows: S.csv.rows.map(r => {
       const o = { id: r.id, src: r.src, text: r.text, display: r.display,
         isImg: !!r.isImg, imgTag: r.imgTag || null, translations: { ...r.translations } };
-      if(r.isMeta) o.isMeta = r.isMeta;
+      if(r.isMeta){ o.isMeta = r.isMeta; o.metaSeg = r.metaSeg; }
       return o;
     })
   };
@@ -10102,27 +10104,20 @@ function restoreProjectContent(data, readOnly) {
   S.selImgs = new Set(S.csv.rows.filter(r => r.isImg).map(r => r.imgKey || r.src));
   S.vLang = langs[0] || null;
 
-  // ── Header/Preheader (meta rows) ── reconstruídas do CSV (ids reservados 'header'/'preheader').
-  // Não vêm do HTML tageado (parseSavedProjectHtml) porque são campos separados na Braze — o CSV é
-  // a fonte. src = coluna de origem; traduções = colunas por locale. Prepend (header antes de
-  // preheader, ambos antes do corpo). Feito DEPOIS de S.strings pra não poluir o mirror de extração.
+  // ── Header/Preheader ── o TEMPLATE cru vem de data.metaTemplates; o buildCSV-like re-segmenta
+  // (metaRowsFromTemplate) em header1…/preheader1…, casando as traduções do CSV por id. Segmentos
+  // ficam ANTES do corpo. Feito DEPOIS de S.strings pra não poluir o mirror de extração.
   (function restoreMetaRows(){
-    const RESERVED = ['header','preheader'];
-    const metaSrc = {};
+    const mt = (data.metaTemplates && typeof data.metaTemplates === 'object') ? data.metaTemplates : { header:'', preheader:'' };
+    S.metaDraft = { header: mt.header || '', preheader: mt.preheader || '' };
+    if(!(S.metaDraft.header || S.metaDraft.preheader)) return;
+    const prev = {}; // traduções salvas por id de segmento (header1, header2, …)
     langs.forEach(lang => (parsedCsv.byLang[lang] || []).forEach(r => {
-      if(RESERVED.includes(r.id) && metaSrc[r.id] === undefined) metaSrc[r.id] = r.src || '';
+      if(/^(header|preheader)\d+$/i.test(r.id)) { (prev[r.id] = prev[r.id] || {})[lang] = r.tl || ''; }
     }));
-    const metaRows = RESERVED.filter(id => metaSrc[id] !== undefined).map(id => ({
-      id, isMeta: id, src: metaSrc[id] || '', text: metaSrc[id] || '', display: toLiquidPlaceholder(metaSrc[id] || ''),
-      isImg: false, imgTag: null, isStyle: false, outerKey: null, openTag: null, closeTag: null, vmlTag: null,
-      translations: Object.fromEntries(langs.map(l => [l, (byId[id] && byId[id][l]) || '']))
-    }));
-    if(metaRows.length) S.csv.rows = [...metaRows, ...S.csv.rows];
-    // Sincroniza o rascunho do wizard (usado se a pessoa voltar ao passo Header pela breadcrumb).
-    S.metaDraft = {
-      header: (metaRows.find(r => r.isMeta === 'header') || {}).src || '',
-      preheader: (metaRows.find(r => r.isMeta === 'preheader') || {}).src || ''
-    };
+    const header = metaRowsFromTemplate('header', S.metaDraft.header, langs, prev);
+    const pre    = metaRowsFromTemplate('preheader', S.metaDraft.preheader, langs, prev);
+    if(header.length || pre.length) S.csv.rows = [...header, ...pre, ...S.csv.rows];
   })();
 
   // Restaura comentários por célula (casando pelo id da linha)
@@ -10818,64 +10813,54 @@ async function rescanMissedLines(){
   uiNotify(`Added ${missing.length} line(s) at the end — fill in the translations (saves automatically).`, {type:'success'});
 }
 
-// ── Header / Preheader (meta rows) ────────────────────────────────────────────
-// Subject/preheader traduzíveis. A ORIGEM é capturada no WIZARD (passo logo após a Origin) e
-// guardada em S.metaDraft até o buildCSV materializar as meta rows em S.csv.rows (isMeta + id
-// reservado 'header'/'preheader'). Daí reusam grade/CSV/merge por id; ficam FORA do buildTaggedHtml
-// do corpo (subject/preheader são campos separados na Braze); e aparecem no card acima do e-mail.
-// A origem também é editável inline na coluna de origem da grade (pra corrigir depois).
-const META_ORDER = { header: 0, preheader: 1 };
-function reorderMetaFirst(){
-  const meta = S.csv.rows.filter(r => r.isMeta).sort((a,b) => (META_ORDER[a.isMeta] ?? 9) - (META_ORDER[b.isMeta] ?? 9));
-  const body = S.csv.rows.filter(r => !r.isMeta);
-  S.csv.rows = [...meta, ...body];
-}
-// Wizard: guarda o texto de origem enquanto as rows ainda não existem (extração só no buildCSV).
+// ── Header / Preheader (subject/preheader traduzíveis) ─────────────────────────
+// O TEMPLATE CRU do subject/preheader (com if/else, merge tags) é capturado no WIZARD e guardado
+// em S.metaDraft. O buildCSV o QUEBRA em segmentos de texto (metaRowsFromTemplate) → linhas
+// header1, header2, preheader1… em S.csv.rows: o tradutor traduz só as PALAVRAS, nunca o Liquid.
+// As linhas reusam grade/CSV/merge por id; ficam FORA do buildTaggedHtml do corpo; e o card acima
+// do e-mail reconstrói o subject por locale. O subject TAGUEADO (pra Braze) vem de buildTaggedMeta.
+// Persistido em data.metaTemplates (o CRU) — as traduções por segmento moram no CSV.
+
+// Wizard: guarda o template cru enquanto as rows ainda não existem (segmentação só no buildCSV).
 function setMetaDraft(kind, value){
   S.metaDraft = S.metaDraft || { header:'', preheader:'' };
   S.metaDraft[kind] = value;
 }
-// Popula os inputs do passo do wizard (de S.metaDraft, ou das meta rows se já existirem).
+// Popula os inputs do passo do wizard a partir do template cru (S.metaDraft).
 function renderMetaStep(){
   const draft = S.metaDraft || { header:'', preheader:'' };
   [['header','metaHeaderStep'], ['preheader','metaPreheaderStep']].forEach(([k, id]) => {
     const inp = document.getElementById(id);
     if(!inp || document.activeElement === inp) return;
-    const row = S.csv.rows.find(r => r.isMeta === k);
-    inp.value = row ? (row.src || '') : (draft[k] || '');
+    inp.value = draft[k] || '';
   });
 }
-// Cria/atualiza/remove uma meta row a partir de um texto de origem. langs = idiomas atuais.
-function _upsertMetaRow(kind, text){
-  const langs = S.csv.langs || [];
-  let row = S.csv.rows.find(r => r.isMeta === kind);
-  const hasText = !!String(text || '').trim();
-  if(!row && hasText){
-    row = { id: kind, isMeta: kind, src:'', text:'', display:'',
-      isImg:false, imgTag:null, isStyle:false, outerKey:null, openTag:null, closeTag:null, vmlTag:null,
-      translations: Object.fromEntries(langs.map(l => [l, ''])) };
-    S.csv.rows.push(row); reorderMetaFirst();
-  }
-  if(row){
-    row.src = text; row.text = text; row.display = toLiquidPlaceholder(text);
-    const anyTrans = Object.values(row.translations || {}).some(v => String(v || '').trim());
-    // Origem vazia E sem nenhuma tradução → remove a linha (não polui grade/CSV de quem não usa).
-    if(!hasText && !anyTrans) S.csv.rows = S.csv.rows.filter(r => r !== row);
-  }
-}
-// Materializa as meta rows a partir de S.metaDraft (chamado no fim de buildCSV).
+// Regera as linhas de segmento (header1…/preheader1…) a partir dos templates de S.metaDraft,
+// preservando as traduções já existentes por id. Chamado no fim de buildCSV.
 function applyMetaDraft(){
   const draft = S.metaDraft || { header:'', preheader:'' };
-  _upsertMetaRow('header', draft.header || '');
-  _upsertMetaRow('preheader', draft.preheader || '');
+  const langs = S.csv.langs || [];
+  const prev = {}; S.csv.rows.filter(r => r.isMeta).forEach(r => { prev[r.id] = r.translations; });
+  const header = metaRowsFromTemplate('header', draft.header || '', langs, prev);
+  const pre    = metaRowsFromTemplate('preheader', draft.preheader || '', langs, prev);
+  const body   = S.csv.rows.filter(r => !r.isMeta);
+  S.csv.rows = [...header, ...pre, ...body];
 }
-// Edição inline da ORIGEM de uma meta row na grade (editor avulso): sincroniza row + draft.
-function setMetaOrigin(ri, value){
-  const row = S.csv.rows[ri]; if(!row || !row.isMeta) return;
-  S.metaDraft = S.metaDraft || { header:'', preheader:'' };
-  S.metaDraft[row.isMeta] = value;
-  _upsertMetaRow(row.isMeta, value);
-  buildTable(); debR(); scheduleAutosave();
+// Copia o subject + preheader TAGUEADOS (com {%translation%}) pra colar nos campos da Braze.
+function copyTaggedMeta(){
+  const draft = S.metaDraft || { header:'', preheader:'' };
+  const parts = [];
+  if((draft.header || '').trim())    parts.push('Subject:\n' + buildTaggedMeta('header'));
+  if((draft.preheader || '').trim()) parts.push('Preheader:\n' + buildTaggedMeta('preheader'));
+  if(!parts.length){ showNotif('No header/preheader to copy.', 'warn'); return; }
+  const txt = parts.join('\n\n');
+  const done = () => showNotif('Tagged subject/preheader copied — paste into Braze.', 'ok', 3000);
+  if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(done, ()=>_copyFallback(txt, done)); }
+  else _copyFallback(txt, done);
+}
+function _copyFallback(txt, done){
+  const ta = document.createElement('textarea'); ta.value = txt; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); done && done(); }catch(e){} document.body.removeChild(ta);
 }
 
 function buildTable() {
@@ -10913,6 +10898,9 @@ function buildTable() {
   setTimeout(syncAllRowHeights, 0);
   openPendingCommentTarget();
   openPendingApprovalTarget();
+  // Botão "Copy subject" só aparece quando há header/preheader.
+  const btnSubj = document.getElementById('btnCopySubject');
+  if(btnSubj) btnSubj.style.display = (S.metaDraft && (S.metaDraft.header || S.metaDraft.preheader)) ? '' : 'none';
   // Rede de segurança: confirma que todo trecho aparece no preview em algum modo (uma vez
   // por HTML). Adiado pra não competir com o render da tabela.
   setTimeout(verifyAllRowsPositionable, 0);
@@ -11934,6 +11922,8 @@ function autosaveProject() {
       && p.data.html && p.data.html !== S._rawHtmlSnapshotAtLoad;
     if(!staleHtmlWouldClobberManualEdit) p.data.html = S.rawHtml;
     p.data.langs = [...S.csv.langs];
+    // Header/Preheader: persiste o TEMPLATE CRU (as traduções por segmento já vão no CSV).
+    p.data.metaTemplates = { header: (S.metaDraft && S.metaDraft.header) || '', preheader: (S.metaDraft && S.metaDraft.preheader) || '' };
     p.data.comments = collectRowComments();
     // Contador de ids: nunca deixa REGREDIR no banco (max com o que já estava salvo) — assim
     // uma imagem adicionada e salva por outra aba não faz esta aba reusar um número.

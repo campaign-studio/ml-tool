@@ -336,12 +336,12 @@ function parseBrazeCsv(text) {
   // Expand: es-419 → [es-MX, es-CL]. Final langs array has no es-419.
   const langs = rawLangs.flatMap(l => expandLang(l));
 
-  // Data rows — só ids válidos: idN do corpo + os ids reservados de meta (header/preheader).
-  // Sem incluir header/preheader aqui, o reload E o merge (ambos passam por este parser) perdiam
-  // as linhas de subject/preheader silenciosamente.
+  // Data rows — só ids válidos: idN do corpo + os segmentos de meta (header1, header2, preheader1…).
+  // Sem incluir os ids de header/preheader aqui, o reload E o merge (ambos passam por este parser)
+  // perdiam as linhas de subject/preheader silenciosamente.
   const dataRows = lines.slice(2)
     .map(l => parseLine(l))
-    .filter(r => r[0] && /^(id\d+|header|preheader)$/i.test(r[0]));
+    .filter(r => r[0] && /^(id\d+|header\d+|preheader\d+)$/i.test(r[0]));
 
   if(langs.length === 0){
     // Old single-lang comma format: col1 = translation
@@ -1166,30 +1166,88 @@ function replaceLiquidPlaceholders(html){
   return html;
 }
 
-// Monta o card de Header/Preheader que aparece ACIMA do e-mail no preview (dentro do iframe,
-// no topo do <body>). Usa a tradução do idioma atual (fallback pra origem). Merge tags viram
-// pills legíveis igual ao corpo (replaceLiquidPlaceholders). Só as meta rows (isMeta) alimentam
-// isto — projetos/telas sem header/preheader (campanha, dashboard) devolvem '' e nada é injetado.
-function buildMetaCardHtml(lang, isOrig){
-  if(typeof S === 'undefined' || !S.csv || !S.csv.rows) return '';
-  const metas = S.csv.rows.filter(r => r.isMeta);
-  if(!metas.length) return '';
+// ── Header/Preheader: subject/preheader tratados COMO O CORPO ──────────────────────────────
+// O subject é um "mini-documento" de texto + Liquid. É quebrado em SEGMENTOS de texto traduzível
+// (as corridas de texto ENTRE as tags de controle {% if/else/… %}), mantendo if/else e merge tags
+// como ESTRUTURA (não traduzíveis). Cada segmento vira uma linha (header1, header2, preheader1…) —
+// o tradutor traduz só as palavras. O template CRU (com o Liquid) é a fonte (S.metaDraft[kind]);
+// segmentos, subject-tageado e card são derivados dele.
+function _isControlLiquid(val){ return /^\s*\{%/.test(val || ''); }
+// Traduzível se, tirando as merge tags {{ }}, ainda sobra letra/dígito.
+function _metaSegHasText(s){ return /[A-Za-z0-9]/.test(String(s || '').replace(/\{\{[\s\S]*?\}\}/g, '')); }
+// Partes ordenadas do template: {type:'control', val} (tags {% %}) e {type:'seg', val} (texto +
+// merge tags entre controles).
+function metaTemplateParts(template){
+  const parts = []; let run = '';
+  const flush = () => { if(run !== ''){ parts.push({ type:'seg', val: run }); run = ''; } };
+  splitLiquid(template || '').forEach(tk => {
+    if(tk.type === 'liquid' && _isControlLiquid(tk.val)){ flush(); parts.push({ type:'control', val: tk.val }); }
+    else run += tk.val; // texto OU {{merge}} → faz parte do segmento
+  });
+  flush();
+  return parts;
+}
+// Linhas de segmento (header1…/preheader1…) a partir do template, preservando traduções por id.
+function metaRowsFromTemplate(kind, template, langs, prevById){
+  const rows = []; let idx = 0;
+  metaTemplateParts(template).forEach(p => {
+    if(p.type !== 'seg' || !_metaSegHasText(p.val)) return;
+    idx++;
+    const id = kind + idx, prev = prevById && prevById[id];
+    rows.push({ id, isMeta: kind, metaSeg: idx, src: p.val, text: p.val, display: toLiquidPlaceholder(p.val),
+      isImg:false, imgTag:null, isStyle:false, outerKey:null, openTag:null, closeTag:null, vmlTag:null,
+      translations: Object.fromEntries((langs || []).map(l => [l, (prev && prev[l]) || ''])) });
+  });
+  return rows;
+}
+// Subject/preheader TAGUEADO (pra colar na Braze): cada segmento embrulhado em {%translation kindN%}.
+// controle e segmentos sem texto ficam crus. metaSource default = S.metaDraft. O texto DENTRO da
+// tag precisa bater EXATAMENTE com a coluna de origem do CSV (a Braze recusa se diferir) — então
+// usa o MESMO tratamento do corpo (buildTaggedHtml): espaço das pontas FORA da tag (lead/trail) e
+// curlifyApostrophes no miolo, igual a curlifyApostrophes(csvSourceText(row)) do buildCsvStringForSave.
+function buildTaggedMeta(kind, metaSource){
+  const src = metaSource || (typeof S !== 'undefined' && S.metaDraft) || {};
+  let out = '', idx = 0;
+  metaTemplateParts(src[kind] || '').forEach(p => {
+    if(p.type === 'control' || !_metaSegHasText(p.val)){ out += p.val; return; }
+    idx++;
+    const raw = p.val;
+    const lead  = raw.slice(0, raw.length - raw.replace(/^\s+/, '').length);
+    const trail = raw.slice(raw.replace(/\s+$/, '').length);
+    const inner = curlifyApostrophes(raw.replace(/^\s+|\s+$/g, ''));
+    out += `${lead}{%translation ${kind}${idx}%}${inner}{%endtranslation%}${trail}`;
+  });
+  return out;
+}
+// Reconstrói o valor do subject/preheader pra um locale: substitui cada segmento pela tradução
+// (fallback pro texto de origem), mantendo o Liquid; depois resolve if/else, esconde assign e
+// troca merge tags por pills — mesmo tratamento visual do corpo (só preview).
+function _metaLocaleValue(kind, lang, isOrig, rowsById){
+  const template = ((typeof S !== 'undefined' && S.metaDraft) || {})[kind] || '';
+  if(!template) return '';
+  let recon = '', idx = 0;
+  metaTemplateParts(template).forEach(p => {
+    if(p.type === 'control' || !_metaSegHasText(p.val)){ recon += p.val; return; }
+    idx++;
+    const row = rowsById[kind + idx];
+    recon += (!isOrig && row && row.translations && row.translations[lang]) ? row.translations[lang] : p.val;
+  });
   const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const valueFor = r => {
-    // Mesmo tratamento VISUAL do corpo do e-mail (só preview — o CSV/origem fica CRU): escapa
-    // texto literal, tira {% comment %}, resolve if/else pro ramo do toggle atual, esconde
-    // {% assign %} (não produz saída), e troca merge tags por pills/placeholders legíveis.
-    // O esc() só mexe em <>& — a sintaxe Liquid ({% %} / {{ }}) sobrevive e é processada depois.
-    let v = esc((!isOrig && r.translations && r.translations[lang]) ? r.translations[lang] : (r.src || ''));
-    v = v.replace(/\{%[-\s]*comment[-\s]*%\}[\s\S]*?\{%[-\s]*endcomment[-\s]*%\}/gi, '');
-    try { v = resolveConditionalBranch(v, (typeof S !== 'undefined' && S.condBranch) | 0, null); } catch(e){}
-    v = v.replace(/\{%[-\s]*assign\s+[A-Za-z0-9_.]+\s*=[^%]*?%\}/g, '');
-    return replaceLiquidPlaceholders(v).trim();
-  };
-  const header = metas.find(r => r.isMeta === 'header');
-  const pre = metas.find(r => r.isMeta === 'preheader');
-  const hv = header ? valueFor(header) : '';
-  const pv = pre ? valueFor(pre) : '';
+  let v = esc(recon);
+  v = v.replace(/\{%[-\s]*comment[-\s]*%\}[\s\S]*?\{%[-\s]*endcomment[-\s]*%\}/gi, '');
+  try { v = resolveConditionalBranch(v, (typeof S !== 'undefined' && S.condBranch) | 0, null); } catch(e){}
+  v = v.replace(/\{%[-\s]*assign\s+[A-Za-z0-9_.]+\s*=[^%]*?%\}/g, '');
+  return replaceLiquidPlaceholders(v).trim();
+}
+// Card de Header/Preheader ACIMA do e-mail no preview (dentro do iframe). Reconstrói subject e
+// preheader do locale atual. Sem meta → '' (campanha/dashboard sem header não injetam nada).
+function buildMetaCardHtml(lang, isOrig){
+  if(typeof S === 'undefined' || !S.csv) return '';
+  const draft = S.metaDraft || {};
+  if(!(draft.header || draft.preheader)) return '';
+  const rowsById = {}; (S.csv.rows || []).filter(r => r.isMeta).forEach(r => rowsById[r.id] = r);
+  const hv = _metaLocaleValue('header', lang, isOrig, rowsById);
+  const pv = _metaLocaleValue('preheader', lang, isOrig, rowsById);
   if(!hv && !pv) return '';
   const wrap = 'margin:0 0 14px;padding:12px 16px;border:1px solid #e6e6e0;border-radius:10px;background:#faf9f6;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;';
   const tag  = 'display:inline-block;font:700 9px/1 -apple-system,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#8a8a82;margin-bottom:3px;';
@@ -1717,14 +1775,13 @@ function renderTranslationGridBody(cfg) {
   const srcWrite = cfg.srcWrite || 'setSrcV';
   const comment = (ri, l, row) => commentsEnabled ? cellCommentBtn(ri, l, row) : '';
   return cfg.rows.map((row,ri)=>{
-    // ── META ROW (header/preheader) ──
-    // Campo de subject/preheader traduzível: a ORIGEM é editada no painel acima do preview
-    // (readonly aqui), as TRADUÇÕES por locale entram normalmente nas colunas. Não tem botão de
-    // deletar (removida esvaziando o painel) e o id vira um badge "Header"/"Preheader".
+    // ── META ROW (segmento de header/preheader) ──
+    // Segmento de texto do subject/preheader: ORIGEM readonly (é derivada do template cru, editado
+    // no wizard), TRADUÇÕES por locale nas colunas. Sem botão de deletar; id vira badge com o número
+    // do segmento ("Header 1", "Preheader 2"). O tradutor traduz só as palavras deste segmento.
     if(row.isMeta){
-      const label = row.isMeta === 'header' ? 'Header' : 'Preheader';
+      const label = (row.isMeta === 'header' ? 'Header' : 'Preheader') + (row.metaSeg ? ' ' + row.metaSeg : '');
       const displaySrc = csvSourceText(row).replace(/</g,'&lt;').replace(/"/g,'&quot;');
-      const metaWrite = cfg.metaOriginWrite || 'setMetaOrigin';
       const tls = langsOrdered.map((l,ci)=> translationCellTd({
         ri, ci, lang: l, value: row.translations[l] || '',
         write, liveHL, wrapInner,
@@ -1734,7 +1791,7 @@ function renderTranslationGridBody(cfg) {
       return `<tr class="meta-row">
         <td class="rn" style="width:22px!important;max-width:22px!important">${ri+1}</td>
         <td class="cid" style="width:38px!important;max-width:38px!important"><span class="meta-badge">${label}</span></td>
-        <td class="src"><textarea rows="1" oninput="${metaWrite}(${ri},this.value)" style="color:var(--text2);font-style:italic;">${displaySrc}</textarea></td>
+        <td class="src"><textarea rows="1" readonly style="cursor:default;color:var(--text2);font-style:italic;">${displaySrc}</textarea></td>
         ${tls}
         <td class="del"></td>
       </tr>`;

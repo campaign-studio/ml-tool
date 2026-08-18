@@ -179,3 +179,35 @@ Push/In-app → mini-fluxo antigo.
   push/in-app → openManageContentModal(type) (modal antigo na aba certa).
 - Botão campAddContentBtn repontado de openManageContentModal() → openAddContentChooser().
 Verificado: seletor renderiza as 3 opções, botão repontado, boot limpo, 0 erro de console.
+
+===============================================================================
+REVISÃO (mesmo dia) — SUBJECT TRATADO COMO O CORPO (segmentos, não 1 linha crua)
+===============================================================================
+Pedido: o subject não deve virar 1 linha crua com o {% if %} inteiro no CSV — o tradutor tem que
+traduzir SÓ as palavras. Quebrar em segmentos como o corpo, com id de header, e ter o subject
+tagueado pra Braze. (Ex: "{% if ${first_name} != blank %}👋 Don't miss out…, {{ ${first_name} }}
+{% else %} 👋 Don't miss out…{% endif %}" → 2 linhas de texto, não o if/else.)
+
+Modelo novo (redesign): o TEMPLATE CRU do subject/preheader (S.metaDraft) é quebrado em SEGMENTOS
+de texto (metaTemplateParts, via splitLiquid) — as corridas de texto entre as tags de controle
+{% %}, com merge tags {{ }} inline. Cada segmento vira uma linha header1, header2, preheader1… em
+S.csv.rows. If/else, assign, etc. ficam como ESTRUTURA (não traduzíveis). Template persistido em
+data.metaTemplates (item.metaTemplates na campanha); traduções por segmento no CSV.
+
+- translation-engine.js: metaTemplateParts / metaRowsFromTemplate (segmentos) / buildTaggedMeta
+  (subject TAGUEADO pra Braze — miolo curlificado + espaço das pontas FORA da tag, igual ao corpo,
+  pra bater com csvSourceText no CSV) / buildMetaCardHtml reconstrói o subject por locale
+  (segmentos→tradução + if/else resolvido + assign escondido + merge tags→pills). parseBrazeCsv
+  aceita header\d+/preheader\d+. Grade: origem do segmento READONLY, badge "Header 1/2".
+- index.html: applyMetaDraft regenera segmentos (preserva traduções por id); restoreProjectContent
+  lê data.metaTemplates→S.metaDraft e re-segmenta; autosave grava data.metaTemplates; wizard/
+  campanha guardam o template; activateCampaignItemIntoS seta S.metaDraft do item. Removidos
+  setMetaOrigin/_upsertMetaRow/setCampaignMetaOrigin/reorderMetaFirst (origem não é mais editada na
+  grade — é o template, editado no wizard). Botão "Copy subject" (avulso + campanha) copia o
+  subject+preheader tagueados pra colar na Braze (aparece só quando há header/preheader).
+
+VERIFICAÇÃO (localhost, com o subject EXATO do usuário): CSV vira 2 linhas de header (só as
+palavras) + 1 de preheader; subject tagueado preserva o if/else e embrulha cada segmento; o miolo
+da tag BATE com a coluna de origem do CSV (curly + trim, espaço fora) → Braze aceita; reload
+reconstrói segmentos + traduções (5/5); integridade isenta meta; card resolve if/else com pill;
+merge invariants 9/9; boot limpo, 0 erro de console.
