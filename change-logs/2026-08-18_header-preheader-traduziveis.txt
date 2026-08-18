@@ -211,3 +211,26 @@ palavras) + 1 de preheader; subject tagueado preserva o if/else e embrulha cada 
 da tag BATE com a coluna de origem do CSV (curly + trim, espaço fora) → Braze aceita; reload
 reconstrói segmentos + traduções (5/5); integridade isenta meta; card resolve if/else com pill;
 merge invariants 9/9; boot limpo, 0 erro de console.
+
+===============================================================================
+REVISÃO (mesmo dia) — PARIDADE DA PASTA: toggle If/Else no preview + Export to Braze
+===============================================================================
+Pedidos: (1) preview da pasta igual ao avulso, com as flags de if/else; (2) replicar tudo da pasta,
+com Copy subject junto do Copy Tagged HTML e um passo-a-passo (subject → HTML → CSV), em inglês;
+(3) subject e preheader em campos SEPARADOS.
+
+- Toggle If/Else no preview da PASTA: novo #campCondBranchWrap no cabeçalho do preview do item;
+  renderCondBranchToggle desenha nos DOIS wraps (avulso #condBranchWrap + pasta) do mesmo estado
+  S.condBranch; setCondBranch re-renderiza o preview certo (item de campanha vs #vf);
+  activateCampaignItemIntoS reseta S.condBranch/condRevealRow e seta S.htmlAlreadyTagged do item.
+- Modal "Copy Tagged HTML" virou "Export to Braze": passo-a-passo numerado —
+  Step 1 Copy the subject & preheader (campos SEPARADOS: Tagged subject + Tagged preheader, cada um
+  com seu Copy; buildTaggedMeta), Step 2 Copy the email body HTML, Step 3 Upload the translations
+  (CSV/XLSX; item de campanha usa dlItemCSV, XLSX escondido). Renumera os passos quando não há
+  subject. Tudo em inglês.
+- Pasta ganhou o botão "Copy Tagged HTML" (abre o mesmo modal). Removidos os botões avulsos
+  "Copy subject" (consolidados no modal). copyTaggedField(kind) copia subject ou preheader.
+
+VERIFICAÇÃO (localhost): modal com Subject/Preheader separados + HTML + CSV (screenshot); toggle
+If/Else renderiza nos dois wraps (2 botões cada); merge invariants 9/9; meta (segmentos + tag↔CSV)
+ok; boot limpo, 0 erro de console.

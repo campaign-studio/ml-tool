@@ -1436,9 +1436,9 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
               Download CSV
             </button>
-            <button class="tbtn" id="btnCopySubjectCamp" style="display:none;" onclick="copyTaggedMeta()" title="Copy the tagged subject & preheader ({%translation%}) to paste into Braze">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 7l10 7 10-7"/></svg>
-              Copy subject
+            <button class="tbtn html" onclick="openHtmlModal()" title="Export to Braze — copy the subject, the tagged HTML, and download the translations CSV, step by step">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+              Copy Tagged HTML
             </button>
             <button class="tbtn" onclick="openTaggedHtmlEditorForCampaignItem()" title="Manually fix a specific error in the already-tagged HTML — for emergency corrections, does not re-run extraction and does not affect approval">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
@@ -1454,6 +1454,7 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
       <div style="width:42%;min-width:320px;display:flex;flex-direction:column;background:#f2f1f6;">
         <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <span style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;">Preview</span>
+          <div class="sp-wrap" id="campCondBranchWrap" title="Preview test only — doesn't affect the tagged HTML or the CSV" style="display:none;"></div>
           <div class="lbar" id="campaignItemLbar" style="flex:1;"></div>
         </div>
         <div id="campaignItemPreview" style="flex:1;overflow:auto;padding:20px;"></div>
@@ -1478,47 +1479,78 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
 <div id="htmlModal">
   <div class="hm-box">
     <div class="hm-hdr">
-      <h2>Tagged HTML</h2>
+      <h2>Export to Braze</h2>
       <button class="hm-close" onclick="closeHtmlModal()">&times;</button>
     </div>
-    <div class="hm-body">
-      <div class="hm-code">
-        <div class="hm-code-hdr">
-          <span class="hm-code-label">HTML with translation tags</span>
-          <button class="hm-copy-btn" id="hmCopyBtn" onclick="copyTaggedHtml()">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-            Copy
-          </button>
+    <style>.hm-stepnum{width:20px;height:20px;border-radius:50%;background:var(--green,#57b894);color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}</style>
+    <div class="hm-body" style="display:block;overflow-y:auto;">
+      <p style="margin:0 0 16px;font-size:12.5px;color:var(--text2,#555);line-height:1.5;">Follow the steps in order to publish this email in Braze.</p>
+
+      <!-- Step 1 — Subject & preheader (separate fields, only when this email has them) -->
+      <div id="hmSubjectStep" style="display:none;margin-bottom:22px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span class="hm-stepnum" id="hmStepNumSubject">1</span>
+          <span style="font-size:13px;font-weight:600;">Copy the subject &amp; preheader</span>
         </div>
-        <pre id="hmCodePre"></pre>
+        <div class="hm-code" id="hmSubjectBlock" style="margin-bottom:10px;">
+          <div class="hm-code-hdr">
+            <span class="hm-code-label">Tagged subject</span>
+            <button class="hm-copy-btn" id="hmSubjectCopyBtn" onclick="copyTaggedField('header')">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+              Copy
+            </button>
+          </div>
+          <pre id="hmSubjectPre"></pre>
+        </div>
+        <div class="hm-code" id="hmPreheaderBlock">
+          <div class="hm-code-hdr">
+            <span class="hm-code-label">Tagged preheader</span>
+            <button class="hm-copy-btn" id="hmPreheaderCopyBtn" onclick="copyTaggedField('preheader')">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+              Copy
+            </button>
+          </div>
+          <pre id="hmPreheaderPre"></pre>
+        </div>
+        <p style="margin:6px 0 0;font-size:11.5px;color:var(--text3,#888);line-height:1.5;">Paste each into its own field in Braze — <strong>Subject</strong> and <strong>Preheader</strong>. Only the words are translated; the <strong>{% if %}</strong> logic and merge tags stay in place.</p>
       </div>
-      <div class="hm-guide">
-        <h3>How to use this in Braze</h3>
-        <div class="hm-steps">
-          <div class="hm-step">
-            <div class="hm-step-n">1</div>
-            <div class="hm-step-txt">Copy the tagged HTML on the left and paste it into your Braze email template (replacing the current content block).</div>
+
+      <!-- Step 2 — Email body HTML -->
+      <div style="margin-bottom:22px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span class="hm-stepnum" id="hmStepNumHtml">2</span>
+          <span style="font-size:13px;font-weight:600;">Copy the email body HTML</span>
+        </div>
+        <div class="hm-code">
+          <div class="hm-code-hdr">
+            <span class="hm-code-label">HTML with translation tags</span>
+            <button class="hm-copy-btn" id="hmCopyBtn" onclick="copyTaggedHtml()">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+              Copy
+            </button>
           </div>
-          <div class="hm-step">
-            <div class="hm-step-n">2</div>
-            <div class="hm-step-txt">The <strong>{% translation idN %}</strong> tags stay in place — Braze's Liquid engine swaps in the right copy per recipient using the Content Block/attribute your team already maps to language.</div>
-          </div>
-          <div class="hm-step">
-            <div class="hm-step-n">3</div>
-            <div class="hm-step-txt">Grab the spreadsheet below if you need to hand the translations off to someone else (a reviewer, a translation agency, etc).</div>
-          </div>
+          <pre id="hmCodePre"></pre>
+        </div>
+        <p style="margin:6px 0 0;font-size:11.5px;color:var(--text3,#888);line-height:1.5;">Paste into your Braze email template, replacing the current content block. The <strong>{% translation idN %}</strong> tags stay in place — Braze's Liquid swaps in the right copy per locale.</p>
+      </div>
+
+      <!-- Step 3 — Translations spreadsheet -->
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span class="hm-stepnum" id="hmStepNumCsv">3</span>
+          <span style="font-size:13px;font-weight:600;">Upload the translations</span>
         </div>
         <div class="hm-dl-group">
-          <div class="hm-dl-label">Translations spreadsheet</div>
-          <button class="hm-dl-btn hm-dl-csv" onclick="dlCSV()">
+          <button class="hm-dl-btn hm-dl-csv" onclick="exportModalCsv()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
             Download as CSV
           </button>
-          <button class="hm-dl-btn hm-dl-xlsx" onclick="dlXLSX()">
+          <button class="hm-dl-btn hm-dl-xlsx" id="hmDlXlsxBtn" onclick="exportModalXlsx()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
             Download as XLSX
           </button>
         </div>
+        <p style="margin:6px 0 0;font-size:11.5px;color:var(--text3,#888);line-height:1.5;">Upload this spreadsheet to Braze (or hand it to a translator). It carries the translations for every id — subject, preheader and body.</p>
       </div>
     </div>
   </div>
@@ -2209,10 +2241,6 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
             <button class="tbtn html" id="btnDlHtml" onclick="openHtmlModal()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
               Copy Tagged HTML
-            </button>
-            <button class="tbtn" id="btnCopySubject" style="display:none;" onclick="copyTaggedMeta()" title="Copy the tagged subject & preheader ({%translation%}) to paste into Braze">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 7l10 7 10-7"/></svg>
-              Copy subject
             </button>
             <button class="tbtn" onclick="openTaggedHtmlEditorForCurrentProject()" title="Manually fix a specific error in the already-tagged HTML — for emergency corrections, does not re-run extraction and does not affect approval">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
@@ -6442,6 +6470,8 @@ function activateCampaignItemIntoS(item) {
   S.origin = item.origin || null;
   S.allC = [...COUNTRIES];
   S.csv = { name: item.name, rows: item.rows || [], langs: item.langs || [] };
+  S.htmlAlreadyTagged = /\{%\s*translation\s+/i.test(item.rawHtml || ''); // itens guardam rawHtml CRU → buildTaggedHtml tageia no export
+  S.condBranch = 0; S.condRevealRow = null; // toggle If/Else do preview começa no ramo IF a cada item
   // Header/Preheader do item → S.metaDraft (o card e "Copy tagged subject" leem daqui).
   S.metaDraft = (item.metaTemplates && typeof item.metaTemplates === 'object')
     ? { header: item.metaTemplates.header || '', preheader: item.metaTemplates.preheader || '' }
@@ -6813,9 +6843,6 @@ function renderCampaignGrid(item) {
   wireGridController('campaignItemTable');
   gridReapplyHighlight();
   setTimeout(() => syncAllRowHeights('campGstb') , 0);
-  // "Copy subject" do item só aparece quando este e-mail tem header/preheader.
-  const btnSubjC = document.getElementById('btnCopySubjectCamp');
-  if(btnSubjC) btnSubjC.style.display = (item.type === 'email' && item.metaTemplates && (item.metaTemplates.header || item.metaTemplates.preheader)) ? '' : 'none';
 }
 
 // Remove um idioma inteiro do item de pasta — espelha delLang() do editor avulso, mas escopado
@@ -6968,6 +6995,7 @@ function renderCampaignPreview(item, lang) {
     return;
   }
   if(!S.rawHtml) { _campPreviewLoadedKey = null; wrap.innerHTML = `<p style="text-align:center;color:var(--text3);font-size:12px;margin-top:40px;">No HTML uploaded.</p>`; return; }
+  renderCondBranchToggle(); // toggle If/Else no preview da pasta (igual ao avulso)
   const html = injectCampaignLiveUpdateScript(buildPreviewHtml(lang));
   const srcdoc = html.replace(/"/g, '&quot;');
   const isInapp = item.type === 'inapp';
@@ -10898,9 +10926,6 @@ function buildTable() {
   setTimeout(syncAllRowHeights, 0);
   openPendingCommentTarget();
   openPendingApprovalTarget();
-  // Botão "Copy subject" só aparece quando há header/preheader.
-  const btnSubj = document.getElementById('btnCopySubject');
-  if(btnSubj) btnSubj.style.display = (S.metaDraft && (S.metaDraft.header || S.metaDraft.preheader)) ? '' : 'none';
   // Rede de segurança: confirma que todo trecho aparece no preview em algum modo (uma vez
   // por HTML). Adiado pra não competir com o render da tabela.
   setTimeout(verifyAllRowsPositionable, 0);
@@ -12594,7 +12619,14 @@ function setCondBranch(idx){
   S.condBranch = idx|0;
   S.condRevealRow = null;   // navegação manual por índice — limpa qualquer reveal de linha
   renderCondBranchToggle();
-  refreshViewer();
+  // Pasta (item de campanha) aberto → re-renderiza o preview do item (rebuild completo do iframe,
+  // pra o novo ramo aparecer). Senão, o preview avulso (#vf).
+  if(typeof _campaign !== 'undefined' && _campaign && _campaignItemIndex >= 0 && _campaignViewMode === 'edit'){
+    const item = _campaign.items[_campaignItemIndex];
+    if(item){ _campPreviewLoadedKey = null; renderCampaignPreview(item, item._activeLang || (item.langs && item.langs[0]) || null); }
+  } else {
+    refreshViewer();
+  }
 }
 
 
@@ -12603,15 +12635,19 @@ function setCondBranch(idx){
 // global (S.condBranch) compartilhado — cada condicional mostra o ramo nesse índice (limitado
 // ao seu último ramo). Chamado no refreshViewer e ao trocar de ramo.
 function renderCondBranchToggle(){
-  const wrap = document.getElementById('condBranchWrap');
-  if(!wrap) return;
   const n = maxCondBranchCount(S.rawHtml);
-  if(n <= 1){ wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
-  if(S.condBranch > n - 1) S.condBranch = 0;
-  wrap.style.display = '';
-  wrap.innerHTML = Array.from({length:n}, (_,i) =>
+  if(n > 1 && S.condBranch > n - 1) S.condBranch = 0;
+  const html = (n <= 1) ? null : Array.from({length:n}, (_,i) =>
     `<button class="cb-btn${(S.condBranch|0)===i?' active':''}" onclick="setCondBranch(${i})">${condBranchLabel(i,n)}</button>`
   ).join('');
+  // Mesmo toggle no editor avulso (#condBranchWrap) E no preview da pasta (#campCondBranchWrap) —
+  // só um está visível por vez (telas diferentes), o estado S.condBranch é compartilhado.
+  ['condBranchWrap','campCondBranchWrap'].forEach(id => {
+    const wrap = document.getElementById(id);
+    if(!wrap) return;
+    if(html == null){ wrap.style.display = 'none'; wrap.innerHTML = ''; }
+    else { wrap.style.display = ''; wrap.innerHTML = html; }
+  });
 }
 
 // Se um translation id NÃO está visível no preview atual porque vive no ramo INATIVO de uma
@@ -12698,6 +12734,26 @@ function openHtmlModal() {
   if(pre) pre.textContent = tagged;
   const btn = document.getElementById('hmCopyBtn');
   if(btn) btn.classList.remove('copied');
+  // Step 1 — subject/preheader tagueados (só quando o e-mail tem).
+  const hasMeta = !!(S.metaDraft && (S.metaDraft.header || S.metaDraft.preheader));
+  const subjStep = document.getElementById('hmSubjectStep');
+  if(subjStep) subjStep.style.display = hasMeta ? '' : 'none';
+  if(hasMeta){
+    const hdr = (S.metaDraft.header || '').trim(), preh = (S.metaDraft.preheader || '').trim();
+    const sBlock = document.getElementById('hmSubjectBlock'), pBlock = document.getElementById('hmPreheaderBlock');
+    if(sBlock) sBlock.style.display = hdr ? '' : 'none';
+    if(pBlock) pBlock.style.display = preh ? '' : 'none';
+    const spre = document.getElementById('hmSubjectPre'); if(spre) spre.textContent = hdr ? buildTaggedMeta('header') : '';
+    const ppre = document.getElementById('hmPreheaderPre'); if(ppre) ppre.textContent = preh ? buildTaggedMeta('preheader') : '';
+    ['hmSubjectCopyBtn','hmPreheaderCopyBtn'].forEach(id => { const b = document.getElementById(id); if(b) b.classList.remove('copied'); });
+  }
+  // Renumera: com subject → 1/2/3; sem → HTML=1, CSV=2.
+  const nH = document.getElementById('hmStepNumHtml'), nC = document.getElementById('hmStepNumCsv');
+  if(nH) nH.textContent = hasMeta ? '2' : '1';
+  if(nC) nC.textContent = hasMeta ? '3' : '2';
+  // XLSX só no avulso (item de campanha exporta o CSV do item).
+  const inCampaign = (typeof _campaign !== 'undefined' && _campaign && _campaignItemIndex >= 0);
+  const xlsx = document.getElementById('hmDlXlsxBtn'); if(xlsx) xlsx.style.display = inCampaign ? 'none' : '';
   const modal = document.getElementById('htmlModal');
   if(modal) modal.classList.add('show');
 }
@@ -12706,6 +12762,23 @@ function closeHtmlModal() {
   const modal = document.getElementById('htmlModal');
   if(modal) modal.classList.remove('show');
 }
+// Copia o subject OU o preheader tagueado (campos separados no Step 1 do modal).
+function copyTaggedField(kind){
+  const preId = kind === 'header' ? 'hmSubjectPre' : 'hmPreheaderPre';
+  const btnId = kind === 'header' ? 'hmSubjectCopyBtn' : 'hmPreheaderCopyBtn';
+  const pre = document.getElementById(preId); if(!pre) return;
+  const restore = btn => { btn.classList.remove('copied'); btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2"/></svg> Copy'; };
+  navigator.clipboard.writeText(pre.textContent).then(() => {
+    const btn = document.getElementById(btnId);
+    if(btn){ btn.classList.add('copied'); btn.textContent = '✓ Copied'; setTimeout(() => restore(btn), 2000); }
+  }).catch(()=>{});
+}
+// Download do CSV do Step 3 — item de campanha usa o CSV do item; avulso usa o do projeto.
+function exportModalCsv(){
+  if(typeof _campaign !== 'undefined' && _campaign && _campaignItemIndex >= 0){ dlItemCSV(); return; }
+  dlCSV();
+}
+function exportModalXlsx(){ dlXLSX(); }
 
 function copyTaggedHtml() {
   const pre = document.getElementById('hmCodePre');
