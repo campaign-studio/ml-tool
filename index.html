@@ -1344,6 +1344,25 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
   </div>
 </div>
 
+<!-- ═══ Seletor de TIPO ao clicar "+ Add content": escolhe o tipo primeiro, depois segue.
+     Email → wizard completo (igual ao avulso). Push/In-app → mini-fluxo antigo (modal com abas). ═══ -->
+<div id="addContentChooser" class="modal-ov" style="display:none;">
+  <div class="card modal-card" style="width:100%;max-width:420px;">
+    <div class="ci" style="padding:28px;">
+      <div class="modal-head" style="margin-bottom:6px;">
+        <h1>Add content</h1>
+        <button class="btn-back" onclick="closeAddContentChooser()" style="padding:4px 10px;">Close</button>
+      </div>
+      <p class="sub" style="margin-bottom:18px;">What would you like to add?</p>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <button class="btn-next" style="margin-top:0;text-align:left;" onclick="chooseAddContent('email')">✉️&nbsp;&nbsp;Email <span style="opacity:.6;font-weight:400;font-size:11px;">— full wizard</span></button>
+        <button class="btn-next" style="margin-top:0;text-align:left;" onclick="chooseAddContent('inapp')">📱&nbsp;&nbsp;In-app</button>
+        <button class="btn-next" style="margin-top:0;text-align:left;" onclick="chooseAddContent('push')">🔔&nbsp;&nbsp;Push</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ Upload de CSV pro item ativo (email/in-app/push) — igual ao "Update from CSV"
      do editor clássico, só que aplicado ao item da aba aberta no momento. ═══ -->
 <div id="itemCsvModal" class="modal-ov" style="display:none;">
@@ -1379,7 +1398,7 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
     </button>
     <span id="campaignScreenTitle" style="font-size:13px;font-weight:700;color:var(--text);flex-shrink:0;margin-right:8px;">Project</span>
     <div id="campaignTabs" style="display:flex;gap:6px;flex:1;"></div>
-    <button id="campAddContentBtn" class="dash-sort-btn" style="background:var(--s2);flex-shrink:0;" onclick="openManageContentModal()" title="Add content">+ Add content</button>
+    <button id="campAddContentBtn" class="dash-sort-btn" style="background:var(--s2);flex-shrink:0;" onclick="openAddContentChooser()" title="Add content">+ Add content</button>
   </div>
   <div id="campaignItemEmpty" style="display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--text3);">
     <p style="font-size:13px;">No content yet — click "+ Add content" to add an email, in-app message, or push.</p>
@@ -6972,6 +6991,22 @@ function resetAddItemState() {
 
 // forceType: quando vem do clique na barra de tipos lá em cima (Email/In-app/Push),
 // já abre direto naquela aba — sem isso, sempre abriria na aba do item ativo no momento.
+// "+ Add content" → primeiro escolhe o TIPO. Email segue pro wizard completo; push/in-app abrem
+// o modal antigo (mini-fluxo) já na aba certa.
+function openAddContentChooser() {
+  if(!_campaign) return;
+  if(_approverMode) return; // approver não adiciona conteúdo
+  document.getElementById('addContentChooser').style.display = 'flex';
+}
+function closeAddContentChooser() {
+  document.getElementById('addContentChooser').style.display = 'none';
+}
+function chooseAddContent(type) {
+  closeAddContentChooser();
+  if(type === 'email') { startFolderEmailWizard(); return; } // e-mail = mesmo wizard do avulso
+  openManageContentModal(type);                              // push/in-app = mini-fluxo antigo
+}
+
 function openManageContentModal(forceType) {
   if(!_campaign) return;
   _manageContentTab = forceType || _campaignActiveType || 'email';

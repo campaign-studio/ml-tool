@@ -168,3 +168,14 @@ VERIFICAÇÃO (localhost, em memória): boot limpo, 0 erro de console; conversã
 ([header, preheader, id1, id2], rawHtml cru, corpo exclui meta, card com pill); aba Email do modal
 mostra "Add email" chamando o wizard (sem mini-fluxo); merge invariants 9/9; meta regression 4/4.
 (E2E clicando o fluxo real de pasta exige login/banco real.)
+
+===============================================================================
+REVISÃO (mesmo dia) — "+ Add content" abre SELETOR DE TIPO primeiro
+===============================================================================
+Pedido: ao clicar "+ Add content", mostrar só as opções de tipo; ao escolher, Email → wizard,
+Push/In-app → mini-fluxo antigo.
+- Novo modal #addContentChooser (Email — full wizard / In-app / Push).
+- openAddContentChooser/closeAddContentChooser/chooseAddContent: email → startFolderEmailWizard;
+  push/in-app → openManageContentModal(type) (modal antigo na aba certa).
+- Botão campAddContentBtn repontado de openManageContentModal() → openAddContentChooser().
+Verificado: seletor renderiza as 3 opções, botão repontado, boot limpo, 0 erro de console.
