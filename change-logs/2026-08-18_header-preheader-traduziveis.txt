@@ -299,3 +299,8 @@ REVISÃO (mesmo dia) — pills longos não VAZAM mais da coluna
 - .mlt-attr-tag/.mlt-val-tag: removido white-space:nowrap; +max-width:100% +overflow-wrap:break-word.
   Pill longo (ex: "Basic Plan Gyms Available") numa coluna estreita agora quebra linha e fica DENTRO
   do container, em vez de estourar pra coluna vizinha. Verificado com layout de 3 planos (screenshot).
+
+REVISÃO (mesmo dia) — box de código do "Export to Braze" quebra linha (sem scroll horizontal)
+- .hm-code pre: white-space:pre → pre-wrap + word-break/overflow-wrap + max-height:300px. Subject/
+  preheader/HTML agora quebram linha dentro do box (sem barra horizontal); HTML longo rola vertical
+  num limite. Verificado: 0 overflow horizontal nos 3 boxes (screenshot).
