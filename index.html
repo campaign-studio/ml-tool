@@ -665,20 +665,25 @@ tr.meta-row .src textarea{background:transparent;}
 .abl-section-count{font-size:11px;font-weight:800;color:var(--text3);background:var(--s2);border-radius:20px;padding:2px 10px;}
 .abl-grid{display:grid;gap:20px;}
 .abl-grid-inapp{grid-template-columns:repeat(auto-fill,minmax(300px,320px));}
+/* Um único card branco envolve TODOS os itens de um mesmo tipo (e-mails / in-apps / pushes),
+   deixando a separação entre grupos óbvia à primeira vista — antes cada item tinha seu próprio
+   card solto, sem nada demarcando visualmente onde um grupo termina e o outro começa. */
+.abl-group-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 2px 14px rgba(0,0,0,.05);}
 /* E-mails no formato "Approve copies": faixa de canvas com scroll horizontal, frames largura real
-   um ao lado do outro. */
-.abl-ecanvas{display:flex;gap:48px;align-items:flex-start;overflow-x:auto;padding:8px 4px 22px;background:var(--s2);border-radius:14px;}
-.abl-eframe{flex-shrink:0;background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.06);}
+   um ao lado do outro, dentro do card do grupo. */
+.abl-ecanvas{display:flex;gap:32px;align-items:flex-start;overflow-x:auto;padding:2px 2px 6px;}
+.abl-eframe{flex-shrink:0;background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;}
 .abl-eframe-head{display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;left:0;}
 .abl-eframe-vp{background:#fff;}
 .abl-grid-push{grid-template-columns:repeat(auto-fill,minmax(320px,360px));}
-.abl-card{border:1px solid var(--border);border-radius:14px;background:var(--surface);overflow:hidden;display:flex;flex-direction:column;}
+.abl-card{border:1px solid var(--border);border-radius:14px;background:var(--s3,var(--s2));overflow:hidden;display:flex;flex-direction:column;}
 .abl-card-preview{overflow:hidden;background:var(--s2);}
 .abl-card-preview-email{height:520px;}
 .abl-card-preview-inapp{height:540px;background:linear-gradient(160deg,#2b2f38,#0f1116);}
 .abl-card-preview-push{min-height:120px;background:#eef1f6;}
 .abl-card-foot{display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid var(--border);}
 .abl-card-name{flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.abl-origin-chip{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:800;color:var(--green);background:var(--grn-bg);border:1px solid var(--grn-bd);border-radius:20px;padding:2px 8px;flex-shrink:0;white-space:nowrap;}
 .abl-approve-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:none;background:var(--brand);color:#fff;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;box-shadow:0 1px 2px rgba(216,56,94,.15);}
 .abl-approve-btn:hover{background:var(--brand-hover);box-shadow:0 2px 8px rgba(216,56,94,.25);}
 
@@ -1006,6 +1011,32 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 /* Push: sem "cartão" de fundo — só o balão de notificação flutuando, lado a lado por país */
 .av-frame-viewport-bare{background:transparent;box-shadow:none;}
 .av-frame-viewport-bare iframe{background:transparent;}
+/* "Approve by Locale": cada ITEM (e-mail/in-app/push) vira UM card branco contendo o PAR
+   origem + tradução — quem aprova compara original e traduzido dentro da mesma moldura, em
+   vez de caçar os dois soltos no canvas. E-mail: par lado a lado. Push/in-app: empilhado. */
+.av-group-wrap{position:absolute;top:0;}
+.av-group-head{font-size:20px;font-weight:800;color:var(--text);margin:0 0 16px;display:flex;align-items:center;gap:12px;user-select:none;flex-wrap:wrap;}
+.av-group-title{font-size:20px;font-weight:800;color:var(--text);}
+.av-group-count{font-size:12px;font-weight:800;color:var(--text3);background:var(--s2);border-radius:20px;padding:4px 12px;}
+.av-group-card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:60px;box-shadow:0 6px 30px rgba(0,0,0,.12);}
+.av-group-frames-row{display:flex;align-items:flex-start;}
+.av-group-frames-row.stacked{flex-direction:column;align-items:center;}
+/* Dentro do card, o frame vira layout normal (flex) em vez de absolute — a fronteira do card
+   já dá a separação, então o título volta pro fluxo normal (antes ficava absolute ACIMA do
+   frame, o que vazaria pra fora do padding do card). */
+.av-canvas-frame-in-group{position:relative !important;top:auto !important;left:auto !important;}
+.av-canvas-frame-in-group .av-canvas-frame-title{position:static;width:auto;margin-bottom:16px;}
+/* Rótulo GRANDE acima de cada preview do par: "Origin"/"Translation" + o idioma. */
+.av-pair-title{font-size:22px;gap:12px;}
+.av-pair-label{font-size:22px;font-weight:800;color:var(--text);}
+.av-pair-lang{font-size:15px;font-weight:700;color:var(--text3);font-family:var(--mono);}
+.av-canvas-frame-in-group.is-origin .av-pair-label{color:var(--green);}
+/* Toggle If/Else no cabeçalho do card — grande e legível, não o chip minúsculo de antes. */
+.av-cb-toggle-lg{display:inline-flex;align-items:center;gap:6px;background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:6px 10px;user-select:auto;}
+.av-cb-toggle-lg-label{font-size:12px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-right:2px;}
+.av-cb-btn-lg{font-size:14px;font-weight:800;color:var(--text2);background:none;border:none;cursor:pointer;padding:7px 18px;border-radius:9px;font-family:var(--sans);transition:background .12s,color .12s;}
+.av-cb-btn-lg:hover{color:var(--accent);}
+.av-cb-btn-lg.active{background:var(--brand);color:#fff;box-shadow:0 2px 6px rgba(216,56,94,.25);}
 
 /* Presença ao vivo estilo Figma: quem está online (avatares empilhados) + cursores
    dos outros aprovadores se movendo em tempo real sobre o canvas. */
@@ -8844,36 +8875,51 @@ function renderCampaignByLocale() {
   const approveBtnHtml = (it, idx) => isLangApproved(it.approvalDoneByLang, loc)
     ? `<button class="abl-approved" title="Approved for ${escHtml(toBrazeLang(loc))} — click to undo" onclick="campToggleLocaleApproval(${idx})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Approved</button>`
     : `<button class="abl-approve-btn" onclick="campToggleLocaleApproval(${idx})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6L9 17l-5-5"/></svg> Approve</button>`;
+  // Chip com o idioma de ORIGEM do item (de onde a tradução partiu) — ao lado do nome, pra quem
+  // está aprovando saber de cara qual foi a língua-base sem precisar abrir o item.
+  const originChipHtml = (it) => {
+    const c = it.origin ? COUNTRIES.find(x => x.code === it.origin) : null;
+    return c ? `<span class="abl-origin-chip" title="Origin language">${c.flag} ${escHtml(c.lang)}</span>` : '';
+  };
   body.innerHTML = typeOrder.map(type => {
     const group = items.filter(x => x.it.type === type);
     if(!group.length) return '';
     const head = `<div class="abl-section-head">${typeLabel[type]} <span class="abl-section-count">${group.length}</span></div>`;
     // E-MAIL: mesmo formato do "Approve copies" — frames em largura real (680px), um ao lado do
     // outro numa faixa de canvas com scroll horizontal, cada iframe crescendo até a altura real.
+    // Todos os frames do tipo ficam dentro de UM ÚNICO card branco (abl-group-card), deixando
+    // óbvio onde o grupo "Emails" termina e o próximo grupo ("In-apps"/"Pushes") começa.
     if(type === 'email') {
       return `<div class="abl-section">${head}
-        <div class="abl-ecanvas">
-          ${group.map(({ it, idx }) => `
-            <div class="abl-eframe" style="width:${AV_FRAME_W}px;">
-              <div class="abl-eframe-head">
-                <div class="abl-card-name" title="${escJsAttr(it.name)}">${escHtml(it.name)}</div>
-                ${approveBtnHtml(it, idx)}
-              </div>
-              <div class="abl-eframe-vp" id="campLocPrev-${idx}" style="width:${AV_FRAME_W}px;"></div>
-            </div>`).join('')}
+        <div class="abl-group-card">
+          <div class="abl-ecanvas">
+            ${group.map(({ it, idx }) => `
+              <div class="abl-eframe" style="width:${AV_FRAME_W}px;">
+                <div class="abl-eframe-head">
+                  <div class="abl-card-name" title="${escJsAttr(it.name)}">${escHtml(it.name)}</div>
+                  ${originChipHtml(it)}
+                  ${approveBtnHtml(it, idx)}
+                </div>
+                <div class="abl-eframe-vp" id="campLocPrev-${idx}" style="width:${AV_FRAME_W}px;"></div>
+              </div>`).join('')}
+          </div>
         </div>
       </div>`;
     }
-    // IN-APP / PUSH: cards compactos em grade (conteúdo curto, não precisa de largura de e-mail).
+    // IN-APP / PUSH: cards compactos em grade (conteúdo curto, não precisa de largura de e-mail),
+    // também dentro de um único card branco por grupo.
     return `<div class="abl-section">${head}
-      <div class="abl-grid abl-grid-${type}">
-        ${group.map(({ it, idx }) => `<div class="abl-card">
-            <div class="abl-card-preview abl-card-preview-${it.type}" id="campLocPrev-${idx}"></div>
-            <div class="abl-card-foot">
-              <div class="abl-card-name" title="${escJsAttr(it.name)}">${escHtml(it.name)}</div>
-              ${approveBtnHtml(it, idx)}
-            </div>
-          </div>`).join('')}
+      <div class="abl-group-card">
+        <div class="abl-grid abl-grid-${type}">
+          ${group.map(({ it, idx }) => `<div class="abl-card">
+              <div class="abl-card-preview abl-card-preview-${it.type}" id="campLocPrev-${idx}"></div>
+              <div class="abl-card-foot">
+                <div class="abl-card-name" title="${escJsAttr(it.name)}">${escHtml(it.name)}</div>
+                ${originChipHtml(it)}
+                ${approveBtnHtml(it, idx)}
+              </div>
+            </div>`).join('')}
+        </div>
       </div>
     </div>`;
   }).join('');

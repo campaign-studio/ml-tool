@@ -341,3 +341,24 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
   Correção: adicionada regra ".folder-card:hover .proj-rename-btn{opacity:1;}" — o lápis aparece
   no hover do card, igual aos projetos soltos. O rename em si (openRenameProjectModal/save) já
   funcionava; só faltava conseguir clicar.
+
+[2026-08-19] Approve by Locale (dentro da pasta): par ORIGEM + TRADUÇÃO em um card por item.
+  Antes: um frame por item, só no locale sendo aprovado, todos soltos no canvas — pra comparar
+  com o original era preciso sair da tela.
+  Agora, em modules/approval-canvas.js:
+    - avBuildFrames (modo locale) monta 2 frames por item: 'ito<idx>' (idioma de ORIGEM, só
+      referência) + 'it<idx>' (o locale). A chave do traduzido continua 'it'+idx, então
+      comentários/aprovação já salvos seguem apontando pro mesmo frame. O frame de origem só
+      existe quando há origin e ele é diferente do locale (senão seria o mesmo e-mail 2x).
+    - avLocaleGroups agrupa por ITEM (groupId) — cada grupo vira UM card branco.
+    - renderApprovalGridLocale: card com padding 60px + radius 24px; e-mail com o par lado a
+      lado (AV_PAIR_GAP 56), push/in-app EMPILHADO (origem em cima, tradução embaixo), já que
+      são estreitos e curtos. Rótulo grande "Origin"/"Translation" + locale acima de cada
+      preview. Sem botão Approve no frame de origem (aprova-se a tradução, não o original).
+    - Toggle If/Else agora aparece no modo locale, GRANDE, no cabeçalho do card
+      (.av-cb-toggle-lg). Estado segue global (S.condBranch), então origem e tradução mostram
+      sempre o MESMO ramo — que é o ponto de comparar os dois.
+    - avContentWidth/avFitToFrames passam pelo cálculo agrupado (avLocaleContentWidth) pra que
+      "Fit all" e a scrollbar horizontal batam com o que é desenhado (verificado: canvasW ===
+      avContentWidth).
+  O modo 'single' (Approve copies, um item x idiomas) não mudou — o caminho é outro branch.

@@ -52,13 +52,36 @@ let _avLocale = null;      // locale code quando mode === 'locale'
 let _avFrames = [];        // descritores reconstruídos a cada render
 let _avFramesByKey = {};
 
+// Ordem fixa dos grupos no modo locale (email primeiro, depois in-app, depois push) — os
+// itens da pasta podem ter sido criados em qualquer ordem, mas o agrupamento visual precisa
+// que os frames do mesmo tipo fiquem CONTÍGUOS no array.
+const AV_GROUP_TYPE_ORDER = ['email', 'inapp', 'push'];
+
+// Tabela de países: COUNTRIES é o global do index.html; S.allC é a mesma lista já dentro de S,
+// mas só fica correta DEPOIS de ativar um item. Aqui (montagem dos frames) roda antes disso.
+function avCountries() { return (typeof COUNTRIES !== 'undefined' ? COUNTRIES : (S && S.allC) || []); }
+
 function avBuildFrames() {
   _avFrames = [];
   if(_avMode === 'locale') {
+    // Cada ITEM vira um GRUPO de 2 frames: a versão no idioma de ORIGEM (referência, só pra
+    // comparar) e a versão no locale sendo aprovado. Os dois ficam no mesmo card branco, então
+    // quem aprova lê original e tradução lado a lado sem trocar de tela.
+    const byType = { email: [], inapp: [], push: [] };
     (_campaign && _campaign.items || []).forEach((it, idx) => {
       if(!(it.langs || []).includes(_avLocale)) return;
-      _avFrames.push({ key: 'it' + idx, lang: _avLocale, isOrig: false, itemIndex: idx, item: it, type: it.type, title: it.name });
+      const origin = it.origin ? avCountries().find(c => c.code === it.origin) : null;
+      const origLang = origin ? origin.lang : null;
+      const gid = 'g' + idx;
+      const pair = [];
+      // Frame de ORIGEM: só quando existe e é diferente do locale (senão seria o mesmo e-mail 2x).
+      if(origLang && origLang !== _avLocale) {
+        pair.push({ key: 'ito' + idx, lang: origLang, isOrig: true, itemIndex: idx, item: it, type: it.type, title: it.name, origin, groupId: gid });
+      }
+      pair.push({ key: 'it' + idx, lang: _avLocale, isOrig: false, itemIndex: idx, item: it, type: it.type, title: it.name, origin, groupId: gid });
+      (byType[it.type] || (byType[it.type] = [])).push(...pair);
     });
+    AV_GROUP_TYPE_ORDER.forEach(t => _avFrames.push(...(byType[t] || [])));
   } else {
     const { origLang, langs } = approvalLangs();
     const type = _campaignPushPreview ? 'push' : _campaignInappPreview ? 'inapp' : 'email';
@@ -355,6 +378,49 @@ function avFrameGap() { return (_campaignPushPreview || _campaignInappPreview) ?
 // pra medir seria caro no modo locale. Mesmos valores de avFrameW()/avFrameGap().
 function avFrameWFor(type) { return type === 'inapp' ? AV_INAPP_FRAME_W : (type === 'push' ? AV_PUSH_FRAME_W : AV_FRAME_W); }
 function avFrameGapFor(type) { return (type === 'push' || type === 'inapp') ? 44 : AV_FRAME_GAP; }
+
+// "Approve by Locale": padding interno CONFORTÁVEL do card (o par origem+tradução respira
+// dentro dele) + espaço ENTRE cards de itens diferentes. Usado tanto no render quanto nas
+// contas de largura total (avContentWidth/avFitToFrames), pra "Fit all" e a scrollbar
+// horizontal baterem com o que é desenhado de verdade.
+const AV_GROUP_PAD = 60, AV_GROUP_GAP = 90;
+// Distância entre a origem e a tradução DENTRO do card (mais curta que a distância entre
+// cards — o par é uma unidade, tem que ler junto).
+const AV_PAIR_GAP = 56;
+
+// Frames reagrupados por ITEM (groupId) — cada grupo é o par [origem, tradução] de um mesmo
+// e-mail/in-app/push, e vira UM card branco na "Approve by Locale".
+function avLocaleGroups(frames) {
+  const groups = []; const byId = {};
+  frames.forEach(f => {
+    const id = f.groupId || f.key;
+    if(!byId[id]) { byId[id] = { id, type: f.type, title: f.title, origin: f.origin, item: f.item, frames: [] }; groups.push(byId[id]); }
+    byId[id].frames.push(f);
+  });
+  return groups;
+}
+
+// Push e in-app são estreitos e curtos: o par origem/tradução fica EMPILHADO (um em cima do
+// outro) dentro do card. E-mail é alto e largo — aí o par fica lado a lado, pra comparar
+// original e tradução na mesma linha do texto.
+function avGroupStacked(type) { return type === 'push' || type === 'inapp'; }
+
+// Largura de UM card de grupo (par de frames + padding dos dois lados). Empilhado = largura
+// de um frame só; lado a lado = os dois + o gap do par.
+function avGroupCardWidth(g) {
+  const inner = avGroupStacked(g.type)
+    ? avFrameWFor(g.type)
+    : g.frames.reduce((acc, f, i) => acc + avFrameWFor(f.type) + (i < g.frames.length - 1 ? AV_PAIR_GAP : 0), 0);
+  return inner + AV_GROUP_PAD * 2;
+}
+
+// Largura total do conteúdo no modo locale: soma dos cards + gap entre eles.
+function avLocaleContentWidth(frames) {
+  const groups = avLocaleGroups(frames);
+  let w = 0;
+  groups.forEach((g, gi) => { w += avGroupCardWidth(g) + (gi < groups.length - 1 ? AV_GROUP_GAP : 0); });
+  return w;
+}
 let _avView = { scale: 1, tx: 40, ty: 60 };
 let _avPan = { active: false, moved: false, startX: 0, startY: 0, startTx: 0, startTy: 0 };
 let _avSuppressNextClick = false;
@@ -372,6 +438,7 @@ function applyAvTransform() {
 // mesma conta usada em avFitToFrames pra caber tudo na tela.
 function avContentWidth() {
   const frames = avBuildFrames();
+  if(_avMode === 'locale') return avLocaleContentWidth(frames);
   let w = 0;
   frames.forEach(f => { w += avFrameWFor(f.type) + avFrameGapFor(f.type); });
   return w;
@@ -477,8 +544,8 @@ function avFitToFrames() {
   const frames = avBuildFrames();
   const vp = document.getElementById('avCanvasViewport');
   if(!vp || !frames.length) return;
-  let totalW = 0;
-  frames.forEach(f => { totalW += avFrameWFor(f.type) + avFrameGapFor(f.type); });
+  let totalW = _avMode === 'locale' ? avLocaleContentWidth(frames) : 0;
+  if(_avMode !== 'locale') frames.forEach(f => { totalW += avFrameWFor(f.type) + avFrameGapFor(f.type); });
   // Desconta a MESMA folga de tela (AV_HPAD nas duas pontas) que _updateAvHScrollbarNow soma em
   // contentScreenW — senão, no "Fit all", o conteúdo + folga passava marginalmente da viewport e a
   // scrollbar horizontal aparecia mesmo tudo cabendo. (Bug achado pelo canvas-approver-design-qa.)
@@ -564,9 +631,10 @@ function renderApprovalGrid() {
     canvas.innerHTML = `<div class="empty-state" style="width:360px;"><p>No languages configured yet.</p></div>`;
     return;
   }
-  // Larguras variam POR frame no modo locale (email 680 / in-app 320 / push 380), então usa
-  // um x acumulado em vez de um passo fixo. avActivateFrame aponta S/flags pro item de cada
-  // frame ANTES de medir avFrameW()/avFrameGap() e de montar o markup dependente de S.
+  if(_avMode === 'locale') { renderApprovalGridLocale(frames, canvas); return; }
+  // Larguras variam POR frame (email 680 / in-app 320 / push 380), então usa um x acumulado
+  // em vez de um passo fixo. avActivateFrame aponta S/flags pro item de cada frame ANTES de
+  // medir avFrameW()/avFrameGap() e de montar o markup dependente de S.
   let x = 0;
   const parts = [];
   frames.forEach(f => {
@@ -574,25 +642,15 @@ function renderApprovalGrid() {
     const frameW = avFrameW();
     const frameGap = avFrameGap();
     const bare = (_campaignPushPreview || _campaignInappPreview);
-    // Título: single = bandeira/país/lang/badge-origin; locale = ícone de documento + nome do
-    // item + rótulo de tipo (Email/In-app/Push), SEM país e SEM badge de origem.
-    const titleInner = _avMode === 'locale'
-      ? `<span>📄</span>
-         <span>${escHtml(f.title || '')}</span>
-         <span class="av-frame-lang">${avTypeLabel(f.type)}</span>`
-      : `<span>${f.country?.flag || '🌐'}</span>
+    const titleInner = `<span>${f.country?.flag || '🌐'}</span>
          <span>${f.country?.name || f.lang}</span>
          <span class="av-frame-lang">${toBrazeLang(f.lang)}</span>
          ${f.isOrig ? '<span class="av-frame-origin-badge">origin</span>' : ''}`;
-    // Cond-branch é um teste do fluxo single (um item × idiomas). No modo locale (itens
-    // diferentes por frame) não faz sentido — esconde os botões.
-    const condToggle = _avMode === 'single'
-      ? `<span class="av-cb-toggle" title="Preview test only — doesn't affect the HTML/CSV"${maxCondBranchCount(S.rawHtml)<=1?' style="display:none;"':''}>
+    const condToggle = `<span class="av-cb-toggle" title="Preview test only — doesn't affect the HTML/CSV"${maxCondBranchCount(S.rawHtml)<=1?' style="display:none;"':''}>
             ${Array.from({length:maxCondBranchCount(S.rawHtml)}, (_,i) =>
               `<button class="av-cb-btn ${(S.condBranch|0)===i?'active':''}" onclick="event.stopPropagation();setApprovalCondBranch(${i})">${condBranchLabel(i,maxCondBranchCount(S.rawHtml))}</button>`
             ).join('')}
-          </span>`
-      : '';
+          </span>`;
     parts.push(`
       <div class="av-canvas-frame" style="left:${x}px;top:${AV_FRAME_TOP}px;width:${frameW}px;">
         <div class="av-canvas-frame-title">
@@ -613,6 +671,68 @@ function renderApprovalGrid() {
   avFitToFrames();
 }
 
+// "Approve by Locale": os frames já vêm agrupados por TIPO (avBuildFrames) — aqui cada grupo
+// vira UM ÚNICO card branco (av-group-card) com o rótulo do tipo em cima, e cada frame ganha
+// um chip com o idioma de ORIGEM do item ao lado do nome (f.origin, montado em avBuildFrames).
+function renderApprovalGridLocale(frames, canvas) {
+  const groups = avLocaleGroups(frames);
+  let x = 0;
+  const parts = [];
+  groups.forEach((g, gi) => {
+    const bare = (g.type === 'push' || g.type === 'inapp');
+    const frameEls = g.frames.map(f => {
+      const frameW = avFrameWFor(f.type);
+      // Rótulo GRANDE em cima de cada preview: a origem se identifica como "Origin", a
+      // tradução mostra o locale — dá pra bater original × tradução só de olhar.
+      const flag = f.isOrig ? (f.origin && f.origin.flag) || '🌐' : (avCountries().find(c => c.lang === f.lang) || {}).flag || '🌐';
+      const label = f.isOrig
+        ? `<span class="av-pair-label">${flag} Origin</span><span class="av-pair-lang">${escHtml(toBrazeLang(f.lang))}</span>`
+        : `<span class="av-pair-label">${flag} Translation</span><span class="av-pair-lang">${escHtml(toBrazeLang(f.lang))}</span>`;
+      // A origem é só REFERÊNCIA: sem botão de aprovar (aprova-se a tradução, não o original).
+      const approveSlot = f.isOrig ? '' : `<span class="av-frame-approve-slot" id="avApproveSlot-${f.key}"></span>`;
+      return `
+        <div class="av-canvas-frame av-canvas-frame-in-group${f.isOrig ? ' is-origin' : ''}" style="width:${frameW}px;">
+          <div class="av-canvas-frame-title av-pair-title">
+            ${label}
+            <span class="av-frame-count" style="display:none;">0</span>
+            <button class="av-cb-btn" title="Download this preview as a PNG image" style="border:1px solid var(--border-s);" onclick="event.stopPropagation();downloadApprovalFramePng('${escJsAttr(f.key)}')">⬇ PNG</button>
+            ${approveSlot}
+          </div>
+          <div class="av-frame-viewport${bare ? ' av-frame-viewport-bare' : ''}" id="avVp-${f.key}" style="width:${frameW}px;"></div>
+        </div>`;
+    }).join('');
+    // Toggle If/Else DESTACADO no cabeçalho do card — o estado (S.condBranch) é global e
+    // recarrega todos os frames, então origem e tradução sempre mostram o MESMO ramo.
+    avActivateFrame(g.frames[0]);
+    const nBranch = maxCondBranchCount(S.rawHtml);
+    const condToggle = nBranch > 1
+      ? `<span class="av-cb-toggle-lg" title="Preview test only — doesn't affect the HTML/CSV">
+          <span class="av-cb-toggle-lg-label">If / Else</span>
+          ${Array.from({ length: nBranch }, (_, i) =>
+            `<button class="av-cb-btn-lg ${(S.condBranch | 0) === i ? 'active' : ''}" onclick="event.stopPropagation();setApprovalCondBranch(${i})">${condBranchLabel(i, nBranch)}</button>`
+          ).join('')}
+         </span>`
+      : '';
+    const cardW = avGroupCardWidth(g);
+    parts.push(`
+      <div class="av-group-wrap" style="left:${x}px;top:${AV_FRAME_TOP}px;width:${cardW}px;">
+        <div class="av-group-head">
+          <span class="av-group-title">${escHtml(g.title || '')}</span>
+          <span class="av-group-count">${avTypeLabel(g.type)}</span>
+          ${condToggle}
+        </div>
+        <div class="av-group-card">
+          <div class="av-group-frames-row${avGroupStacked(g.type) ? ' stacked' : ''}" style="gap:${AV_PAIR_GAP}px;">${frameEls}</div>
+        </div>
+      </div>`);
+    x += cardW + (gi < groups.length - 1 ? AV_GROUP_GAP : 0);
+  });
+  canvas.style.width = x + 'px';
+  canvas.innerHTML = parts.join('');
+  frames.forEach(f => { loadApprovalFrame(f); if(!f.isOrig) renderFrameApproveSlot(f); });
+  avFitToFrames();
+}
+
 // Toggle SÓ de teste/visualização (mesmo S.condBranch do preview principal — ver
 // resolveConditionalBranch) — mostrado em CIMA de cada e-mail na Approval View, mas é um
 // estado ÚNICO compartilhado entre todos os idiomas (clicar em qualquer frame atualiza
@@ -621,7 +741,7 @@ function renderApprovalGrid() {
 function setApprovalCondBranch(idx) {
   S.condBranch = idx|0;
   S.condRevealRow = null;
-  document.querySelectorAll('.av-cb-btn').forEach(b => {
+  document.querySelectorAll('.av-cb-btn, .av-cb-btn-lg').forEach(b => {
     const oc = b.getAttribute('onclick') || '';
     const mm = oc.match(/setApprovalCondBranch\((\d+)\)/);
     if(mm) b.classList.toggle('active', (+mm[1]) === (S.condBranch|0));
