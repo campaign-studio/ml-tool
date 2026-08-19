@@ -1086,6 +1086,7 @@ function injectCondStyle(html){
   const style = `<style>
 .mlt-cond-tag{display:inline-block;font-size:9px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;padding:1px 5px;margin:0 2px;border-radius:3px;font-family:-apple-system,sans-serif;color:#8a8a82;background:#e8e8e5;border:1px solid #d8d8d2;white-space:nowrap;vertical-align:middle;}
 .mlt-attr-tag{display:inline-block;font-size:9px;font-weight:600;letter-spacing:.02em;padding:1px 5px;margin:0 2px;border-radius:3px;font-family:-apple-system,sans-serif;color:#b3306b;background:#fbe6f0;border:1px solid #f2c4da;white-space:nowrap;vertical-align:middle;}
+.mlt-val-tag{display:inline-block;font-size:9px;font-weight:600;letter-spacing:.02em;padding:1px 5px;margin:0 2px;border-radius:3px;font-family:-apple-system,sans-serif;color:#4a5568;background:#eef1f5;border:1px solid #dce1e8;white-space:nowrap;vertical-align:middle;}
 .mlt-footer-block, .mlt-footer-block *{pointer-events:none!important;cursor:not-allowed!important;user-select:none!important;}
 .mlt-footer-block{position:relative;}
 .mlt-footer-block::before{content:"Footer preview — not selectable";position:absolute;top:6px;left:50%;transform:translateX(-50%);background:rgba(20,20,40,.72);color:#fff;font:700 9px/1 -apple-system,sans-serif;letter-spacing:.03em;text-transform:uppercase;padding:4px 9px;border-radius:20px;pointer-events:none;z-index:20;white-space:nowrap;}
@@ -1105,63 +1106,43 @@ function replaceLiquidPlaceholders(html){
   // TODO custom attribute (first_name, client_name, …) vira um PILL pequeno com o NOME do atributo
   // humanizado ("First Name", "Client Name") — no mesmo espírito das tags de if/else. SÓ preview:
   // nunca toca o HTML/CSV/export.
-  const _attrPill = n => `<span class="mlt-attr-tag">${String(n).replace(/[^a-zA-Z0-9_ ]/g,'').split(/[_\s]+/).filter(Boolean).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ')}</span>`;
-  // aceita tanto "content_block" (singular) quanto "content_blocks" (plural), já que
-  // e-mails diferentes usam as duas grafias pra referenciar o mesmo tipo de bloco.
-  html=html.replace(/\{\{content_blocks?\.\$\{gym_quantity\}[^}]*\}\}/g, () => _attrPill('gym_quantity'));
-  html=html.replace(/\{\{content_blocks?\.\$\{app_quantity\}[^}]*\}\}/g, () => _attrPill('app_quantity'));
-  html=html.replace(/\{\{context\.first_paid_plan_price\}\}/g, '{first_paid_plan_price}');
-  html=html.replace(/\{\{context\.offer_trial_duration\}\}/g, '{trial_duration}');
-  html=html.replace(/\{\{content_blocks?\.\$\{currency\}[^}]*\}\}/g, '{currency}');
-  html=html.replace(/\{\{custom_attribute\.\$\{([^}]+)\}[^}]*\}\}/g, (_,n)=>_attrPill(n));
-  // Mesma forma ${...} pra context.* — ex: {{context.${first_paid_plan_price}}} vinha CRU no
-  // preview (as regras acima só cobriam {{context.NOME}} sem ${}), poluindo a arte. Vira {NOME}.
-  html=html.replace(/\{\{context\.\$\{([^}]+)\}[^}]*\}\}/g, '{$1}');
-  // Atributo SOLTO (sem namespace): depois de context/custom_attribute já consumidos acima, o que
-  // sobrar com ${...} é atributo da pessoa → PILL. Ex: {{ ${first_name} }}, {{ ${last_name} | default:'' }}.
-  html=html.replace(/\{\{\s*\$\{([a-zA-Z0-9_]+)\}\s*(?:\|[^}]*)?\}\}/g, (_,n)=>_attrPill(n));
-  // first_name sem ${} nem namespace: {{first_name}} , {{ first_name | default:'there' }} → PILL.
-  html=html.replace(/\{\{\s*first_name\s*(?:\|[^}]*)?\}\}/gi, _attrPill('first_name'));
-  // Rede de segurança: qualquer OUTRA Liquid merge tag com filtro "| default: '...'" que
-  // não caiu em nenhuma regra específica acima (ex: {{rating | default: '4.5'}}, ou uma
-  // variação de sintaxe de content_block que a gente ainda não tinha visto).
-  html=html.replace(/\{\{\s*([^{}]+?)\s*\|\s*default:\s*['"][^'"]*['"]\s*\}\}/g, (_, expr) => {
-    const dollarMatch = expr.match(/\$\{([^}]+)\}/);
-    const name = (dollarMatch ? dollarMatch[1] : expr.split('.').pop()).trim();
-    return '{' + name + '}';
-  });
-  html=html.replace(/\{\{content_blocks?\.\$\{catalog_global_all_partners_data\}[^}]*\}\}/g, '');
-  html=html.replace(/\{\{\s*partner_(\d+)\.name\s*\}\}/g, 'Partner $1');
-  html=html.replace(/\{\{\s*partner_(\d+)\.logo_url\s*\}\}/g, '');
-  // Rede de segurança final: QUALQUER content_blocks que sobrou (nome novo que a gente ainda
-  // não tinha visto, sem "| default:") — sem isso, a tag Liquid inteira aparecia crua no
-  // preview (texto longo tipo "{{content_blocks.${SignupLinkV2}}}"), quebrando o layout em
-  // vez de virar um placeholder curto e discreto como os outros.
-  html=html.replace(/\{\{\s*content_blocks?\.\$\{([^}]+)\}[^}]*\}\}/g, '{$1}');
-  // Mesma rede de segurança, agora pra QUALQUER context.* (ou custom_attribute sem "${}")
-  // que sobrou sem regra específica — ex: {{context.last_free_plan_name}}.
-  html=html.replace(/\{\{\s*context\.([a-zA-Z0-9_]+)\s*\}\}/g, '{$1}');
-  html=html.replace(/\{\{\s*custom_attribute\.([a-zA-Z0-9_]+)\s*\}\}/g, (_,n)=>_attrPill(n));
+  const _humanize = n => String(n).replace(/[^a-zA-Z0-9_ ]/g,'').split(/[_\s]+/).filter(Boolean).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
+  // Pill ROSA = dado da PESSOA (first_name, custom_attribute…).
+  const _attrPill = n => `<span class="mlt-attr-tag">${_humanize(n)}</span>`;
+  // Pill NEUTRO = VALOR dinâmico (content block, context, quantidade, preço, moeda, variável…).
+  // Fica discreto e "encaixado" no design, em vez de aparecer como código cru {name} / {{name}}.
+  const _valPill = n => `<span class="mlt-val-tag">${_humanize(n)}</span>`;
 
-  // SÓ VISUAL, pra quem está aprovando — nunca muda o HTML/CSV reais (essa função só
-  // roda no preview, depois das duas passadas de Pass A/B). Às vezes o template original
-  // já vem sem espaço entre um texto e a tag Liquid (ex: "apps:{{content_blocks...}}"),
-  // porque na Braze de verdade aquilo vira um número colado ali mesmo (ex: "apps:47").
-  // Isso é fiel ao HTML real, mas GRUDADO com o placeholder amigável (ex: "apps:XXX")
-  // fica confuso pra revisar visualmente — insere um espaço só aqui, só pra leitura.
-  // O texto visível ("apps:") e o placeholder (ex: "XXX") quase sempre têm uma fronteira
-  // de tag HTML entre eles no string final (ex: "apps:</span></strong>XXX", por causa do
-  // <span data-tid> do Pass A/B) — sem pular essas tags na checagem, "apps:" e "XXX"
-  // pareciam não-adjacentes pro regex mesmo estando visualmente coladas na tela. O grupo
-  // do meio (qualquer sequência de tags) é preservado como está; só o espaço entra
-  // logo antes/depois do placeholder em si. Inclui "}" no gatilho também — dois
-  // placeholders colados um no outro (ex: "{first_paid_plan_price}{currency}", comum
-  // quando o preço aparece direto colado no content_block de moeda) precisam do mesmo
-  // espaço visual entre eles.
-  html = html.replace(/([a-zA-Z0-9:,;}])((?:<[^>]*>)*)(XXX|\{[a-zA-Z0-9_]+\}|Partner \d+)/g, '$1$2 $3');
-  // Do lado de DEPOIS só letra/dígito — pontuação (,;:.) colada logo após o placeholder é
-  // tipograficamente normal (ex: "XXX," ou "XXX:"), não precisa de espaço ANTES dela.
-  html = html.replace(/(XXX|\{[a-zA-Z0-9_]+\}|Partner \d+)((?:<[^>]*>)*)([a-zA-Z0-9])/g, '$1 $2$3');
+  // catalog de parceiros = bloco de dados, não é pra mostrar → some (ANTES do content_blocks geral).
+  html=html.replace(/\{\{content_blocks?\.\$\{catalog_global_all_partners_data\}[^}]*\}\}/g, '');
+  html=html.replace(/\{\{\s*partner_(\d+)\.logo_url\s*\}\}/g, ''); // logo do parceiro = imagem, some
+  // custom_attribute e atributo SOLTO da pessoa → pill ROSA.
+  html=html.replace(/\{\{custom_attribute\.\$\{([^}]+)\}[^}]*\}\}/g, (_,n)=>_attrPill(n));
+  html=html.replace(/\{\{\s*\$\{([a-zA-Z0-9_]+)\}\s*(?:\|[^}]*)?\}\}/g, (_,n)=>_attrPill(n));
+  html=html.replace(/\{\{\s*first_name\s*(?:\|[^}]*)?\}\}/gi, ()=>_attrPill('first_name'));
+  html=html.replace(/\{\{\s*custom_attribute\.([a-zA-Z0-9_]+)\s*\}\}/g, (_,n)=>_attrPill(n));
+  // content_blocks / context / partner / | default: → pill NEUTRO (valor dinâmico).
+  html=html.replace(/\{\{content_blocks?\.\$\{([^}]+)\}[^}]*\}\}/g, (_,n)=>_valPill(n));
+  html=html.replace(/\{\{\s*content_blocks?\.\$\{([^}]+)\}[^}]*\}\}/g, (_,n)=>_valPill(n));
+  html=html.replace(/\{\{context\.\$\{([^}]+)\}[^}]*\}\}/g, (_,n)=>_valPill(n));
+  html=html.replace(/\{\{\s*context\.([a-zA-Z0-9_]+)\s*\}\}/g, (_,n)=>_valPill(n));
+  html=html.replace(/\{\{\s*partner_(\d+)\.name\s*\}\}/g, (_,d)=>_valPill('partner '+d));
+  html=html.replace(/\{\{\s*([^{}]+?)\s*\|\s*default:\s*['"][^'"]*['"]\s*\}\}/g, (_, expr) => {
+    const dm = expr.match(/\$\{([^}]+)\}/);
+    return _valPill((dm ? dm[1] : expr.split('.').pop()).trim());
+  });
+  // CATCH-ALL: QUALQUER merge tag {{...}} que sobrou (ex: {{basic_name1}}, {{gold_plan_price}},
+  // {{ some.var | filter }}) vira pill de valor — nunca deixa código cru {{...}} na arte.
+  html=html.replace(/\{\{\s*([^{}%]+?)\s*\}\}/g, (m, expr) => {
+    const dm = expr.match(/\$\{([^}]+)\}/);
+    const name = (dm ? dm[1] : expr.split('|')[0].split('.').pop()).trim();
+    return name ? _valPill(name) : m;
+  });
+
+  // Espaço visual: se um pill de valor/atributo ficar GRUDADO num caractere/pill vizinho (ex:
+  // "apps:[pill]" ou "[pill][pill]" quando o template não tinha espaço), insere um respiro só
+  // aqui (só preview). O grupo de tags do meio é preservado. Cobre os dois lados.
+  html = html.replace(/([a-zA-Z0-9:,;}])((?:<\/[^>]*>)*)(<span class="mlt-(?:val|attr)-tag">)/g, '$1$2 $3');
 
   return html;
 }

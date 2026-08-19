@@ -252,3 +252,25 @@ avulso vs renderCampaignGrid pasta) — mudar coluna/cabeçalho exigia editar os
 VERIFICAÇÃO (localhost): buildGridHead gera cabeçalhos idênticos pros dois (só muda a fn de deletar
 idioma); grade avulsa renderiza (thead, colgroup certo, linhas ok); merge invariants 9/9; meta
 (segmentos) ok; boot limpo, 0 erro de console.
+
+===============================================================================
+REVISÃO (mesmo dia) — PLACEHOLDERS DE LIQUID VIRAM PILL (nunca código cru na arte)
+===============================================================================
+Pedido: os placeholders que entram no lugar dos Liquids (content block, context, variáveis) não
+podem aparecer como código cru ({currency}, {{basic_name1}}…) quebrando o design — devem virar
+pills discretos que se encaixam. Vale pro previewer E pro approval.
+
+- replaceLiquidPlaceholders (translation-engine.js) reescrito: TUDO que antes virava texto cru
+  {name}/{{name}} agora vira PILL. Dois estilos:
+    · _attrPill (rosa, .mlt-attr-tag) = dado da PESSOA (first_name, custom_attribute, ${x} solto).
+    · _valPill  (cinza neutro, .mlt-val-tag) = VALOR dinâmico (content block, context, quantidade,
+      preço, moeda, partner, | default:, e QUALQUER {{...}} restante via catch-all — ex: {{basic_name1}}).
+  Ordem cuidada: catalog/logo somem antes; person-attrs antes dos valores; catch-all por último.
+- Novo CSS .mlt-val-tag no injectCondStyle (mesmo lugar do .mlt-attr-tag) — que já é injetado no
+  previewer, no Approval e na miniatura do Dashboard, então vale pros TRÊS de uma vez.
+- Espaçamento: pill grudado num caractere vizinho ganha um respiro só no preview (regex de pill).
+
+VERIFICAÇÃO (localhost): com os Liquids EXATOS do screenshot (content_blocks.${currency},
+${basic_plan_price}, ${basic_plan_gyms_available}, {{basic_name1}}, context.${last_free_plan_name},
+custom_attribute.${first_name}) → nenhum código cru sobra; content/context viram pill cinza,
+first_name pill rosa. Screenshot do preview conferido; 0 erro de console.
