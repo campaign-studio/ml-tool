@@ -367,7 +367,7 @@ function renderAvOnlineStack(presenceState) {
 // "@media (max-width:620px)" — um frame de exatamente 600px cairia dentro dele e
 // renderizaria empilhado feito celular, mesmo essa vitrine querendo mostrar o desktop.
 const AV_FRAME_W = 680, AV_FRAME_GAP = 90, AV_FRAME_TOP = 50;
-const AV_INAPP_FRAME_W = 320, AV_INAPP_FRAME_H = 640; // in-app é overlay fixed em tela cheia — vira uma "tela de celular" de tamanho fixo, não uma altura auto tipo e-mail
+const AV_INAPP_FRAME_W = 350, AV_INAPP_FRAME_H = 640; // in-app é overlay fixed em tela cheia — vira uma "tela de celular" de tamanho fixo, não uma altura auto tipo e-mail
 const AV_PUSH_FRAME_W = 380;   // push é um card de notificação pequeno — NÃO deve seguir a largura de e-mail
 // Largura do frame por tipo: e-mail (680), in-app (320, tela de celular), push (380, card pequeno).
 function avFrameW() { return _campaignInappPreview ? AV_INAPP_FRAME_W : (_campaignPushPreview ? AV_PUSH_FRAME_W : AV_FRAME_W); }
@@ -403,23 +403,40 @@ function avLocaleGroups(frames) {
 // Push e in-app são estreitos e curtos: o par origem/tradução fica EMPILHADO (um em cima do
 // outro) dentro do card. E-mail é alto e largo — aí o par fica lado a lado, pra comparar
 // original e tradução na mesma linha do texto.
-function avGroupStacked(type) { return type === 'push' || type === 'inapp'; }
+// Dentro do card o par é SEMPRE origem ao lado da tradução (e-mail, in-app e push) — é isso
+// que faz a comparação valer. O que muda por tipo é como os CARDS se organizam entre si:
+// e-mails em LINHA (lado a lado) e push/in-app em COLUNA (cada variação embaixo da anterior,
+// já que são estreitos e caberiam muitos numa linha só, virando uma fila ilegível).
+function avGroupStacksDown(type) { return type === 'push' || type === 'inapp'; }
 
-// Largura de UM card de grupo (par de frames + padding dos dois lados). Empilhado = largura
-// de um frame só; lado a lado = os dois + o gap do par.
+// Largura de UM card (par de frames lado a lado + padding dos dois lados).
 function avGroupCardWidth(g) {
-  const inner = avGroupStacked(g.type)
-    ? avFrameWFor(g.type)
-    : g.frames.reduce((acc, f, i) => acc + avFrameWFor(f.type) + (i < g.frames.length - 1 ? AV_PAIR_GAP : 0), 0);
+  const inner = g.frames.reduce((acc, f, i) => acc + avFrameWFor(f.type) + (i < g.frames.length - 1 ? AV_PAIR_GAP : 0), 0);
   return inner + AV_GROUP_PAD * 2;
 }
 
-// Largura total do conteúdo no modo locale: soma dos cards + gap entre eles.
-function avLocaleContentWidth(frames) {
+// Uma SEÇÃO por tipo, na ordem fixa (e-mails, in-apps, pushes), lado a lado. Dentro da seção,
+// e-mail espalha os cards em LINHA e push/in-app empilha em COLUNA — então in-app e push ficam
+// em colunas vizinhas, cada tipo na sua.
+function avLocaleSections(frames) {
   const groups = avLocaleGroups(frames);
-  let w = 0;
-  groups.forEach((g, gi) => { w += avGroupCardWidth(g) + (gi < groups.length - 1 ? AV_GROUP_GAP : 0); });
-  return w;
+  return AV_GROUP_TYPE_ORDER
+    .map(type => ({ type, stack: avGroupStacksDown(type), groups: groups.filter(g => g.type === type) }))
+    .filter(s => s.groups.length);
+}
+
+// Largura de uma seção: linha = soma dos cards + gaps; coluna = o card mais largo.
+function avSectionWidth(s) {
+  return s.stack
+    ? s.groups.reduce((max, g) => Math.max(max, avGroupCardWidth(g)), 0)
+    : s.groups.reduce((acc, g, i) => acc + avGroupCardWidth(g) + (i < s.groups.length - 1 ? AV_GROUP_GAP : 0), 0);
+}
+
+// Largura total no modo locale = soma das seções + gap entre elas. É o número usado pelo
+// "Fit all" e pela scrollbar horizontal, então tem que bater com o que o render desenha.
+function avLocaleContentWidth(frames) {
+  const secs = avLocaleSections(frames);
+  return secs.reduce((acc, s, i) => acc + avSectionWidth(s) + (i < secs.length - 1 ? AV_GROUP_GAP : 0), 0);
 }
 let _avView = { scale: 1, tx: 40, ty: 60 };
 let _avPan = { active: false, moved: false, startX: 0, startY: 0, startTx: 0, startTy: 0 };
@@ -676,9 +693,12 @@ function renderApprovalGrid() {
 // um chip com o idioma de ORIGEM do item ao lado do nome (f.origin, montado em avBuildFrames).
 function renderApprovalGridLocale(frames, canvas) {
   const groups = avLocaleGroups(frames);
-  let x = 0;
-  const parts = [];
-  groups.forEach((g, gi) => {
+  // O canvas do modo locale usa FLUXO normal (flex), não posicionamento absoluto: os cards de
+  // e-mail entram numa linha e os de push/in-app numa coluna, e a altura de cada card é a do
+  // conteúdo (os iframes reportam a própria altura via 'av-height'). Com left/top fixos não
+  // dava pra empilhar, porque a posição do card seguinte dependeria de uma altura que só é
+  // conhecida depois que o iframe carrega.
+  const cardHtml = (g) => {
     const bare = (g.type === 'push' || g.type === 'inapp');
     const frameEls = g.frames.map(f => {
       const frameW = avFrameWFor(f.type);
@@ -713,22 +733,23 @@ function renderApprovalGridLocale(frames, canvas) {
           ).join('')}
          </span>`
       : '';
-    const cardW = avGroupCardWidth(g);
-    parts.push(`
-      <div class="av-group-wrap" style="left:${x}px;top:${AV_FRAME_TOP}px;width:${cardW}px;">
+    return `
+      <div class="av-group-wrap" style="width:${avGroupCardWidth(g)}px;">
         <div class="av-group-head">
           <span class="av-group-title">${escHtml(g.title || '')}</span>
           <span class="av-group-count">${avTypeLabel(g.type)}</span>
           ${condToggle}
         </div>
         <div class="av-group-card">
-          <div class="av-group-frames-row${avGroupStacked(g.type) ? ' stacked' : ''}" style="gap:${AV_PAIR_GAP}px;">${frameEls}</div>
+          <div class="av-group-frames-row" style="gap:${AV_PAIR_GAP}px;">${frameEls}</div>
         </div>
-      </div>`);
-    x += cardW + (gi < groups.length - 1 ? AV_GROUP_GAP : 0);
-  });
-  canvas.style.width = x + 'px';
-  canvas.innerHTML = parts.join('');
+      </div>`;
+  };
+  const sections = avLocaleSections(frames).map(s =>
+    `<div class="av-type-section ${s.stack ? 'col' : 'row'}">${s.groups.map(cardHtml).join('')}</div>`
+  );
+  canvas.style.width = avLocaleContentWidth(frames) + 'px';
+  canvas.innerHTML = `<div class="av-locale-flow">${sections.join('')}</div>`;
   frames.forEach(f => { loadApprovalFrame(f); if(!f.isOrig) renderFrameApproveSlot(f); });
   avFitToFrames();
 }

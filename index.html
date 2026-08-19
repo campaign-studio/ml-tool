@@ -1014,13 +1014,21 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 /* "Approve by Locale": cada ITEM (e-mail/in-app/push) vira UM card branco contendo o PAR
    origem + tradução — quem aprova compara original e traduzido dentro da mesma moldura, em
    vez de caçar os dois soltos no canvas. E-mail: par lado a lado. Push/in-app: empilhado. */
-.av-group-wrap{position:absolute;top:0;}
+/* Fluxo do modo locale: uma SEÇÃO por tipo, lado a lado (e-mails, in-apps, pushes — cada um na
+   sua coluna). Dentro da seção, e-mail espalha os cards em LINHA e push/in-app empilha em
+   COLUNA, uma variação embaixo da outra. Fluxo normal em vez de left/top absolutos — a altura
+   de um card só é conhecida depois que o iframe reporta a própria altura, então empilhar com
+   coordenadas fixas não funcionaria. */
+.av-locale-flow{display:flex;flex-direction:row;align-items:flex-start;gap:90px;padding-top:50px;}
+.av-type-section{display:flex;align-items:flex-start;}
+.av-type-section.row{flex-direction:row;gap:90px;}
+.av-type-section.col{flex-direction:column;gap:64px;}
+.av-group-wrap{position:relative;flex-shrink:0;}
 .av-group-head{font-size:20px;font-weight:800;color:var(--text);margin:0 0 16px;display:flex;align-items:center;gap:12px;user-select:none;flex-wrap:wrap;}
 .av-group-title{font-size:20px;font-weight:800;color:var(--text);}
 .av-group-count{font-size:12px;font-weight:800;color:var(--text3);background:var(--s2);border-radius:20px;padding:4px 12px;}
 .av-group-card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:60px;box-shadow:0 6px 30px rgba(0,0,0,.12);}
 .av-group-frames-row{display:flex;align-items:flex-start;}
-.av-group-frames-row.stacked{flex-direction:column;align-items:center;}
 /* Dentro do card, o frame vira layout normal (flex) em vez de absolute — a fronteira do card
    já dá a separação, então o título volta pro fluxo normal (antes ficava absolute ACIMA do
    frame, o que vazaria pra fora do padding do card). */

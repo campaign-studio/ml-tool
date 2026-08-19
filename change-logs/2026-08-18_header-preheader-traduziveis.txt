@@ -362,3 +362,17 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
       "Fit all" e a scrollbar horizontal batam com o que é desenhado (verificado: canvasW ===
       avContentWidth).
   O modo 'single' (Approve copies, um item x idiomas) não mudou — o caminho é outro branch.
+
+[2026-08-19] Approve by Locale — ajuste de layout (correção do anterior):
+  - O par origem+tradução é SEMPRE lado a lado, inclusive in-app e push (na versão anterior eu
+    tinha empilhado o par de push/in-app; o que o usuário queria empilhado eram os CARDS).
+  - Uma SEÇÃO por tipo, lado a lado: e-mails | in-apps | pushes. Dentro da seção, e-mail
+    espalha os cards em LINHA; push/in-app empilha em COLUNA (cada variação embaixo da
+    anterior), então in-app e push ficam em colunas vizinhas, cada tipo na sua.
+  - O canvas do modo locale passou a usar FLUXO normal (.av-locale-flow / .av-type-section)
+    em vez de left/top absolutos: a altura de um card só é conhecida depois que o iframe
+    reporta 'av-height', então empilhar com coordenadas fixas não funcionaria.
+  - AV_INAPP_FRAME_W: 320 -> 350 (o preview de in-app estava estreito demais).
+  - avLocaleContentWidth agora soma as seções (linha = soma dos cards; coluna = card mais
+    largo) — verificado que canvas.style.width === avContentWidth() nos dois folders de teste,
+    então "Fit all" e a scrollbar horizontal seguem corretos.
