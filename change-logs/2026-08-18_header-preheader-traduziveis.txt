@@ -309,3 +309,17 @@ REVISÃO (mesmo dia) — "Export to Braze" com respiro (modal estreito + padding
 - Modal era 960px (largo demais pro layout vertical de passos, texto curto esticava e ficava
   "sem respiro"). .hm-box max-width 960→600px; .hm-body ganhou padding 20px 26px 24px. Passos
   separados, boxes contidos. Screenshot conferido.
+
+===============================================================================
+REVISÃO (mesmo dia) — RENOMEAR PASTA usa o MESMO modal dos projetos (no dashboard)
+===============================================================================
+Pedido: mudar o nome da pasta na home, igual aos projetos normais.
+Antes: o ✎ da pasta abria um uiPrompt simples (renameCampaign), diferente do modal bonito dos
+projetos (renameProjectModal).
+- openRenameProjectModal(id): agora detecta kind==='campaign' e adapta o rótulo do MESMO modal
+  ("Rename folder" / "Folder name"); campanha é registro em projGetAll, então o modal e o
+  saveRenameProjectModal (acha por id, grava name, renderDashboard) já funcionam nela.
+- Card da pasta no dashboard: ✎ repontado de renameCampaign(uiPrompt) → openRenameProjectModal.
+- renameCampaign removido (redundante).
+VERIFICAÇÃO (localhost): modal mostra "Rename folder"/"Folder name" com o nome atual pra pasta e
+"Rename project"/"Project name" pra projeto; 0 erro de console.

@@ -6264,7 +6264,7 @@ function campaignRowHtml(p) {
       </div>
       <div class="folder-card-body">
         <div class="folder-card-name">${escHtml(p.name)} ${sharedTag}
-          ${isOwner ? `<button class="proj-rename-btn" title="Rename folder" onclick="event.stopPropagation();renameCampaign('${escJsAttr(p.id)}')">✎</button>` : ''}
+          ${isOwner ? `<button class="proj-rename-btn" title="Rename folder" onclick="event.stopPropagation();openRenameProjectModal('${escJsAttr(p.id)}')">✎</button>` : ''}
         </div>
         <div class="folder-card-summary">${escHtml(summary)}</div>
       </div>
@@ -6278,18 +6278,6 @@ function campaignRowHtml(p) {
       </div>
     </div>
   `;
-}
-
-async function renameCampaign(id) {
-  const p = campaignGetAll().find(x => x.id === id);
-  if(!p) return;
-  const name = await uiPrompt('Project name', {title:'Rename', def:p.name});
-  if(!name || !name.trim()) return;
-  if(ghConfigured()) await ghPullProjects();
-  const projects = projGetAll();
-  const fresh = projects.find(x => x.id === id);
-  if(fresh) { fresh.name = name.trim(); fresh.updatedAt = Date.now(); projSaveAll(projects); }
-  renderDashboard();
 }
 
 function deleteCampaign(id) {
@@ -8960,9 +8948,14 @@ function openRenameProjectModal(id) {
   const p = projGetAll().find(x => x.id === id);
   if(!p) return;
   _renameProjectId = id;
+  // Pasta (campanha) é um registro em projGetAll também — o MESMO modal serve; só troca o rótulo.
+  const isFolder = p.kind === 'campaign';
+  const modal = document.getElementById('renameProjectModal');
+  const title = modal.querySelector('h1'); if(title) title.textContent = isFolder ? 'Rename folder' : 'Rename project';
+  const label = modal.querySelector('label'); if(label) label.textContent = isFolder ? 'Folder name' : 'Project name';
   const input = document.getElementById('renameProjectInput');
-  if(input) input.value = p.name || '';
-  document.getElementById('renameProjectModal').style.display = 'flex';
+  if(input){ input.value = p.name || ''; input.placeholder = isFolder ? 'Folder name' : 'Project name'; }
+  modal.style.display = 'flex';
   setTimeout(() => { input?.focus(); input?.select(); }, 0);
 }
 
