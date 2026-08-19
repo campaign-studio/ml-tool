@@ -294,3 +294,8 @@ um atributo HTML (ex: <a href="{{content_blocks.${SignUpURL}}}">, <img width="{{
 VERIFICAÇÃO (localhost): card de plano com <a href="{{...}}">, <img src/width="{{...}}"> e texto →
 botão renderiza certo, imagem vira IMG, pills limpos, ZERO código vazando (screenshot conferido);
 setCampVS alterna Full/Mobile; merge invariants 9/9; boot limpo, 0 erro de console.
+
+REVISÃO (mesmo dia) — pills longos não VAZAM mais da coluna
+- .mlt-attr-tag/.mlt-val-tag: removido white-space:nowrap; +max-width:100% +overflow-wrap:break-word.
+  Pill longo (ex: "Basic Plan Gyms Available") numa coluna estreita agora quebra linha e fica DENTRO
+  do container, em vez de estourar pra coluna vizinha. Verificado com layout de 3 planos (screenshot).

@@ -1085,8 +1085,8 @@ function maxCondBranchCount(html){
 function injectCondStyle(html){
   const style = `<style>
 .mlt-cond-tag{display:inline-block;font-size:9px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;padding:1px 5px;margin:0 2px;border-radius:3px;font-family:-apple-system,sans-serif;color:#8a8a82;background:#e8e8e5;border:1px solid #d8d8d2;white-space:nowrap;vertical-align:middle;}
-.mlt-attr-tag{display:inline-block;font-size:9px;font-weight:600;letter-spacing:.02em;padding:1px 5px;margin:0 2px;border-radius:3px;font-family:-apple-system,sans-serif;color:#b3306b;background:#fbe6f0;border:1px solid #f2c4da;white-space:nowrap;vertical-align:middle;}
-.mlt-val-tag{display:inline-block;font-size:9px;font-weight:600;letter-spacing:.02em;padding:1px 5px;margin:0 2px;border-radius:3px;font-family:-apple-system,sans-serif;color:#4a5568;background:#eef1f5;border:1px solid #dce1e8;white-space:nowrap;vertical-align:middle;}
+.mlt-attr-tag{display:inline-block;font-size:9px;font-weight:600;letter-spacing:.02em;padding:1px 5px;margin:0 2px;border-radius:3px;font-family:-apple-system,sans-serif;color:#b3306b;background:#fbe6f0;border:1px solid #f2c4da;vertical-align:middle;max-width:100%;overflow-wrap:break-word;line-height:1.3;}
+.mlt-val-tag{display:inline-block;font-size:9px;font-weight:600;letter-spacing:.02em;padding:1px 5px;margin:0 2px;border-radius:3px;font-family:-apple-system,sans-serif;color:#4a5568;background:#eef1f5;border:1px solid #dce1e8;vertical-align:middle;max-width:100%;overflow-wrap:break-word;line-height:1.3;}
 .mlt-footer-block, .mlt-footer-block *{pointer-events:none!important;cursor:not-allowed!important;user-select:none!important;}
 .mlt-footer-block{position:relative;}
 .mlt-footer-block::before{content:"Footer preview — not selectable";position:absolute;top:6px;left:50%;transform:translateX(-50%);background:rgba(20,20,40,.72);color:#fff;font:700 9px/1 -apple-system,sans-serif;letter-spacing:.03em;text-transform:uppercase;padding:4px 9px;border-radius:20px;pointer-events:none;z-index:20;white-space:nowrap;}
