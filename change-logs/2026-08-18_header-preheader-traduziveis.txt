@@ -334,3 +334,10 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
   Nova classe .camp-item-preview.appmsg{height:320px} pra push E in-app (e-mail segue 440px).
   Galeria adiciona 'appmsg' quando type é push/inapp; conteúdo do push centralizado (não flutua
   no topo). Verificado: os dois boxes com 320px iguais; in-app real cabe no box (screenshot).
+
+[2026-08-19] Fix: lápis (✎) de renomear pasta não aparecia no card da home.
+  Causa: .proj-rename-btn tem opacity:0 e só era revelado por ".proj-row:hover .proj-rename-btn";
+  o card da pasta é .folder-card (não .proj-row), então o botão ficava invisível pra sempre.
+  Correção: adicionada regra ".folder-card:hover .proj-rename-btn{opacity:1;}" — o lápis aparece
+  no hover do card, igual aos projetos soltos. O rename em si (openRenameProjectModal/save) já
+  funcionava; só faltava conseguir clicar.
