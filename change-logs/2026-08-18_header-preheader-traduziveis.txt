@@ -304,3 +304,8 @@ REVISÃO (mesmo dia) — box de código do "Export to Braze" quebra linha (sem s
 - .hm-code pre: white-space:pre → pre-wrap + word-break/overflow-wrap + max-height:300px. Subject/
   preheader/HTML agora quebram linha dentro do box (sem barra horizontal); HTML longo rola vertical
   num limite. Verificado: 0 overflow horizontal nos 3 boxes (screenshot).
+
+REVISÃO (mesmo dia) — "Export to Braze" com respiro (modal estreito + padding)
+- Modal era 960px (largo demais pro layout vertical de passos, texto curto esticava e ficava
+  "sem respiro"). .hm-box max-width 960→600px; .hm-body ganhou padding 20px 26px 24px. Passos
+  separados, boxes contidos. Screenshot conferido.
