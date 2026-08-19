@@ -466,3 +466,21 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
     contraprova de que traduzir texto normal segue LIVRE); pasta 6/6 (mesmos guardas + tradução
     livre); dono não bloqueado; faixa some ao sair; modal mostra os 3 papéis e reflete o salvo;
     merge-invariants 9/9.
+
+[2026-08-19] Soft block — fecha também UPLOAD de CSV/XLSX e RESTORE de versão.
+  Eram as duas brechas que sobraram do primeiro corte: as duas trocam conteúdo em MASSA (upload
+  reescreve traduções e pode mudar a estrutura; restore troca o projeto inteiro por uma versão
+  antiga), então deixá-las abertas anulava o resto do bloqueio.
+  Guardas (5 novos, total 19), sempre em par "entrada da UI + worker", como já era no Edit
+  Tagged HTML — a 2ª barreira cobre quem já estava com a tela/modal aberto e a chamada direta:
+    upload avulso  -> onEditorCsvUpload (limpa o input pra o mesmo arquivo poder ser re-tentado
+                      depois que o papel mudar)
+    upload pasta   -> openItemCsvModal (abre) + onItemCsvFile (aplica)
+    restore        -> onRestoreVersion (UI, barra ANTES do confirm) + restoreProjectVersion
+                      (worker, devolve false)
+  CSS esconde os 3 botões; a faixa e o texto do modal de share passaram a citar as duas ações.
+  "Save backup" segue LIBERADO de propósito: só cria um ponto de restauração, não altera nada.
+  Verificado: avulso 4/4, pasta 9/9 (inclui contraprova de que sem soft block tudo volta a
+  funcionar: botão reaparece, faixa some, modal abre), merge-invariants 9/9.
+  Nota de teste: uma falha inicial em "modal não abre" era estado residual de um teste anterior
+  que abortou com o modal aberto — reproduzido isolado, passa.

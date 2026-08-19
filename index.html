@@ -1046,7 +1046,10 @@ body.soft-blocked th button[onclick^="delLang"],       /* × de remover idioma (
 body.soft-blocked th button[onclick^="campDelLang"],   /* × de remover idioma (pasta) */
 body.soft-blocked button[onclick^="rescanMissedLines"],
 body.soft-blocked button[onclick^="openTaggedHtmlEditorForCurrentProject"],
-body.soft-blocked button[onclick^="openTaggedHtmlEditorForCampaignItem"]{ display:none !important; }
+body.soft-blocked button[onclick^="openTaggedHtmlEditorForCampaignItem"],
+body.soft-blocked button[onclick^="openItemCsvModal"],                        /* upload (pasta) */
+body.soft-blocked button[onclick*="editorCsvInput"],                          /* upload (avulso) */
+body.soft-blocked button[onclick^="onRestoreVersion"]{ display:none !important; }
 /* Coluna Origin e URL de imagem ficam com cara de campo travado. */
 body.soft-blocked tr.img-row td.tl input.img-url{ cursor:not-allowed;color:var(--text3);background:repeating-linear-gradient(45deg,transparent,transparent 6px,rgba(128,128,128,.06) 6px,rgba(128,128,128,.06) 12px); }
 body.soft-blocked tr.img-row td.tl input.img-url:hover,
@@ -5528,6 +5531,7 @@ function computeProjectDiff(current, version){
 // preenchidas mais novas de outra pessoa não são apagadas). Antes de restaurar, grava um
 // backup do estado atual ("Antes de restaurar"), então dá sempre pra voltar.
 async function restoreProjectVersion(versionId){
+  if(typeof softBlockDeny === 'function' && softBlockDeny('restore')) return false;
   const payload = await fetchProjectVersionPayload(versionId);
   if(!payload || !payload.id){ uiNotify(t('versionHistory.cantLoad'), {type:'error'}); return false; }
   const projects = projGetAll();
@@ -5676,6 +5680,8 @@ function _refreshEditorAfterRestore(proj){
 }
 
 async function onRestoreVersion(versionId){
+  // Soft block: restaurar troca o projeto INTEIRO (linhas, imagens, HTML) por uma versão antiga.
+  if(typeof softBlockDeny === 'function' && softBlockDeny('restore')) return;
   if(!confirm(t('versionHistory.restoreConfirm'))) return;
   setVhBusy(true, t('versionHistory.restoring')); // estado "Restoring…" até o backend confirmar
   let ok = false;
@@ -7433,6 +7439,7 @@ async function confirmAddItem() {
 
 // ── Upload de CSV pro item ativo ────────────────────────────────────────────
 function openItemCsvModal() {
+  if(typeof softBlockDeny === 'function' && softBlockDeny('upload')) return;
   const item = _campaign && _campaign.items[_campaignItemIndex];
   if(!item) return;
   document.getElementById('itemCsvSub').textContent = `Update translations for "${item.name}" from a CSV/XLSX.`;
@@ -7443,6 +7450,7 @@ function closeItemCsvModal() {
 }
 
 function onItemCsvFile(f) {
+  if(typeof softBlockDeny === 'function' && softBlockDeny('upload')) { const el=document.getElementById('itemCsvInput'); if(el) el.value=''; return; }
   if(!f) return;
   const isXlsx = /\.xlsx?$/i.test(f.name);
   const r = new FileReader();
@@ -9779,6 +9787,8 @@ function isValidSpreadsheet(f) {
 // aberta, casando por ID (a mesma chave que já vive tageada no HTML), sem precisar
 // refazer o wizard inteiro nem perder comentários/estado de aprovação já existentes.
 function onEditorCsvUpload(f) {
+  // Soft block: subir CSV/XLSX reescreve traduções em massa e pode mexer na estrutura.
+  if(typeof softBlockDeny === 'function' && softBlockDeny('upload')) { const el=document.getElementById('editorCsvInput'); if(el) el.value=''; return; }
   if(!f) return;
   if(!isValidSpreadsheet(f)) { showSyncWarning('Please upload a .csv or .xlsx file.'); return; }
   const isXlsx = /\.xlsx?$/i.test(f.name);

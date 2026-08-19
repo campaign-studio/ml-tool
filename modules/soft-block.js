@@ -8,6 +8,8 @@
  *   1. imagens          — não edita a URL das linhas de imagem nem muda a seleção de imagens
  *   2. linhas           — não adiciona (Re-scan) nem exclui linha
  *   3. HTML de origem   — não abre/salva o "Edit Tagged HTML" nem edita a coluna Origin
+ *   4. upload de CSV    — subir planilha reescreve tradução em massa e pode mudar a estrutura
+ *   5. restore de versão— trocar o projeto inteiro por uma versão antiga desfaz tudo de uma vez
  * Também não remove uma COLUNA DE IDIOMA inteira: não estava na lista original, mas deixar isso
  * aberto tornaria o bloqueio decorativo (dá pra apagar a coluna em vez das linhas), e o estrago
  * é maior que o de excluir uma linha.
@@ -76,7 +78,9 @@
     rowAdd: 'Soft block: you can translate, but rows can\'t be added on this project.',
     lang:   'Soft block: you can translate, but language columns can\'t be removed on this project.',
     html:   'Soft block: you can translate, but the origin HTML is locked on this project.',
-    origin: 'Soft block: you can translate, but the origin column is locked on this project.'
+    origin: 'Soft block: you can translate, but the origin column is locked on this project.',
+    upload: 'Soft block: you can translate, but uploading a CSV/XLSX is locked on this project.',
+    restore: 'Soft block: you can translate, but restoring an earlier version is locked on this project.'
   };
 
   // Porteiro das ações: devolve TRUE (= barrado) e avisa; FALSE deixa passar. Cada ação
@@ -112,7 +116,7 @@
     el.id = 'softBlockBanner';
     el.className = 'soft-block-banner';
     el.innerHTML = '<span class="sb-dot"></span>' +
-      '<span><b>Soft block</b> — you can translate. Images, rows and the origin HTML are locked by the owner.</span>';
+      '<span><b>Soft block</b> — you can translate. Images, rows, the origin HTML, CSV upload and version restore are locked by the owner.</span>';
     document.body.appendChild(el);
   }
   function _removeBanner() {
