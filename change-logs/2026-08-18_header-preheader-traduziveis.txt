@@ -328,3 +328,9 @@ REVISÃO (mesmo dia) — ícone do PUSH: imagem da marca no lugar do sino (previ
 - PUSH_ICON_URL + pushIconHtml(px,radius): <img> da marca no tamanho do quadrado. Substituiu o
   sino 🔔 nos 5 lugares (preview de campanha 44px, cards 38/36/28px, e approval 44px). Imagem
   externa (braze-images) carrega 200 (228x230). Só o 🔔 do botão "Push" do seletor de tipo ficou.
+
+REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deixar vão gigante)
+- .camp-item-preview era 440px fixo pra todos → push (card pequeno) ficava com vão enorme.
+  Nova classe .camp-item-preview.appmsg{height:320px} pra push E in-app (e-mail segue 440px).
+  Galeria adiciona 'appmsg' quando type é push/inapp; conteúdo do push centralizado (não flutua
+  no topo). Verificado: os dois boxes com 320px iguais; in-app real cabe no box (screenshot).
