@@ -1454,6 +1454,16 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
       <div style="width:42%;min-width:320px;display:flex;flex-direction:column;background:#f2f1f6;">
         <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <span style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;">Preview</span>
+          <div class="sp-wrap" id="campVSizeWrap">
+            <button class="sp active" onclick="setCampVS('full',this)">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/></svg>
+              Full
+            </button>
+            <button class="sp" onclick="setCampVS('mobile',this)">
+              <svg width="9" height="11" viewBox="0 0 18 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="1" width="14" height="22" rx="3"/><circle cx="9" cy="19" r="1" fill="currentColor" stroke="none"/></svg>
+              Mobile
+            </button>
+          </div>
           <div class="sp-wrap" id="campCondBranchWrap" title="Preview test only — doesn't affect the tagged HTML or the CSV" style="display:none;"></div>
           <div class="lbar" id="campaignItemLbar" style="flex:1;"></div>
         </div>
@@ -7006,7 +7016,8 @@ function renderCampaignPreview(item, lang) {
   const html = injectCampaignLiveUpdateScript(buildPreviewHtml(lang));
   const srcdoc = html.replace(/"/g, '&quot;');
   const isInapp = item.type === 'inapp';
-  wrap.innerHTML = `<iframe id="campaignPreviewFrame" style="width:100%;height:560px;border:none;border-radius:12px;background:${isInapp ? 'transparent' : '#fff'};${isInapp ? '' : 'box-shadow:0 2px 12px rgba(0,0,0,.08);'}" srcdoc="${srcdoc}"></iframe>`;
+  const vw = _campVSize === 'mobile' ? '375px' : '100%'; // Full/Mobile do preview da pasta
+  wrap.innerHTML = `<iframe id="campaignPreviewFrame" style="width:${vw};max-width:100%;margin:0 auto;height:560px;border:none;border-radius:12px;background:${isInapp ? 'transparent' : '#fff'};${isInapp ? '' : 'box-shadow:0 2px 12px rgba(0,0,0,.08);'}" srcdoc="${srcdoc}"></iframe>`;
   _campPreviewLoadedKey = item.id + '::' + (lang || '');
 }
 
@@ -12597,6 +12608,23 @@ function setVS(sz,btn){
     // de celular mesmo estando no modo "Full". "Mobile" usa 375px pra realmente
     // disparar esse breakpoint e simular a visualização no celular de propósito.
     iframe.style.width    = sz==='mobile' ? '375px' : '680px';
+    iframe.style.maxWidth = '100%';
+    iframe.style.margin   = '0 auto';
+    iframe.style.display  = 'block';
+  }
+}
+
+// Full/Mobile do preview da PASTA (item de campanha) — mesma ideia do setVS avulso, mas no
+// #campaignPreviewFrame. "Mobile" = 375px (dispara o breakpoint mobile do e-mail); "Full" = 100%
+// do painel de preview da pasta (mais estreito que o avulso).
+let _campVSize = 'full';
+function setCampVS(sz, btn){
+  document.querySelectorAll('#campVSizeWrap .sp').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  _campVSize = sz;
+  const iframe = document.getElementById('campaignPreviewFrame');
+  if(iframe){
+    iframe.style.width    = sz==='mobile' ? '375px' : '100%';
     iframe.style.maxWidth = '100%';
     iframe.style.margin   = '0 auto';
     iframe.style.display  = 'block';

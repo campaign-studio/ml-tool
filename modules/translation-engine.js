@@ -1103,6 +1103,13 @@ function injectCondStyle(html){
 // mais de um lugar. Sem isso, tags Liquid cruas apareciam como texto enorme sem quebra de
 // linha, estourando o layout onde quer que o e-mail fosse exibido.
 function replaceLiquidPlaceholders(html){
+  // Só substitui Liquid em TEXTO (fora de <...>). Inserir um <span> de pill DENTRO de um atributo
+  // (ex: <a href="{{...}}">, <img width="{{...}}">) quebrava o markup: o '>' do span fechava a tag
+  // cedo e vazava o resto (href/style/…) como texto visível. Tokeniza por tags e processa só os
+  // pedaços de texto; o conteúdo das tags/atributos fica intacto (Liquid num atributo não é visível).
+  return html.split(/(<[^>]*>)/).map((tok, i) => (i % 2 === 1) ? tok : _replaceLiquidInText(tok)).join('');
+}
+function _replaceLiquidInText(html){
   // TODO custom attribute (first_name, client_name, …) vira um PILL pequeno com o NOME do atributo
   // humanizado ("First Name", "Client Name") — no mesmo espírito das tags de if/else. SÓ preview:
   // nunca toca o HTML/CSV/export.
