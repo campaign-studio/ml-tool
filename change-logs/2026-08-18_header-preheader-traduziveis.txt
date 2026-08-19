@@ -484,3 +484,22 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
   funcionar: botão reaparece, faixa some, modal abre), merge-invariants 9/9.
   Nota de teste: uma falha inicial em "modal não abre" era estado residual de um teste anterior
   que abortou com o modal aberto — reproduzido isolado, passa.
+
+[2026-08-19] Soft block — silencioso para quem está bloqueado + função 100% em inglês.
+  Mudança de produto: a pessoa em soft block NÃO é avisada de que está em soft block. Ela abre e
+  traduz, ponto. Removidos os 3 canais que denunciavam:
+    - a faixa fixa no rodapé (elemento + CSS)
+    - as mensagens de softBlockDeny() — a função agora só devolve true/false, sem notificar
+    - o title/tooltip "Soft block: ..." no input de URL de imagem
+    - a notificação de compartilhamento, que dizia "Images, rows and the origin HTML are locked";
+      volta a ser exatamente o convite normal de editor
+  Os controles estruturais continuam simplesmente NÃO renderizados — é isso que faz a experiência
+  ser "entrar e editar" em vez de "bater numa parede". Os 19 guardas continuam valendo (agora sem
+  argumento: softBlockDeny() é só o porteiro).
+  O texto no modal de SHARE continua existindo e em inglês, de propósito: quem precisa entender o
+  que o papel faz é o DONO, que está aplicando.
+  Código do soft block passou todo para inglês (módulo + comentários dos guardas no index.html +
+  comentários do bloco CSS), a pedido.
+  Verificado: 13/13 no avulso com espião em uiNotify/showNotif/uiAlert/showSyncWarning —
+  todos os bloqueios ativos e ZERO avisos capturados, sem faixa e sem tooltip; contraprova sem
+  soft block devolve botões de excluir linha, Edit Tagged HTML e Upload; merge-invariants 9/9.

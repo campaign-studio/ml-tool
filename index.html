@@ -1039,27 +1039,23 @@ td.tl-cell.mlt-live-updated{animation:mltLiveFlash 1.6s ease-out;}
 .mlt-live-bar button.ghost{background:none;color:var(--text3);text-decoration:underline;padding:7px 4px;}
 
 /* ── SOFT BLOCK (modules/soft-block.js) ──────────────────────────────────────────────────────
-   Esconder o controle é só conforto — o bloqueio de verdade está no começo de cada ação
-   (softBlockDeny), senão bastava o console pra furar. */
-body.soft-blocked td.del button,                       /* × de excluir linha (as duas grades) */
-body.soft-blocked th button[onclick^="delLang"],       /* × de remover idioma (avulso) */
-body.soft-blocked th button[onclick^="campDelLang"],   /* × de remover idioma (pasta) */
+   Hiding the control is what makes it feel natural: the person just doesn't see the structural
+   actions. The real block is at the top of each action (softBlockDeny) — otherwise the console
+   alone would defeat it. Nothing here announces the restriction; that is deliberate. */
+body.soft-blocked td.del button,                       /* × delete row (both grids) */
+body.soft-blocked th button[onclick^="delLang"],       /* × remove language (loose) */
+body.soft-blocked th button[onclick^="campDelLang"],   /* × remove language (folder) */
 body.soft-blocked button[onclick^="rescanMissedLines"],
 body.soft-blocked button[onclick^="openTaggedHtmlEditorForCurrentProject"],
 body.soft-blocked button[onclick^="openTaggedHtmlEditorForCampaignItem"],
-body.soft-blocked button[onclick^="openItemCsvModal"],                        /* upload (pasta) */
-body.soft-blocked button[onclick*="editorCsvInput"],                          /* upload (avulso) */
+body.soft-blocked button[onclick^="openItemCsvModal"],                        /* upload (folder) */
+body.soft-blocked button[onclick*="editorCsvInput"],                          /* upload (loose) */
 body.soft-blocked button[onclick^="onRestoreVersion"]{ display:none !important; }
-/* Coluna Origin e URL de imagem ficam com cara de campo travado. */
+/* Image URL reads as a locked field — no tooltip, nothing that spells out why. */
 body.soft-blocked tr.img-row td.tl input.img-url{ cursor:not-allowed;color:var(--text3);background:repeating-linear-gradient(45deg,transparent,transparent 6px,rgba(128,128,128,.06) 6px,rgba(128,128,128,.06) 12px); }
 body.soft-blocked tr.img-row td.tl input.img-url:hover,
 body.soft-blocked tr.img-row td.tl input.img-url:focus{ background:repeating-linear-gradient(45deg,transparent,transparent 6px,rgba(128,128,128,.06) 6px,rgba(128,128,128,.06) 12px); }
-.soft-block-banner{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;
-  background:var(--surface);color:var(--text2);border:1px solid var(--border);border-radius:20px;
-  padding:8px 16px;font-size:12px;font-family:var(--sans);box-shadow:0 4px 18px rgba(0,0,0,.16);z-index:9997;
-  max-width:min(560px,92vw);}
-.soft-block-banner b{color:var(--text);}
-.soft-block-banner .sb-dot{width:7px;height:7px;border-radius:50%;background:var(--brand);flex-shrink:0;}
+.soft-blocked-noop{}/* soft block has no banner/notice on purpose — see modules/soft-block.js */
 /* "Approve by Locale": cada ITEM (e-mail/in-app/push) vira UM card branco contendo o PAR
    origem + tradução — quem aprova compara original e traduzido dentro da mesma moldura, em
    vez de caçar os dois soltos no canvas. E-mail: par lado a lado. Push/in-app: empilhado. */
@@ -5531,7 +5527,7 @@ function computeProjectDiff(current, version){
 // preenchidas mais novas de outra pessoa não são apagadas). Antes de restaurar, grava um
 // backup do estado atual ("Antes de restaurar"), então dá sempre pra voltar.
 async function restoreProjectVersion(versionId){
-  if(typeof softBlockDeny === 'function' && softBlockDeny('restore')) return false;
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) return false; // soft block: no restore
   const payload = await fetchProjectVersionPayload(versionId);
   if(!payload || !payload.id){ uiNotify(t('versionHistory.cantLoad'), {type:'error'}); return false; }
   const projects = projGetAll();
@@ -5680,8 +5676,8 @@ function _refreshEditorAfterRestore(proj){
 }
 
 async function onRestoreVersion(versionId){
-  // Soft block: restaurar troca o projeto INTEIRO (linhas, imagens, HTML) por uma versão antiga.
-  if(typeof softBlockDeny === 'function' && softBlockDeny('restore')) return;
+  // Soft block: restoring swaps the WHOLE project (rows, images, HTML) for an older version.
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) return;
   if(!confirm(t('versionHistory.restoreConfirm'))) return;
   setVhBusy(true, t('versionHistory.restoring')); // estado "Restoring…" até o backend confirmar
   let ok = false;
@@ -5880,8 +5876,8 @@ function releaseAllMyApprovingPresence() {
 }
 
 async function goToDashboard() {
-  // Saiu do editor: tira a faixa/estado visual do soft block (o guarda das ações continua valendo).
-  try{ document.body.classList.remove('soft-blocked'); document.getElementById('softBlockBanner')?.remove(); }catch(e){}
+  // Left the editor: drop the soft-block styling hook (the action guards still apply).
+  try{ document.body.classList.remove('soft-blocked'); }catch(e){}
   try{ _flushSafetySnap(); }catch(e){} // saindo do editor: grava o ponto de restore pendente da rajada
   try{ _flushPendingAutoSnapshot(); }catch(e){} // sair é pausa natural: fecha o snapshot de histórico pendente
   presenceSetProject(null); // saí do editor — deixo de aparecer como presente em qualquer projeto
@@ -6950,7 +6946,7 @@ function renderCampaignGrid(item) {
   // <table> persiste entre re-renders; só o innerHTML troca, então a delegação sobrevive).
   _gridBodyId = 'campGstb';
   _gridWrite = setCampaignCell;
-  if(typeof softBlockApplyUi === 'function') softBlockApplyUi(); // trava visual do soft block
+  if(typeof softBlockApplyUi === 'function') softBlockApplyUi(); // soft block: hide structural controls
   wireGridController('campaignItemTable');
   gridReapplyHighlight();
   setTimeout(() => syncAllRowHeights('campGstb') , 0);
@@ -6959,7 +6955,7 @@ function renderCampaignGrid(item) {
 // Remove um idioma inteiro do item de pasta — espelha delLang() do editor avulso, mas escopado
 // a ESTE item só (langs/traduções são por-item na campanha, não globais como no avulso).
 async function campDelLang(l) {
-  if(typeof softBlockDeny === 'function' && softBlockDeny('lang')) return; // soft block: sem remover idioma
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) return; // soft block: no removing a language
   const item = _campaign && _campaign.items[_campaignItemIndex];
   if(!item) return;
   if(!(await uiConfirm(`Remove column "${l}"?`, {title:'Remove column', okLabel:'Remove', danger:true}))) return;
@@ -6978,7 +6974,7 @@ async function campDelLang(l) {
 // (item.deletedRowIds) que o mergeItemRows precisa pra não RESSUSCITAR a linha quando outra
 // aba com cópia velha do item salvar depois (mesmo bug já corrigido no lado avulso).
 function campDelRow(ri) {
-  if(typeof softBlockDeny === 'function' && softBlockDeny('rowDel')) return; // soft block: sem excluir linha
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) return; // soft block: no deleting rows
   const item = _campaign && _campaign.items[_campaignItemIndex];
   if(!item || !item.rows || !item.rows[ri]) return;
   maybeSnapshotBeforeStructuralDelete();
@@ -6997,7 +6993,7 @@ function campDelRow(ri) {
 }
 
 function setCampaignOrigin(ri, value) {
-  if(typeof softBlockDeny === 'function' && softBlockDeny('origin')) return; // soft block: origem travada
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) return; // soft block: origin column locked
   const item = _campaign.items[_campaignItemIndex];
   if(!item || !item.rows[ri]) return;
   item.rows[ri].src = value;
@@ -7009,8 +7005,8 @@ function setCampaignOrigin(ri, value) {
 function setCampaignCell(ri, lang, value) {
   const item = _campaign.items[_campaignItemIndex];
   if(!item || !item.rows[ri]) return;
-  // Soft block trava só a linha de IMAGEM (URL) — texto normal continua traduzível.
-  if(item.rows[ri].isImg && typeof softBlockDeny === 'function' && softBlockDeny('image')) { renderCampaignGrid(item); return; }
+  // Soft block locks the IMAGE row (URL) only — normal text stays translatable.
+  if(item.rows[ri].isImg && typeof softBlockDeny === 'function' && softBlockDeny()) { renderCampaignGrid(item); return; }
   const before = item.rows[ri].translations[lang] || '';
   // Célula sendo ESVAZIADA → backup antes de apagar (ver setCellV).
   if(before.trim() && !String(value||'').trim()) maybeSnapshotBeforeStructuralDelete();
@@ -7439,7 +7435,7 @@ async function confirmAddItem() {
 
 // ── Upload de CSV pro item ativo ────────────────────────────────────────────
 function openItemCsvModal() {
-  if(typeof softBlockDeny === 'function' && softBlockDeny('upload')) return;
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) return; // soft block: no CSV upload
   const item = _campaign && _campaign.items[_campaignItemIndex];
   if(!item) return;
   document.getElementById('itemCsvSub').textContent = `Update translations for "${item.name}" from a CSV/XLSX.`;
@@ -7450,7 +7446,7 @@ function closeItemCsvModal() {
 }
 
 function onItemCsvFile(f) {
-  if(typeof softBlockDeny === 'function' && softBlockDeny('upload')) { const el=document.getElementById('itemCsvInput'); if(el) el.value=''; return; }
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) { const el=document.getElementById('itemCsvInput'); if(el) el.value=''; return; } // soft block
   if(!f) return;
   const isXlsx = /\.xlsx?$/i.test(f.name);
   const r = new FileReader();
@@ -8132,8 +8128,8 @@ function openTaggedHtmlEditorForCampaignItem() {
 }
 
 function openTaggedHtmlEditor(projectId, itemId) {
-  // Guarda no ponto único por onde os DOIS botões passam (avulso e item de pasta).
-  if(typeof softBlockDeny === 'function' && softBlockDeny('html')) return;
+  // Single choke point both buttons go through (loose project and folder item).
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) return; // soft block: origin HTML locked
   const found = findEditableHtmlTarget(projectId, itemId);
   if(!found) { showNotif('Could not find that project/item anymore — it may have been deleted.', 'warn'); return; }
   const { p, item } = found;
@@ -8217,7 +8213,7 @@ function validateTaggedHtmlEdit(oldHtml, newHtml) {
 }
 
 function saveTaggedHtmlEditClick() {
-  if(typeof softBlockDeny === 'function' && softBlockDeny('html')) return; // soft block: 2ª barreira
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) return; // soft block: second barrier
   if(!_editHtmlCurrentTarget) return;
   const newHtml = document.getElementById('editHtmlTextarea').value;
   const { warnings, hasWarnings } = validateTaggedHtmlEdit(_editHtmlCurrentTarget.loadedHtml, newHtml);
@@ -8543,6 +8539,8 @@ async function leaveSharedProject(id) {
   const beforeJson = JSON.stringify(p);
   p.sharedWith = (p.sharedWith || []).filter(e => e.toLowerCase() !== me.email.toLowerCase());
   p.approvers = (p.approvers || []).filter(e => e.toLowerCase() !== me.email.toLowerCase());
+  // Also drop them from softBlocked: otherwise the e-mail lingers and they'd come back
+  // restricted if someone shares the project with them again later.
   p.softBlocked = (p.softBlocked || []).filter(e => e.toLowerCase() !== me.email.toLowerCase());
   // Mesma garantia do setMemberRole: sair só vale se o banco confirmar, senão desfaz e avisa
   // (antes era fire-and-forget — a pessoa "saía" na tela e continuava com acesso no banco).
@@ -9148,8 +9146,8 @@ function openShareModal(id, keepFilter) {
     return;
   }
 
-  // Papel efetivo (approver | softblock | editor | null) — a regra mora em modules/soft-block.js
-  // pra o modal e o gravador (setMemberRole) nunca discordarem sobre o que a pessoa é.
+  // Effective role (approver | softblock | editor | null) — the rule lives in
+  // modules/soft-block.js so the modal and the writer (setMemberRole) can never disagree.
   const roleOf = u => (typeof softBlockRoleOf === 'function')
     ? softBlockRoleOf(p, u.email)
     : ((p.approvers||[]).some(e => e.toLowerCase() === u.email.toLowerCase()) ? 'approver'
@@ -9335,9 +9333,9 @@ async function setMemberRole(projId, email, role, rowId) {
     p.sharedWith = p.sharedWith || [];
     p.approvers = p.approvers || [];
     p.softBlocked = p.softBlocked || [];
-    // Papel efetivo ANTES e aplicação do novo: as duas coisas vêm de modules/soft-block.js, que é
-    // dono da regra dos 3 papéis mutuamente exclusivos (editor | softblock | approver) e mexe nas
-    // 3 listas de uma vez — assim o modal e a gravação nunca discordam.
+    // Previous role and applying the new one both come from modules/soft-block.js, which owns the
+    // rule of 3 mutually exclusive roles (editor | softblock | approver) and updates the 3 lists
+    // in one place — so the modal and the write path can never disagree.
     const hadRole = (typeof softBlockRoleOf === 'function') ? softBlockRoleOf(p, email) : null;
     if(typeof softBlockApplyRole === 'function') {
       softBlockApplyRole(p, email, role);
@@ -9364,9 +9362,10 @@ async function setMemberRole(projId, email, role, rowId) {
 
     if(role && role !== hadRole) {
       const me = authCurrentUser();
-      notifAdd(email, me.email,
-        role === 'approver' ? `${me.email} made you an approver on "${p.name}". Review the copies whenever you're ready.`
-        : role === 'softblock' ? `${me.email} shared "${p.name}" with you to translate. Images, rows and the origin HTML are locked.`
+      // Soft block is SILENT for the person under it (see modules/soft-block.js): the invite
+      // reads exactly like a normal editor invite — they just open it and translate.
+      notifAdd(email, me.email, role === 'approver'
+        ? `${me.email} made you an approver on "${p.name}". Review the copies whenever you're ready.`
         : `${me.email} shared "${p.name}" with you to edit.`);
     }
   } catch(e) {
@@ -9787,8 +9786,8 @@ function isValidSpreadsheet(f) {
 // aberta, casando por ID (a mesma chave que já vive tageada no HTML), sem precisar
 // refazer o wizard inteiro nem perder comentários/estado de aprovação já existentes.
 function onEditorCsvUpload(f) {
-  // Soft block: subir CSV/XLSX reescreve traduções em massa e pode mexer na estrutura.
-  if(typeof softBlockDeny === 'function' && softBlockDeny('upload')) { const el=document.getElementById('editorCsvInput'); if(el) el.value=''; return; }
+  // Soft block: a spreadsheet rewrites translations in bulk and can change the structure.
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) { const el=document.getElementById('editorCsvInput'); if(el) el.value=''; return; }
   if(!f) return;
   if(!isValidSpreadsheet(f)) { showSyncWarning('Please upload a .csv or .xlsx file.'); return; }
   const isXlsx = /\.xlsx?$/i.test(f.name);
@@ -10710,7 +10709,7 @@ function imgThumbHtml(s, i, imgs) {
 }
 
 function toggleImg(i) {
-  if(typeof softBlockDeny === 'function' && softBlockDeny('image')) return; // soft block: imagens travadas
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) return; // soft block: images locked
   const imgs = S.strings.filter(s => s.isImg);
   const s = imgs[i]; if(!s) return;
   const key = s.imgKey || s.src;
@@ -10724,7 +10723,7 @@ function toggleImg(i) {
 
 // Called from iframe postMessage when user clicks an image in pick mode
 function onImgPickClick(key) {
-  if(typeof softBlockDeny === 'function' && softBlockDeny('image')) return; // soft block: imagens travadas
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) return; // soft block: images locked
   const imgs = S.strings.filter(s => s.isImg);
   const i = imgs.findIndex(s => (s.imgKey || s.src) === key);
   if(i < 0) return;
@@ -10971,7 +10970,7 @@ function renderConfirm() {
 //    versão antiga) não tem, e ANEXA no fim (como as últimas tags), com traduções vazias. Não
 //    renumera nem toca no que já existe. Idempotente: rodar de novo não duplica. ──────────────
 async function rescanMissedLines(){
-  if(typeof softBlockDeny === 'function' && softBlockDeny('rowAdd')) return; // soft block: sem adicionar linha
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) return; // soft block: no adding rows
   if(typeof S==='undefined' || !S || !S.rawHtml || !S.csv){ uiNotify('Open a project first.', {type:'info'}); return; }
   const norm = s => String(s||'').replace(/\s+/g,' ').trim();
   const savedSrc = new Set((S.csv.rows||[]).map(r => norm(r.src)));
@@ -11076,7 +11075,7 @@ function buildTable() {
   if(t) t.innerHTML = buildGridHead({ name: S.csv.name, origLangName: origC?.lang, langs, delLangFn: 'delLang' })
     + `<tbody id="gstb">${rowsHTML()}</tbody>`;
   wireGridController();       // liga navegação/paste estilo planilha (uma vez, delegado no #gst)
-  if(typeof softBlockApplyUi === 'function') softBlockApplyUi(); // trava visual do soft block
+  if(typeof softBlockApplyUi === 'function') softBlockApplyUi(); // soft block: hide structural controls
   gridReapplyHighlight();     // re-aplica o realce da célula selecionada após re-render
   setTimeout(syncAllRowHeights, 0);
   openPendingCommentTarget();
@@ -11186,7 +11185,7 @@ function syncAllRowHeights(hostId){
     tas.forEach(t => t.style.height = maxH + 'px');
   });
 }
-function setSrcV(ri,v){if(typeof softBlockDeny==='function'&&softBlockDeny('origin'))return;S.csv.rows[ri].src=v;updatePreviewText(ri,null);scheduleAutosave();}
+function setSrcV(ri,v){if(typeof softBlockDeny==='function'&&softBlockDeny())return;/* soft block: origin locked */S.csv.rows[ri].src=v;updatePreviewText(ri,null);scheduleAutosave();}
 // Tombstones de célula ESVAZIADA de propósito (ver mergeLooseData/clearedCells): registra o
 // esvaziamento com timestamp pra o merge saber que foi intencional e mais novo; remove quando a
 // célula volta a ter conteúdo. Guardados em S.clearedCells (avulso) / item.clearedCells (campanha).
@@ -11215,8 +11214,8 @@ function _recordCellCleared(surface, itemId, rowId, lang, value){
 
 function setCellV(ri,l,v){
   const row=S.csv.rows[ri];
-  // Soft block trava só a linha de IMAGEM (URL) — texto normal continua traduzível.
-  if(row && row.isImg && typeof softBlockDeny === 'function' && softBlockDeny('image')) { reBody(); return; }
+  // Soft block locks the IMAGE row (URL) only — normal text stays translatable.
+  if(row && row.isImg && typeof softBlockDeny === 'function' && softBlockDeny()) { reBody(); return; }
   const before = row.translations[l] || '';
   // Célula sendo ESVAZIADA (tinha conteúdo, virou vazia) → backup antes de apagar. Chamado ANTES
   // de gravar o vazio pra o snapshot conter o conteúdo original.
@@ -12460,7 +12459,7 @@ function maybeSnapshotBeforeStructuralDelete(){
 window.addEventListener('beforeunload', _flushSafetySnap);
 
 function delRow(ri){
-  if(typeof softBlockDeny === 'function' && softBlockDeny('rowDel')) return; // soft block: sem excluir linha
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) return; // soft block: no deleting rows
   maybeSnapshotBeforeStructuralDelete();
   // Tombstone de LINHA deletada (ver mergeLooseData/deletedRowIds): carimba id+timestamp pra o
   // merge não RESSUSCITAR a linha quando outra aba com cópia velha (que ainda a tem) salvar depois.
@@ -12473,7 +12472,7 @@ function delRow(ri){
   S.csv.rows.splice(ri,1);reBody();debR();scheduleAutosave();
 }
 async function delLang(l){
-  if(typeof softBlockDeny === 'function' && softBlockDeny('lang')) return; // soft block: sem remover idioma
+  if(typeof softBlockDeny === 'function' && softBlockDeny()) return; // soft block: no removing a language
   if(!(await uiConfirm(`Remove column "${l}"?`, {title:'Remove column', okLabel:'Remove', danger:true})))return;
   maybeSnapshotBeforeStructuralDelete();
   S.csv.langs=S.csv.langs.filter(x=>x!==l);
@@ -13344,8 +13343,8 @@ window.addEventListener('message', function(e){
      JÁ ABERTO, célula a célula, sem tocar no que está sendo digitado. Depois dos outros módulos
      porque usa os globais do app (projGetAll, parseBrazeCsv, autoH…) em runtime. -->
 <script src="modules/live-coedit.js"></script>
-<!-- Soft block (ver modules/soft-block.js) — 3º papel do compartilhamento: traduz normalmente,
-     mas não mexe em imagens, não adiciona/exclui linha e não edita o HTML de origem. -->
+<!-- Soft block (see modules/soft-block.js) — third sharing role: translates normally, but can't
+     touch images, add/delete rows, edit the origin HTML, upload a CSV or restore a version. -->
 <script src="modules/soft-block.js"></script>
 </body>
 </html>

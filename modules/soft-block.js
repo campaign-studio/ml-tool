@@ -1,55 +1,62 @@
 /* ═══════════════════════════════════════════════════════════════════════════════════════════
- * modules/soft-block.js — SOFT BLOCK: acesso de edição RESTRITO, por pessoa, por projeto.
+ * modules/soft-block.js — SOFT BLOCK: restricted edit access, per person, per project.
  *
- * O QUE É
- * Um terceiro papel no compartilhamento, ao lado de Editor e Approver. Quem está em soft block
- * TRADUZ normalmente (é isso que se espera de um tradutor externo/parceiro), mas não pode mexer
- * na ESTRUTURA do projeto:
- *   1. imagens          — não edita a URL das linhas de imagem nem muda a seleção de imagens
- *   2. linhas           — não adiciona (Re-scan) nem exclui linha
- *   3. HTML de origem   — não abre/salva o "Edit Tagged HTML" nem edita a coluna Origin
- *   4. upload de CSV    — subir planilha reescreve tradução em massa e pode mudar a estrutura
- *   5. restore de versão— trocar o projeto inteiro por uma versão antiga desfaz tudo de uma vez
- * Também não remove uma COLUNA DE IDIOMA inteira: não estava na lista original, mas deixar isso
- * aberto tornaria o bloqueio decorativo (dá pra apagar a coluna em vez das linhas), e o estrago
- * é maior que o de excluir uma linha.
+ * WHAT IT IS
+ * A third role in sharing, alongside Editor and Approver. Someone under soft block translates
+ * normally (that is what you want from an external translator or partner), but cannot touch the
+ * STRUCTURE of the project:
+ *   1. images         — can't edit image-row URLs, can't change the image selection
+ *   2. rows           — can't add (Re-scan) and can't delete
+ *   3. origin HTML    — can't open/save "Edit Tagged HTML", can't edit the Origin column
+ *   4. CSV/XLSX upload— a spreadsheet rewrites translations in bulk and can change the structure
+ *   5. version restore— swapping the whole project for an older version undoes everything at once
+ * Removing a whole LANGUAGE COLUMN is blocked too. It wasn't in the original request, but leaving
+ * it open would make the block decorative (delete the column instead of the rows) and the damage
+ * is bigger than deleting a single row.
  *
- * POR QUE "SOFT"
- * Não é read-only (isso já existe: _approverMode, do papel Approver). A pessoa continua
- * escrevendo tradução, com autosave, merge e co-edição normais. O bloqueio é só na estrutura.
+ * WHY "SOFT"
+ * It is not read-only — that already exists (_approverMode, from the Approver role). The person
+ * keeps writing translations, with the usual autosave, merge and live co-editing. Only structure
+ * is locked.
  *
- * COMO É GUARDADO
- * p.softBlocked = ['email@x', ...] (minúsculas). A pessoa CONTINUA em p.sharedWith — ela tem
- * acesso, só é restrita. Guardar como lista de e-mails (e não um papel dentro de sharedWith)
- * deixa o merge concorrente de graça: 'softBlocked' entra em _BODY_MERGE_SET_LIST e é fundido
- * por UNIÃO, igual approvers/sharedWith — dois donos mexendo no compartilhamento ao mesmo tempo
- * não se sobrescrevem.
+ * SILENT BY DESIGN
+ * The blocked person is never TOLD they are blocked: no banner, no toast, no tooltip, and the
+ * share notification reads like a normal editor invite. The restricted controls simply are not
+ * rendered, so the experience is "open it and translate". softBlockDeny() therefore blocks
+ * quietly — it returns true and says nothing.
  *
- * GUARDA DE VERDADE, NÃO SÓ BOTÃO ESCONDIDO
- * softBlockApplyUi() esconde/desabilita os controles, mas cada AÇÃO também chama softBlockDeny()
- * na primeira linha. Sem isso, bastava o console pra furar o bloqueio — mesma lição já registrada
- * em setMemberRole ("Guard REAL de permissão (não só esconder botão)").
+ * HOW IT IS STORED
+ * p.softBlocked = ['email@x', ...] (lowercase). The person STAYS in p.sharedWith — they do have
+ * access, they are just restricted. Storing it as a list of e-mails (instead of a role field
+ * inside sharedWith) gives concurrent merge for free: 'softBlocked' is in _BODY_MERGE_SET_LIST
+ * and is merged by UNION, exactly like approvers/sharedWith, so two owners editing sharing at the
+ * same time never overwrite each other.
  *
- * Depende (em runtime) de globais do index.html: currentProjectId, projGetAll, authCurrentUser,
- * uiNotify/showNotif. Como em live-coedit.js: as variáveis let/const de topo (currentProjectId,
- * _campaign) NÃO estão em window — leitura por identificador com guarda de typeof.
+ * REAL GUARD, NOT JUST A HIDDEN BUTTON
+ * softBlockApplyUi() hides the controls, but every ACTION also calls softBlockDeny() on its first
+ * line. Without that, the console alone would defeat the block — the same lesson setMemberRole
+ * already records: a permission check has to be a real guard, not just a hidden button.
+ *
+ * Depends (at runtime) on index.html globals: currentProjectId, projGetAll, authCurrentUser.
+ * As in live-coedit.js: top-level let/const bindings (currentProjectId, _campaign) are NOT on
+ * window — they must be read by identifier, guarded with typeof.
  * ═══════════════════════════════════════════════════════════════════════════════════════════ */
 (function (global) {
   'use strict';
 
   const gProjId = () => (typeof currentProjectId !== 'undefined' ? currentProjectId : null);
-  const gCamp   = () => (typeof _campaign !== 'undefined' ? _campaign : null);
   const fn = (name) => (typeof global[name] === 'function' ? global[name] : null);
 
   const _lc = (s) => String(s || '').toLowerCase();
 
-  // Memo curto: isSoftBlocked() é consultado a cada tecla numa célula de imagem, e projGetAll()
-  // faz JSON.parse do store inteiro. 2s é curto o bastante pra uma mudança de papel refletir
-  // quase na hora e longo o bastante pra não pesar na digitação.
+  // Short memo: isSoftBlocked() is consulted on every keystroke in an image cell, and projGetAll()
+  // JSON.parses the whole store. 2s is short enough for a role change to show up almost at once,
+  // and long enough to stay off the typing path.
   let _memo = { id: null, at: 0, val: false };
   const MEMO_MS = 2000;
 
-  // A pessoa logada está em soft block NESTE projeto? Dono nunca é bloqueado (é quem aplica).
+  // Is the signed-in person under soft block on THIS project? The owner is never blocked — they
+  // are the one applying it.
   function isSoftBlocked(projectId) {
     const id = projectId || gProjId();
     if (!id) return false;
@@ -69,66 +76,35 @@
     return val;
   }
 
-  // Invalida o memo na hora (usado quando o próprio app muda o papel de alguém).
+  // Drop the memo immediately (used when the app itself changes someone's role).
   function softBlockInvalidate() { _memo = { id: null, at: 0, val: false }; }
 
-  const MSG = {
-    image:  'Soft block: you can translate, but image URLs are locked on this project.',
-    rowDel: 'Soft block: you can translate, but rows can\'t be deleted on this project.',
-    rowAdd: 'Soft block: you can translate, but rows can\'t be added on this project.',
-    lang:   'Soft block: you can translate, but language columns can\'t be removed on this project.',
-    html:   'Soft block: you can translate, but the origin HTML is locked on this project.',
-    origin: 'Soft block: you can translate, but the origin column is locked on this project.',
-    upload: 'Soft block: you can translate, but uploading a CSV/XLSX is locked on this project.',
-    restore: 'Soft block: you can translate, but restoring an earlier version is locked on this project.'
-  };
-
-  // Porteiro das ações: devolve TRUE (= barrado) e avisa; FALSE deixa passar. Cada ação
-  // estrutural chama isto na primeira linha.
-  function softBlockDeny(kind) {
-    if (!isSoftBlocked()) return false;
-    const msg = MSG[kind] || 'Soft block: this action is locked on this project.';
-    const notify = fn('uiNotify');
-    if (notify) notify(msg, { type: 'warn' });
-    else if (fn('showNotif')) global.showNotif(msg, 'warn');
-    return true;
+  // Action gatekeeper: returns TRUE (= blocked) or FALSE (= let it through). Every structural
+  // action calls this on its first line. Deliberately SILENT — see "silent by design" above.
+  function softBlockDeny() {
+    return isSoftBlocked();
   }
 
-  /* ── UI: esconde o que não pode ser usado (o guarda real está nas ações) ─────────────────── */
+  /* ── UI: don't render what can't be used (the real guard lives in the actions) ───────────── */
 
-  // Chamada depois de cada render de grade (buildTable / renderCampaignGrid) e ao abrir o editor.
+  // Called after every grid render (buildTable / renderCampaignGrid) and when opening the editor.
   function softBlockApplyUi() {
     const on = isSoftBlocked();
     document.body.classList.toggle('soft-blocked', on);
-    if (!on) { _removeBanner(); return; }
-    // Célula de imagem: readonly de verdade (o input de imagem não passa por textarea readonly
-    // como as células de tradução, que o controlador de grade libera no foco).
+    if (!on) return;
+    // Image cells: genuinely readonly. The image input is a plain <input>, so it does not go
+    // through the readonly-textarea dance the grid controller uses for translation cells.
+    // No title/tooltip here on purpose — it would announce the block.
     document.querySelectorAll('#gstb input.img-url, #campGstb input.img-url').forEach(el => {
       el.readOnly = true;
-      el.title = MSG.image;
     });
-    _showBanner();
   }
 
-  function _showBanner() {
-    if (document.getElementById('softBlockBanner')) return;
-    const el = document.createElement('div');
-    el.id = 'softBlockBanner';
-    el.className = 'soft-block-banner';
-    el.innerHTML = '<span class="sb-dot"></span>' +
-      '<span><b>Soft block</b> — you can translate. Images, rows, the origin HTML, CSV upload and version restore are locked by the owner.</span>';
-    document.body.appendChild(el);
-  }
-  function _removeBanner() {
-    const el = document.getElementById('softBlockBanner');
-    if (el) el.remove();
-  }
+  /* ── Sharing role ──────────────────────────────────────────────────────────────────────── */
 
-  /* ── Papel no compartilhamento ─────────────────────────────────────────────────────────── */
-
-  // Papel efetivo de um e-mail num projeto: 'approver' | 'softblock' | 'editor' | null.
-  // Aprovador nunca é "soft block": ele já não edita nada (_approverMode), então a combinação
-  // não significaria nada — por isso os três papéis são mutuamente exclusivos, como já eram.
+  // Effective role of an e-mail on a project: 'approver' | 'softblock' | 'editor' | null.
+  // An approver is never "soft block": they already edit nothing (_approverMode), so the
+  // combination would mean nothing — hence the three roles stay mutually exclusive, as before.
   function softBlockRoleOf(p, email) {
     const e = _lc(email);
     if ((p.approvers || []).some(x => _lc(x) === e)) return 'approver';
@@ -137,8 +113,8 @@
     return (p.softBlocked || []).some(x => _lc(x) === e) ? 'softblock' : 'editor';
   }
 
-  // Aplica o papel escolhido nas 3 listas do projeto. Recebe o objeto do projeto e muta —
-  // quem chama (setMemberRole) cuida de pull, permissão, gravação e rollback.
+  // Applies the chosen role across the project's 3 lists. Takes the project object and mutates it —
+  // the caller (setMemberRole) handles pull, permission, persistence and rollback.
   function softBlockApplyRole(p, email, role) {
     const e = _lc(email);
     p.sharedWith  = p.sharedWith  || [];
@@ -152,15 +128,15 @@
     if (!p.sharedWith.some(x => _lc(x) === e)) p.sharedWith.push(email);
     p.approvers   = drop(p.approvers);
     p.softBlocked = drop(p.softBlocked);
-    if (role === 'approver')      p.approvers.push(email);
+    if (role === 'approver')       p.approvers.push(email);
     else if (role === 'softblock') p.softBlocked.push(email);
     softBlockInvalidate();
   }
 
-  global.isSoftBlocked        = isSoftBlocked;
-  global.softBlockDeny        = softBlockDeny;
-  global.softBlockApplyUi     = softBlockApplyUi;
-  global.softBlockInvalidate  = softBlockInvalidate;
-  global.softBlockRoleOf      = softBlockRoleOf;
-  global.softBlockApplyRole   = softBlockApplyRole;
+  global.isSoftBlocked       = isSoftBlocked;
+  global.softBlockDeny       = softBlockDeny;
+  global.softBlockApplyUi    = softBlockApplyUi;
+  global.softBlockInvalidate = softBlockInvalidate;
+  global.softBlockRoleOf     = softBlockRoleOf;
+  global.softBlockApplyRole  = softBlockApplyRole;
 })(window);
