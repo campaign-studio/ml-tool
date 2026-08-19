@@ -376,3 +376,47 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
   - avLocaleContentWidth agora soma as seções (linha = soma dos cards; coluna = card mais
     largo) — verificado que canvas.style.width === avContentWidth() nos dois folders de teste,
     então "Fit all" e a scrollbar horizontal seguem corretos.
+
+[2026-08-19] CO-EDIÇÃO AO VIVO — Fase 1: a edição do colega entra no editor JÁ ABERTO.
+  Contexto: o merge já era célula a célula (mergeItemRows/mergeLooseData, com tombstones), o CAS
+  por rev já era atômico e o Realtime já avisava a aba — mas sbOnProjectsChanged puxava os dados e
+  re-renderizava só o DASHBOARD. Quem estava com o editor aberto nunca via a mudança do colega.
+  Pior nas PASTAS, que não têm trava nenhuma (openCampaignEditor nunca chama projIsLocked): duas
+  pessoas já editavam a mesma pasta hoje, e _campaign é um snapshot desanexado (projGetAll faz
+  JSON.parse a cada chamada), então o objeto aberto nunca acompanhava o store.
+
+  Novo modules/live-coedit.js, com duas regras que mantêm isso seguro:
+    1. Nunca re-renderiza a grade por causa de um patch — seria perder foco/cursor/scroll de quem
+       digita. O patch é cirúrgico: uma célula por vez via td.tl-cell[data-r][data-c].
+    2. Nunca sobrescreve célula SUJA (editada aqui e ainda não confirmada pelo banco) nem a que
+       está com o CURSOR dentro. Nessas o remoto é descartado; a próxima gravação leva o valor
+       local e o merge decide, como sempre decidiu.
+
+  Hooks no index.html (5):
+    - setCellV / setCampaignCell            -> liveMarkDirty (marca a célula como pendente)
+    - casWriteProject / _plainUpsertProject -> liveOnProjectPersisted (banco confirmou: limpa a
+      sujeira SÓ das células cujo valor gravado bate com o pendente — se a pessoa digitou mais
+      uma letra no meio, continua suja, senão o próximo patch comeria essa letra)
+    - _ghPullProjectsInner (sucesso)        -> liveScheduleApply (um ponto cobre Realtime + poll
+      de 15s + retry do disjuntor). AGENDADO, não chamado: saveCampaignProject dá um pull no meio
+      da própria gravação, e aplicar patch dentro dessa pilha seria reentrância.
+
+  Mudança ESTRUTURAL (linha/idioma criado ou removido pelo outro) NÃO é aplicada sozinha — mexer
+  na forma da grade embaixo de quem digita é o que a regra 1 proíbe. Aparece uma barra discreta
+  com Reload/Later e a pessoa escolhe a hora.
+
+  ARMADILHA que custou uma rodada de debug: os globais de ESTADO do index.html (S, _campaign,
+  _campaignItemIndex, _gridBodyId, currentProjectId) são let/const de topo, e binding let/const de
+  topo NÃO vira propriedade de window — window.S é undefined. Eles vivem no escopo léxico global,
+  que os <script> clássicos compartilham, então a leitura tem que ser pelo IDENTIFICADOR com
+  guarda de typeof (mesmo padrão do approval-canvas.js). As FUNÇÕES, essas sim, estão em window.
+
+  Não fecha: duas pessoas na MESMA célula ao mesmo tempo continua LWW (comportamento que o merge
+  sempre teve). Isso é a Fase 3 (soft-lock por célula via presença), não um CRDT.
+
+  Verificado no preview (backend neutralizado, store espelhado em memória — nada tocou produção):
+    pasta: patch aplica (modelo+DOM+preview), célula suja protegida, célula em foco protegida,
+    confirmação parcial mantém suja, confirmação exata libera, estrutural só mostra a barra,
+    Reload remonta na ordem de exibição correta; avulso (via parse de CSV): patch aplica sem falso
+    alarme estrutural; dashboard/sem projeto/payload lixo/rajada de 20 agendamentos: sem erro;
+    merge-invariants 9/9.

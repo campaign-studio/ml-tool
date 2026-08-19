@@ -1011,6 +1011,32 @@ td.tl-cell.cell-editing{box-shadow:inset 0 0 0 2px var(--green);}
 /* Push: sem "cartão" de fundo — só o balão de notificação flutuando, lado a lado por país */
 .av-frame-viewport-bare{background:transparent;box-shadow:none;}
 .av-frame-viewport-bare iframe{background:transparent;}
+
+/* ── CO-EDIÇÃO AO VIVO (modules/live-coedit.js) ──────────────────────────────────────────────
+   Realce da célula que o colega acabou de mudar. Precisa ser um flash CURTO e discreto: a grade
+   pode receber várias células de uma vez, e um destaque permanente viraria poluição. */
+@keyframes mltLiveFlash{
+  0%   {background:var(--acc-bg);box-shadow:inset 0 0 0 2px var(--brand);}
+  70%  {background:var(--acc-bg);box-shadow:inset 0 0 0 2px var(--brand);}
+  100% {background:transparent;box-shadow:inset 0 0 0 0 transparent;}
+}
+td.tl-cell.mlt-live-updated{animation:mltLiveFlash 1.6s ease-out;}
+/* Aviso de que chegou edição de outra pessoa — canto inferior, sem roubar o foco. */
+.mlt-live-toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(12px);
+  background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:10px;
+  padding:9px 16px;font-size:12.5px;font-weight:700;font-family:var(--sans);
+  box-shadow:0 6px 24px rgba(0,0,0,.18);opacity:0;pointer-events:none;z-index:9998;
+  transition:opacity .18s,transform .18s;}
+.mlt-live-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+/* Mudança ESTRUTURAL (linha/idioma criado ou removido): nunca aplicada sozinha — a pessoa
+   decide quando recarregar, pra não perder foco/scroll no meio de uma digitação. */
+.mlt-live-bar{position:fixed;right:22px;bottom:22px;display:flex;align-items:center;gap:12px;
+  background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:12px;
+  padding:12px 16px;font-size:12.5px;font-family:var(--sans);
+  box-shadow:0 8px 30px rgba(0,0,0,.22);z-index:9999;max-width:min(420px,90vw);}
+.mlt-live-bar button{border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;
+  cursor:pointer;font-family:var(--sans);background:var(--brand);color:#fff;flex-shrink:0;}
+.mlt-live-bar button.ghost{background:none;color:var(--text3);text-decoration:underline;padding:7px 4px;}
 /* "Approve by Locale": cada ITEM (e-mail/in-app/push) vira UM card branco contendo o PAR
    origem + tradução — quem aprova compara original e traduzido dentro da mesma moldura, em
    vez de caçar os dois soltos no canvas. E-mail: par lado a lado. Push/in-app: empilhado. */
@@ -3383,6 +3409,7 @@ async function _plainUpsertProject(sb, p){
   if(error) throw error;
   _syncedPayloadJson[merged.id] = _canonJson(merged);
   _updateLocalProjectPayload(merged);
+  if(typeof liveOnProjectPersisted === 'function') { try{ liveOnProjectPersisted(merged.id, merged); }catch(e){} }
 }
 
 // Grava UMA linha com compare-and-swap no rev. Re-tenta em conflito (re-lê + re-mescla).
@@ -3465,6 +3492,9 @@ async function casWriteProject(sb, p, tries, origContentCanon){
   _projectRev[p.id] = newRev;
   _syncedPayloadJson[p.id] = _canonJson(merged);
   _updateLocalProjectPayload(merged);
+  // Banco confirmou: as células cujo valor gravado bate com o que estava pendente deixam de ser
+  // "sujas" e voltam a aceitar patch remoto (ver modules/live-coedit.js).
+  if(typeof liveOnProjectPersisted === 'function') { try{ liveOnProjectPersisted(p.id, merged); }catch(e){} }
 }
 
 // opts.strict: usado por AÇÕES CRÍTICAS (compartilhamento) que não podem ficar "salvas" só no
@@ -3663,6 +3693,10 @@ async function _ghPullProjectsInner() {
     setSyncDot('on');
     _cbOnSuccess();           // banco respondeu → fecha o disjuntor
     _cancelPullRetry();       // pull voltou → cancela qualquer re-tentativa pendente
+    // Co-edição ao vivo: um ponto só cobre TODOS os caminhos de pull (Realtime, poll de 15s,
+    // retry do disjuntor). É agendado (não chamado aqui) de propósito — saveCampaignProject dá
+    // um pull no meio da própria gravação, e aplicar patch dentro dessa pilha seria reentrância.
+    if(typeof liveScheduleApply === 'function') liveScheduleApply();
     return true;
   } catch(e) {
     console.warn('Supabase sync (pull projects) error:', e);
@@ -6949,6 +6983,9 @@ function setCampaignCell(ri, lang, value) {
   item.rows[ri].translations[lang] = value;
   _recordCellCleared('campaign', item.id, item.rows[ri].id, lang, value); // tombstone de esvaziamento
   undoRecordCell('campaign', item.id, item.rows[ri].id, lang, before, value);
+  // Co-edição: ver comentário em setCellV. Pasta não tem trava, então isto é o que garante que
+  // o patch de um colega não apague a tecla que acabou de ser digitada aqui.
+  if(typeof liveMarkDirty === 'function') liveMarkDirty(_campaign.id, item.id, item.rows[ri].id, lang, value);
   touchCampaignItem(item); // edição de conteúdo → carimba pro merge por item
   scheduleCampaignAutosave();
   updateCampaignPreviewCell(item, item.rows[ri], lang);
@@ -11133,6 +11170,9 @@ function setCellV(ri,l,v){
     S.pendingImgIds = S.pendingImgIds.filter(id => id !== row.id);
   }
   undoRecordCell('loose', null, row.id, l, before, v);
+  // Co-edição: marca a célula como "minha e ainda não confirmada" — enquanto estiver assim,
+  // nenhum patch remoto entra nela (ver modules/live-coedit.js).
+  if(typeof liveMarkDirty === 'function') liveMarkDirty(currentProjectId, null, row.id, l, v);
   updatePreviewText(ri,l);
   if(row.isMeta) debR();   // meta row (header/preheader): rebuild o card acima do e-mail
   scheduleAutosave();
@@ -13238,5 +13278,9 @@ window.addEventListener('message', function(e){
 <!-- Módulo "Pasta/Folder" — ISOLADO (ver modules/folders.js). Carregado DEPOIS do script inline
      pra poder chamar os globais do app (projGetAll, parseSavedProjectHtml, etc.) em runtime. -->
 <script src="modules/folders.js"></script>
+<!-- Co-edição ao vivo (ver modules/live-coedit.js) — aplica a edição do colega dentro do editor
+     JÁ ABERTO, célula a célula, sem tocar no que está sendo digitado. Depois dos outros módulos
+     porque usa os globais do app (projGetAll, parseBrazeCsv, autoH…) em runtime. -->
+<script src="modules/live-coedit.js"></script>
 </body>
 </html>
