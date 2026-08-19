@@ -131,7 +131,11 @@
     const bodyId = gBodyId();
     const body = bodyId && document.getElementById(bodyId);
     if (!body || !body.offsetParent) return 0; // grade não está na tela → nada a fazer
-    return gCamp() ? _applyCampaign(body) : _applyLoose(body);
+    // Discrimina a superfície pela GRADE renderizada, não por _campaign: projOpen() abre um
+    // projeto avulso SEM zerar _campaign (só goToDashboard zera), então _campaign pode estar
+    // preso numa pasta anterior enquanto o editor avulso está na tela — e aí o patch iria pro
+    // lugar errado. _gridBodyId é setado por quem montou a grade, então reflete a tela real.
+    return (bodyId === 'campGstb') ? _applyCampaign(body) : _applyLoose(body);
   }
 
   // ── Projeto avulso ──

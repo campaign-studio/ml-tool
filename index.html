@@ -1037,6 +1037,26 @@ td.tl-cell.mlt-live-updated{animation:mltLiveFlash 1.6s ease-out;}
 .mlt-live-bar button{border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;
   cursor:pointer;font-family:var(--sans);background:var(--brand);color:#fff;flex-shrink:0;}
 .mlt-live-bar button.ghost{background:none;color:var(--text3);text-decoration:underline;padding:7px 4px;}
+
+/* ── SOFT BLOCK (modules/soft-block.js) ──────────────────────────────────────────────────────
+   Esconder o controle é só conforto — o bloqueio de verdade está no começo de cada ação
+   (softBlockDeny), senão bastava o console pra furar. */
+body.soft-blocked td.del button,                       /* × de excluir linha (as duas grades) */
+body.soft-blocked th button[onclick^="delLang"],       /* × de remover idioma (avulso) */
+body.soft-blocked th button[onclick^="campDelLang"],   /* × de remover idioma (pasta) */
+body.soft-blocked button[onclick^="rescanMissedLines"],
+body.soft-blocked button[onclick^="openTaggedHtmlEditorForCurrentProject"],
+body.soft-blocked button[onclick^="openTaggedHtmlEditorForCampaignItem"]{ display:none !important; }
+/* Coluna Origin e URL de imagem ficam com cara de campo travado. */
+body.soft-blocked tr.img-row td.tl input.img-url{ cursor:not-allowed;color:var(--text3);background:repeating-linear-gradient(45deg,transparent,transparent 6px,rgba(128,128,128,.06) 6px,rgba(128,128,128,.06) 12px); }
+body.soft-blocked tr.img-row td.tl input.img-url:hover,
+body.soft-blocked tr.img-row td.tl input.img-url:focus{ background:repeating-linear-gradient(45deg,transparent,transparent 6px,rgba(128,128,128,.06) 6px,rgba(128,128,128,.06) 12px); }
+.soft-block-banner{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;
+  background:var(--surface);color:var(--text2);border:1px solid var(--border);border-radius:20px;
+  padding:8px 16px;font-size:12px;font-family:var(--sans);box-shadow:0 4px 18px rgba(0,0,0,.16);z-index:9997;
+  max-width:min(560px,92vw);}
+.soft-block-banner b{color:var(--text);}
+.soft-block-banner .sb-dot{width:7px;height:7px;border-radius:50%;background:var(--brand);flex-shrink:0;}
 /* "Approve by Locale": cada ITEM (e-mail/in-app/push) vira UM card branco contendo o PAR
    origem + tradução — quem aprova compara original e traduzido dentro da mesma moldura, em
    vez de caçar os dois soltos no canvas. E-mail: par lado a lado. Push/in-app: empilhado. */
@@ -1799,7 +1819,7 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
           <button class="btn-back" onclick="closeShareModal()" style="padding:4px 10px;">Close</button>
         </div>
       </div>
-      <p class="sub" style="margin:0 0 4px;font-size:12px;">Editors can translate and edit copy. Approvers only review and comment.</p>
+      <p class="sub" style="margin:0 0 4px;font-size:12px;">Editors can translate and edit copy. <b>Soft block</b> lets them translate, but locks images, adding/deleting rows, and the origin HTML. Approvers only review and comment.</p>
       <!-- Fica FORA do #shareUserList de propósito: a lista é re-renderizada a cada mudança de
            papel, e o campo aqui preserva o texto digitado (o filtro é reaplicado no fim). -->
       <input id="shareSearch" type="text" placeholder="Search by name or email…" autocomplete="off"
@@ -3293,7 +3313,7 @@ const _BODY_MERGE_SKIP = new Set(['items','deletedItemIds','data','clearedCells'
 // lista inteira (perderia a concessão de um dos admins). Fusão 3-way POR ELEMENTO: um e-mail entra
 // se foi ADICIONADO por qualquer lado; e só sai se estava no ancestral e foi REMOVIDO (por qualquer
 // lado). Assim dois admins adicionando approvers diferentes coexistem, e remoções continuam valendo.
-const _BODY_MERGE_SET_LIST = new Set(['approvers','sharedWith']);
+const _BODY_MERGE_SET_LIST = new Set(['approvers','sharedWith','softBlocked']);
 function _mergeSetList(anc, a, b){
   if(!Array.isArray(a) || !Array.isArray(b)) return undefined; // não-lista → deixa o chamador decidir
   const A = new Set(anc || []), X = new Set(a), Y = new Set(b);
@@ -5854,6 +5874,8 @@ function releaseAllMyApprovingPresence() {
 }
 
 async function goToDashboard() {
+  // Saiu do editor: tira a faixa/estado visual do soft block (o guarda das ações continua valendo).
+  try{ document.body.classList.remove('soft-blocked'); document.getElementById('softBlockBanner')?.remove(); }catch(e){}
   try{ _flushSafetySnap(); }catch(e){} // saindo do editor: grava o ponto de restore pendente da rajada
   try{ _flushPendingAutoSnapshot(); }catch(e){} // sair é pausa natural: fecha o snapshot de histórico pendente
   presenceSetProject(null); // saí do editor — deixo de aparecer como presente em qualquer projeto
@@ -6922,6 +6944,7 @@ function renderCampaignGrid(item) {
   // <table> persiste entre re-renders; só o innerHTML troca, então a delegação sobrevive).
   _gridBodyId = 'campGstb';
   _gridWrite = setCampaignCell;
+  if(typeof softBlockApplyUi === 'function') softBlockApplyUi(); // trava visual do soft block
   wireGridController('campaignItemTable');
   gridReapplyHighlight();
   setTimeout(() => syncAllRowHeights('campGstb') , 0);
@@ -6930,6 +6953,7 @@ function renderCampaignGrid(item) {
 // Remove um idioma inteiro do item de pasta — espelha delLang() do editor avulso, mas escopado
 // a ESTE item só (langs/traduções são por-item na campanha, não globais como no avulso).
 async function campDelLang(l) {
+  if(typeof softBlockDeny === 'function' && softBlockDeny('lang')) return; // soft block: sem remover idioma
   const item = _campaign && _campaign.items[_campaignItemIndex];
   if(!item) return;
   if(!(await uiConfirm(`Remove column "${l}"?`, {title:'Remove column', okLabel:'Remove', danger:true}))) return;
@@ -6948,6 +6972,7 @@ async function campDelLang(l) {
 // (item.deletedRowIds) que o mergeItemRows precisa pra não RESSUSCITAR a linha quando outra
 // aba com cópia velha do item salvar depois (mesmo bug já corrigido no lado avulso).
 function campDelRow(ri) {
+  if(typeof softBlockDeny === 'function' && softBlockDeny('rowDel')) return; // soft block: sem excluir linha
   const item = _campaign && _campaign.items[_campaignItemIndex];
   if(!item || !item.rows || !item.rows[ri]) return;
   maybeSnapshotBeforeStructuralDelete();
@@ -6966,6 +6991,7 @@ function campDelRow(ri) {
 }
 
 function setCampaignOrigin(ri, value) {
+  if(typeof softBlockDeny === 'function' && softBlockDeny('origin')) return; // soft block: origem travada
   const item = _campaign.items[_campaignItemIndex];
   if(!item || !item.rows[ri]) return;
   item.rows[ri].src = value;
@@ -6977,6 +7003,8 @@ function setCampaignOrigin(ri, value) {
 function setCampaignCell(ri, lang, value) {
   const item = _campaign.items[_campaignItemIndex];
   if(!item || !item.rows[ri]) return;
+  // Soft block trava só a linha de IMAGEM (URL) — texto normal continua traduzível.
+  if(item.rows[ri].isImg && typeof softBlockDeny === 'function' && softBlockDeny('image')) { renderCampaignGrid(item); return; }
   const before = item.rows[ri].translations[lang] || '';
   // Célula sendo ESVAZIADA → backup antes de apagar (ver setCellV).
   if(before.trim() && !String(value||'').trim()) maybeSnapshotBeforeStructuralDelete();
@@ -8096,6 +8124,8 @@ function openTaggedHtmlEditorForCampaignItem() {
 }
 
 function openTaggedHtmlEditor(projectId, itemId) {
+  // Guarda no ponto único por onde os DOIS botões passam (avulso e item de pasta).
+  if(typeof softBlockDeny === 'function' && softBlockDeny('html')) return;
   const found = findEditableHtmlTarget(projectId, itemId);
   if(!found) { showNotif('Could not find that project/item anymore — it may have been deleted.', 'warn'); return; }
   const { p, item } = found;
@@ -8179,6 +8209,7 @@ function validateTaggedHtmlEdit(oldHtml, newHtml) {
 }
 
 function saveTaggedHtmlEditClick() {
+  if(typeof softBlockDeny === 'function' && softBlockDeny('html')) return; // soft block: 2ª barreira
   if(!_editHtmlCurrentTarget) return;
   const newHtml = document.getElementById('editHtmlTextarea').value;
   const { warnings, hasWarnings } = validateTaggedHtmlEdit(_editHtmlCurrentTarget.loadedHtml, newHtml);
@@ -8504,6 +8535,7 @@ async function leaveSharedProject(id) {
   const beforeJson = JSON.stringify(p);
   p.sharedWith = (p.sharedWith || []).filter(e => e.toLowerCase() !== me.email.toLowerCase());
   p.approvers = (p.approvers || []).filter(e => e.toLowerCase() !== me.email.toLowerCase());
+  p.softBlocked = (p.softBlocked || []).filter(e => e.toLowerCase() !== me.email.toLowerCase());
   // Mesma garantia do setMemberRole: sair só vale se o banco confirmar, senão desfaz e avisa
   // (antes era fire-and-forget — a pessoa "saía" na tela e continuava com acesso no banco).
   const ok = await _saveShareOrRollback(projects, id, beforeJson,
@@ -9108,9 +9140,12 @@ function openShareModal(id, keepFilter) {
     return;
   }
 
-  const roleOf = u => (p.approvers||[]).some(e => e.toLowerCase() === u.email.toLowerCase()) ? 'approver'
-    : (p.sharedWith||[]).some(e => e.toLowerCase() === u.email.toLowerCase()) ? 'editor'
-    : null;
+  // Papel efetivo (approver | softblock | editor | null) — a regra mora em modules/soft-block.js
+  // pra o modal e o gravador (setMemberRole) nunca discordarem sobre o que a pessoa é.
+  const roleOf = u => (typeof softBlockRoleOf === 'function')
+    ? softBlockRoleOf(p, u.email)
+    : ((p.approvers||[]).some(e => e.toLowerCase() === u.email.toLowerCase()) ? 'approver'
+      : (p.sharedWith||[]).some(e => e.toLowerCase() === u.email.toLowerCase()) ? 'editor' : null);
   const esc = s => String(s || '').replace(/</g, '&lt;');
   const initials = u => (authorName(u.email) || u.email).split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
   // Chave de busca da linha (nome + e-mail, minúsculo) — o filtro é puro DOM, sem re-render,
@@ -9170,8 +9205,10 @@ function openShareModal(id, keepFilter) {
           <span style="width:11px;height:11px;border-radius:50%;border:1.5px solid var(--border-s);border-top-color:var(--text2);animation:btnSpin .6s linear infinite;flex-shrink:0;"></span>
           Saving…
         </span>
-        <select class="share-role-select" onchange="setMemberRole('${id}','${u.email}',this.value,'${rowId(u)}')">
+        <select class="share-role-select" onchange="setMemberRole('${id}','${u.email}',this.value,'${rowId(u)}')"
+                title="Soft block: translates normally, but can't change images, add/delete rows, or edit the origin HTML.">
           <option value="editor" ${role==='editor'?'selected':''}>Editor</option>
+          <option value="softblock" ${role==='softblock'?'selected':''}>Editor · Soft block</option>
           <option value="approver" ${role==='approver'?'selected':''}>Approver</option>
         </select>
         ${canRemove ? `<button class="share-remove-btn" title="Remove access" onclick="setMemberRole('${id}','${u.email}',null,'${rowId(u)}')">✕</button>` : ''}
@@ -9188,9 +9225,11 @@ function openShareModal(id, keepFilter) {
           <span style="width:11px;height:11px;border-radius:50%;border:1.5px solid var(--border-s);border-top-color:var(--text2);animation:btnSpin .6s linear infinite;flex-shrink:0;"></span>
           Saving…
         </span>
-        <select class="share-role-select placeholder" onchange="setMemberRole('${id}','${u.email}',this.value,'${rowId(u)}')">
+        <select class="share-role-select placeholder" onchange="setMemberRole('${id}','${u.email}',this.value,'${rowId(u)}')"
+                title="Soft block: translates normally, but can't change images, add/delete rows, or edit the origin HTML.">
           <option value="" selected disabled>Select role…</option>
           <option value="editor">Editor</option>
+          <option value="softblock">Editor · Soft block</option>
           <option value="approver">Approver</option>
         </select>
       </div>`;
@@ -9287,18 +9326,22 @@ async function setMemberRole(projId, email, role, rowId) {
     const beforeJson = JSON.stringify(p); // pra desfazer se o banco não confirmar
     p.sharedWith = p.sharedWith || [];
     p.approvers = p.approvers || [];
-    const hadAccess = p.sharedWith.some(e => e.toLowerCase() === email.toLowerCase());
-    const hadRole = (p.approvers||[]).some(e => e.toLowerCase() === email.toLowerCase()) ? 'approver' : hadAccess ? 'editor' : null;
-
-    if(role === null) {
-      p.sharedWith = p.sharedWith.filter(e => e.toLowerCase() !== email.toLowerCase());
-      p.approvers = p.approvers.filter(e => e.toLowerCase() !== email.toLowerCase());
+    p.softBlocked = p.softBlocked || [];
+    // Papel efetivo ANTES e aplicação do novo: as duas coisas vêm de modules/soft-block.js, que é
+    // dono da regra dos 3 papéis mutuamente exclusivos (editor | softblock | approver) e mexe nas
+    // 3 listas de uma vez — assim o modal e a gravação nunca discordam.
+    const hadRole = (typeof softBlockRoleOf === 'function') ? softBlockRoleOf(p, email) : null;
+    if(typeof softBlockApplyRole === 'function') {
+      softBlockApplyRole(p, email, role);
     } else {
-      if(!hadAccess) p.sharedWith.push(email);
-      if(role === 'approver') {
-        if(!p.approvers.some(e => e.toLowerCase() === email.toLowerCase())) p.approvers.push(email);
+      const lc = e => (e||'').toLowerCase();
+      if(role === null) {
+        p.sharedWith = p.sharedWith.filter(e => lc(e) !== lc(email));
+        p.approvers  = p.approvers.filter(e => lc(e) !== lc(email));
       } else {
-        p.approvers = p.approvers.filter(e => e.toLowerCase() !== email.toLowerCase());
+        if(!p.sharedWith.some(e => lc(e) === lc(email))) p.sharedWith.push(email);
+        p.approvers = p.approvers.filter(e => lc(e) !== lc(email));
+        if(role === 'approver') p.approvers.push(email);
       }
     }
 
@@ -9313,8 +9356,9 @@ async function setMemberRole(projId, email, role, rowId) {
 
     if(role && role !== hadRole) {
       const me = authCurrentUser();
-      notifAdd(email, me.email, role === 'approver'
-        ? `${me.email} made you an approver on "${p.name}". Review the copies whenever you're ready.`
+      notifAdd(email, me.email,
+        role === 'approver' ? `${me.email} made you an approver on "${p.name}". Review the copies whenever you're ready.`
+        : role === 'softblock' ? `${me.email} shared "${p.name}" with you to translate. Images, rows and the origin HTML are locked.`
         : `${me.email} shared "${p.name}" with you to edit.`);
     }
   } catch(e) {
@@ -10656,6 +10700,7 @@ function imgThumbHtml(s, i, imgs) {
 }
 
 function toggleImg(i) {
+  if(typeof softBlockDeny === 'function' && softBlockDeny('image')) return; // soft block: imagens travadas
   const imgs = S.strings.filter(s => s.isImg);
   const s = imgs[i]; if(!s) return;
   const key = s.imgKey || s.src;
@@ -10669,6 +10714,7 @@ function toggleImg(i) {
 
 // Called from iframe postMessage when user clicks an image in pick mode
 function onImgPickClick(key) {
+  if(typeof softBlockDeny === 'function' && softBlockDeny('image')) return; // soft block: imagens travadas
   const imgs = S.strings.filter(s => s.isImg);
   const i = imgs.findIndex(s => (s.imgKey || s.src) === key);
   if(i < 0) return;
@@ -10915,6 +10961,7 @@ function renderConfirm() {
 //    versão antiga) não tem, e ANEXA no fim (como as últimas tags), com traduções vazias. Não
 //    renumera nem toca no que já existe. Idempotente: rodar de novo não duplica. ──────────────
 async function rescanMissedLines(){
+  if(typeof softBlockDeny === 'function' && softBlockDeny('rowAdd')) return; // soft block: sem adicionar linha
   if(typeof S==='undefined' || !S || !S.rawHtml || !S.csv){ uiNotify('Open a project first.', {type:'info'}); return; }
   const norm = s => String(s||'').replace(/\s+/g,' ').trim();
   const savedSrc = new Set((S.csv.rows||[]).map(r => norm(r.src)));
@@ -11019,6 +11066,7 @@ function buildTable() {
   if(t) t.innerHTML = buildGridHead({ name: S.csv.name, origLangName: origC?.lang, langs, delLangFn: 'delLang' })
     + `<tbody id="gstb">${rowsHTML()}</tbody>`;
   wireGridController();       // liga navegação/paste estilo planilha (uma vez, delegado no #gst)
+  if(typeof softBlockApplyUi === 'function') softBlockApplyUi(); // trava visual do soft block
   gridReapplyHighlight();     // re-aplica o realce da célula selecionada após re-render
   setTimeout(syncAllRowHeights, 0);
   openPendingCommentTarget();
@@ -11128,7 +11176,7 @@ function syncAllRowHeights(hostId){
     tas.forEach(t => t.style.height = maxH + 'px');
   });
 }
-function setSrcV(ri,v){S.csv.rows[ri].src=v;updatePreviewText(ri,null);scheduleAutosave();}
+function setSrcV(ri,v){if(typeof softBlockDeny==='function'&&softBlockDeny('origin'))return;S.csv.rows[ri].src=v;updatePreviewText(ri,null);scheduleAutosave();}
 // Tombstones de célula ESVAZIADA de propósito (ver mergeLooseData/clearedCells): registra o
 // esvaziamento com timestamp pra o merge saber que foi intencional e mais novo; remove quando a
 // célula volta a ter conteúdo. Guardados em S.clearedCells (avulso) / item.clearedCells (campanha).
@@ -11157,6 +11205,8 @@ function _recordCellCleared(surface, itemId, rowId, lang, value){
 
 function setCellV(ri,l,v){
   const row=S.csv.rows[ri];
+  // Soft block trava só a linha de IMAGEM (URL) — texto normal continua traduzível.
+  if(row && row.isImg && typeof softBlockDeny === 'function' && softBlockDeny('image')) { reBody(); return; }
   const before = row.translations[l] || '';
   // Célula sendo ESVAZIADA (tinha conteúdo, virou vazia) → backup antes de apagar. Chamado ANTES
   // de gravar o vazio pra o snapshot conter o conteúdo original.
@@ -12400,6 +12450,7 @@ function maybeSnapshotBeforeStructuralDelete(){
 window.addEventListener('beforeunload', _flushSafetySnap);
 
 function delRow(ri){
+  if(typeof softBlockDeny === 'function' && softBlockDeny('rowDel')) return; // soft block: sem excluir linha
   maybeSnapshotBeforeStructuralDelete();
   // Tombstone de LINHA deletada (ver mergeLooseData/deletedRowIds): carimba id+timestamp pra o
   // merge não RESSUSCITAR a linha quando outra aba com cópia velha (que ainda a tem) salvar depois.
@@ -12412,6 +12463,7 @@ function delRow(ri){
   S.csv.rows.splice(ri,1);reBody();debR();scheduleAutosave();
 }
 async function delLang(l){
+  if(typeof softBlockDeny === 'function' && softBlockDeny('lang')) return; // soft block: sem remover idioma
   if(!(await uiConfirm(`Remove column "${l}"?`, {title:'Remove column', okLabel:'Remove', danger:true})))return;
   maybeSnapshotBeforeStructuralDelete();
   S.csv.langs=S.csv.langs.filter(x=>x!==l);
@@ -13282,5 +13334,8 @@ window.addEventListener('message', function(e){
      JÁ ABERTO, célula a célula, sem tocar no que está sendo digitado. Depois dos outros módulos
      porque usa os globais do app (projGetAll, parseBrazeCsv, autoH…) em runtime. -->
 <script src="modules/live-coedit.js"></script>
+<!-- Soft block (ver modules/soft-block.js) — 3º papel do compartilhamento: traduz normalmente,
+     mas não mexe em imagens, não adiciona/exclui linha e não edita o HTML de origem. -->
+<script src="modules/soft-block.js"></script>
 </body>
 </html>

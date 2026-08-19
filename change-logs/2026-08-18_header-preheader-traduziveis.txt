@@ -420,3 +420,49 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
     Reload remonta na ordem de exibição correta; avulso (via parse de CSV): patch aplica sem falso
     alarme estrutural; dashboard/sem projeto/payload lixo/rajada de 20 agendamentos: sem erro;
     merge-invariants 9/9.
+
+[2026-08-19] SOFT BLOCK — acesso de edição RESTRITO, por pessoa, por projeto.
+  Pedido: o dono marca a pessoa no compartilhamento e ela deixa de poder mexer em imagens,
+  adicionar/excluir linhas e editar o HTML de origem — mas continua traduzindo normalmente.
+
+  Novo modules/soft-block.js. Modelo: TERCEIRO papel no select do share, mutuamente exclusivo
+  com os outros dois (Editor | Editor · Soft block | Approver) — segue a regra que já existia
+  ("papel de cada pessoa é ÚNICO"). Approver + soft block não faria sentido: approver já não
+  edita nada (_approverMode).
+
+  Guardado em p.softBlocked = ['email', ...]; a pessoa CONTINUA em p.sharedWith (tem acesso, só
+  é restrita). Guardar como lista de e-mails dá o merge concorrente de graça: 'softBlocked' entrou
+  em _BODY_MERGE_SET_LIST e é fundido por UNIÃO igual approvers/sharedWith, então dois donos
+  mexendo no compartilhamento ao mesmo tempo não se sobrescrevem.
+
+  GUARDA REAL em 13 pontos, não só botão escondido (mesma lição de setMemberRole — sem isso
+  bastava o console pra furar):
+    imagens  -> setCellV/setCampaignCell (só quando row.isImg), toggleImg, onImgPickClick
+    linhas   -> delRow, campDelRow (excluir), rescanMissedLines (adicionar)
+    origem   -> openTaggedHtmlEditor (ponto único dos 2 botões), saveTaggedHtmlEditClick
+                (2ª barreira, cobre quem já estava na tela), setSrcV, setCampaignOrigin
+    idioma   -> delLang, campDelLang
+  Remover COLUNA DE IDIOMA não estava no pedido, mas entrou: deixar aberto tornaria o bloqueio
+  decorativo (dá pra apagar a coluna em vez das linhas) e o estrago é maior que o de uma linha.
+
+  UI: botões estruturais escondidos por CSS (body.soft-blocked), input de URL de imagem readonly
+  com hachura, e uma faixa discreta explicando o que está travado. A faixa sai no goToDashboard.
+  Dono NUNCA é bloqueado (é quem aplica), mesmo se o e-mail dele cair na lista.
+  leaveSharedProject também limpa softBlocked, senão o e-mail ficava órfão e a pessoa voltava
+  bloqueada num compartilhamento futuro.
+
+  isSoftBlocked() tem memo de 2s: é consultado a cada tecla em célula de imagem e projGetAll()
+  faz JSON.parse do store inteiro.
+
+  BÔNUS (bug latente achado durante o teste): live-coedit.js decidia a superfície por _campaign,
+  mas projOpen() abre projeto avulso SEM zerar _campaign (só goToDashboard zera) — então
+  _campaign podia estar preso numa pasta anterior com o editor avulso na tela, e o patch iria
+  pro lugar errado. Agora discrimina por _gridBodyId ('campGstb' vs 'gstb'), que é setado por
+  quem montou a grade e reflete a tela real.
+
+  Verificado no preview (backend neutralizado, store espelhado — nada tocou produção):
+    lógica de papéis 7/7 (transições, exclusividade, case-insensitive, remover limpa as 3 listas);
+    avulso 7/7 (delRow, rescan, delLang, setSrcV, URL de imagem, Edit Tagged HTML bloqueados +
+    contraprova de que traduzir texto normal segue LIVRE); pasta 6/6 (mesmos guardas + tradução
+    livre); dono não bloqueado; faixa some ao sair; modal mostra os 3 papéis e reflete o salvo;
+    merge-invariants 9/9.
