@@ -6625,7 +6625,7 @@ function renderCampaignAssetThumb(item, idx) {
     wrap.innerHTML = `
       <div style="padding:20px 14px;">
         <div style="max-width:320px;margin:0 auto;background:#fff;border-radius:14px;padding:14px;box-shadow:0 2px 12px rgba(0,0,0,.1);display:flex;gap:10px;">
-          <div style="width:38px;height:38px;border-radius:10px;background:#d8385e;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;">🔔</div>
+          ${pushIconHtml(38, 10)}
           <div style="min-width:0;">
             <div style="font-weight:700;font-size:13px;color:#000;margin-bottom:2px;">${escHtml(titleRow?.src || '') || '<em style="color:#aaa;">No title yet</em>'}</div>
             <div style="font-size:12px;color:#333;line-height:1.4;">${escHtml(bodyRow?.src || '') || '<em style="color:#aaa;">No body yet</em>'}</div>
@@ -6747,7 +6747,7 @@ function renderCampaignBulkRowThumbs(item, idx) {
       const body = isOrig ? (bodyRow?.src || '') : (bodyRow?.translations?.[lang] || '');
       el.innerHTML = `<div style="padding:10px;height:100%;box-sizing:border-box;display:flex;align-items:center;">
         <div style="background:#fff;border-radius:10px;padding:10px;display:flex;gap:8px;width:100%;box-shadow:0 1px 6px rgba(0,0,0,.08);box-sizing:border-box;">
-          <div style="width:28px;height:28px;border-radius:8px;background:#d8385e;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;">🔔</div>
+          ${pushIconHtml(28, 8)}
           <div style="min-width:0;">
             <div style="font-weight:700;font-size:11px;">${escHtml(title) || '<em style="color:#aaa;">—</em>'}</div>
             <div style="font-size:10px;color:#333;">${escHtml(body) || ''}</div>
@@ -6977,6 +6977,14 @@ function updateCampaignPreviewCell(item, row, lang) {
   iframe.contentWindow.postMessage({ type: 'camp-update', tid: row.id, text: row.translations[lang] || row.src, src: row.src }, '*');
 }
 
+// Ícone do PUSH no preview/approval — a imagem da marca no lugar do sino genérico, no mesmo
+// tamanho do quadrado (px) e cantos (radius). Usado no preview de campanha, nos cards e no
+// approval (aquele último dentro do iframe — pushIconHtml é global, acessível de lá).
+const PUSH_ICON_URL = 'https://braze-images.com/appboy/communication/assets/image_assets/images/6a85eb9836110e00889a03f9/original.png?1787161495';
+function pushIconHtml(px, radius){
+  return `<img src="${PUSH_ICON_URL}" alt="" style="width:${px}px;height:${px}px;border-radius:${radius}px;flex-shrink:0;object-fit:cover;display:block;">`;
+}
+
 function renderCampaignPreview(item, lang) {
   const wrap = document.getElementById('campaignItemPreview');
   if(!wrap) return;
@@ -6990,7 +6998,7 @@ function renderCampaignPreview(item, lang) {
     const body = isOrig ? (bodyRow?.src || '') : (bodyRow?.translations[lang] || bodyRow?.src || '');
     wrap.innerHTML = `
       <div style="max-width:380px;margin:40px auto 0;background:#fff;border-radius:16px;padding:16px;box-shadow:0 2px 16px rgba(0,0,0,.12);display:flex;gap:12px;">
-        <div style="width:44px;height:44px;border-radius:12px;background:#d8385e;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;">🔔</div>
+        ${pushIconHtml(44, 12)}
         <div style="min-width:0;">
           <div style="font-weight:700;font-size:14px;color:#000;margin-bottom:2px;">${escHtml(title) || '<em style="color:#aaa;">No title yet</em>'}</div>
           <div style="font-size:13px;color:#333;line-height:1.4;">${escHtml(body) || '<em style="color:#aaa;">No body yet</em>'}</div>
@@ -8881,7 +8889,7 @@ function renderCampaignLocaleThumb(item, idx, loc) {
     wrap.innerHTML = `
       <div style="padding:16px 12px;">
         <div style="max-width:300px;margin:0 auto;background:#fff;border-radius:14px;padding:13px;box-shadow:0 2px 12px rgba(0,0,0,.1);display:flex;gap:10px;">
-          <div style="width:36px;height:36px;border-radius:10px;background:#d8385e;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;">🔔</div>
+          ${pushIconHtml(36, 10)}
           <div style="min-width:0;">
             <div style="font-weight:700;font-size:13px;color:#000;margin-bottom:2px;">${escHtml(title) || '<em style="color:#aaa;">No title</em>'}</div>
             <div style="font-size:12px;color:#333;line-height:1.4;">${escHtml(bodyTxt) || '<em style="color:#aaa;">No body</em>'}</div>

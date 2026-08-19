@@ -665,7 +665,7 @@ function buildPushFrameHtml(f) {
   const body = isOrig ? (bodyRow?.src || '') : (bodyRow?.translations?.[lang] || '');
   return `<html><body style="margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;background:transparent;padding:20px 12px;">
     <div style="max-width:360px;background:#fff;border-radius:16px;padding:16px;box-shadow:0 2px 16px rgba(0,0,0,.12);display:flex;gap:12px;">
-      <div style="width:44px;height:44px;border-radius:12px;background:#d8385e;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;">🔔</div>
+      ${pushIconHtml(44, 12)}
       <div style="min-width:0;">
         <div data-tid="id1" style="font-weight:700;font-size:14px;color:#000;margin-bottom:2px;">${escHtml(title)}</div>
         <div data-tid="id2" style="font-size:13px;color:#333;line-height:1.4;">${escHtml(body)}</div>

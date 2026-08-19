@@ -323,3 +323,8 @@ projetos (renameProjectModal).
 - renameCampaign removido (redundante).
 VERIFICAÇÃO (localhost): modal mostra "Rename folder"/"Folder name" com o nome atual pra pasta e
 "Rename project"/"Project name" pra projeto; 0 erro de console.
+
+REVISÃO (mesmo dia) — ícone do PUSH: imagem da marca no lugar do sino (preview + approval)
+- PUSH_ICON_URL + pushIconHtml(px,radius): <img> da marca no tamanho do quadrado. Substituiu o
+  sino 🔔 nos 5 lugares (preview de campanha 44px, cards 38/36/28px, e approval 44px). Imagem
+  externa (braze-images) carrega 200 (228x230). Só o 🔔 do botão "Push" do seletor de tipo ficou.
