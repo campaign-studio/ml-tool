@@ -5173,6 +5173,25 @@ function mergeItemRows(winner, other) {
     if(inO && !inW) return (wDel.get(id) || 0) > oUpd;
     return true;
   };
+  // Comentário por célula (row.cellComments) agora existe também na pasta. Ele NÃO pode seguir a
+  // regra de "vence o lado mais novo": duas pessoas comentando na mesma linha ao mesmo tempo
+  // perderiam um comentário. União por id, como mergeApprovalState já faz com os comentários de
+  // aprovação — comentário é acréscimo, nunca substituição.
+  const mergeComments = (wr, or) => {
+    const a = (wr && wr.cellComments) || null, b = (or && or.cellComments) || null;
+    if(!a && !b) return undefined;
+    const out = {};
+    new Set([...Object.keys(a || {}), ...Object.keys(b || {})]).forEach(lang => {
+      const seen = new Set(), lista = [];
+      [...((a && a[lang]) || []), ...((b && b[lang]) || [])].forEach(c => {
+        if(!c || !c.id || seen.has(c.id)) return;
+        seen.add(c.id); lista.push(c);
+      });
+      lista.sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0)); // ordem estável nos dois lados
+      out[lang] = lista;
+    });
+    return out;
+  };
   const mergeCell = (wr, or) => {
     if(!or) return wr;
     if(!wr) return or;
@@ -5188,7 +5207,8 @@ function mergeItemRows(winner, other) {
       else val = '';
       translations[l] = val;
     });
-    return { ...wr, translations };
+    const cc = mergeComments(wr, or);
+    return cc === undefined ? { ...wr, translations } : { ...wr, translations, cellComments: cc };
   };
   const order = [], seen = new Set();
   winnerRows.forEach(r => { if(!seen.has(r.id)){ seen.add(r.id); order.push(r.id); } });
@@ -6968,8 +6988,11 @@ function renderCampaignGrid(item) {
     write: 'setCampaignCell',
     liveHL: false,       // avulso sincroniza o preview clássico (#vf) por foco/tecla; campanha
                           // já tem seu próprio caminho de preview (updateCampaignPreviewCell)
-    wrapInner: false,
-    commentsEnabled: false, // comentário por célula ainda não existe no fluxo de campanha
+    // wrapInner precisa ser TRUE junto com commentsEnabled: o botão de comentário só é emitido
+    // dentro do .tl-inner (ver translationCellTd) — com wrapInner:false ele era descartado em
+    // silêncio e a pasta ficava sem o botão mesmo com os comentários ligados.
+    wrapInner: true,
+    commentsEnabled: true, // comentário por célula vale nas DUAS grades (ver commentSurfaceCommit)
     delRowFn: 'campDelRow',
     idLabel: row => row.label || row.id,
     onclickHighlight: false,
@@ -11900,8 +11923,23 @@ function addComment(ri, lang, text, parentId) {
     );
   });
   renderCommentThread();
-  reBody();
-  scheduleAutosave();
+  commentSurfaceCommit();
+}
+
+// Comentário por célula existe nas DUAS grades. Depois de mexer num comentário é preciso
+// re-renderizar a grade certa e disparar o autosave certo — a pasta salva por ITEM
+// (scheduleCampaignAutosave), o avulso salva o projeto (scheduleAutosave).
+function commentSurfaceCommit() {
+  if(_gridBodyId === 'campGstb' && _campaign && _campaignItemIndex >= 0) {
+    const item = _campaign.items[_campaignItemIndex];
+    if(item) {
+      renderCampaignGrid(item);
+      touchCampaignItem(item);      // a linha mudou → carimba pro merge por item
+      scheduleCampaignAutosave();
+      return;
+    }
+  }
+  commentSurfaceCommit();
 }
 
 function toggleCommentCheck(commentId) {
@@ -11915,7 +11953,7 @@ function toggleCommentCheck(commentId) {
   const idx = comment.confirmedBy.indexOf(email);
   idx === -1 ? comment.confirmedBy.push(email) : comment.confirmedBy.splice(idx,1);
   renderCommentThread();
-  scheduleAutosave();
+  commentSurfaceCommit();
 }
 
 function deleteRowComment(commentId) {
@@ -11928,8 +11966,7 @@ function deleteRowComment(commentId) {
   if(!comment || comment.author.toLowerCase() !== me.email.toLowerCase()) return;
   row.cellComments[_commentLang] = comments.filter(c => c.id !== commentId && c.parentId !== commentId);
   renderCommentThread();
-  reBody();
-  scheduleAutosave();
+  commentSurfaceCommit();
 }
 
 /* ───────── @ Mentions dropdown ───────── */

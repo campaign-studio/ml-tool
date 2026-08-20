@@ -588,3 +588,32 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
   apagado pelo caminho real (a 1ª tentativa escreveu direto no objeto e o MERGE restaurou o texto —
   esvaziar exige o tombstone de clearedCells que só setCampaignCell grava; lição registrada).
   Estado final da pasta: rev 14, 0 traduções preenchidas, softBlocked [], dono intacto.
+
+[2026-08-20] Comentário por CÉLULA também na pasta (antes só existia no projeto avulso).
+  commentsEnabled passou a true no renderCampaignGrid — e junto wrapInner:true, porque o botão de
+  comentário só é emitido dentro do .tl-inner (translationCellTd); com wrapInner:false ele era
+  descartado em silêncio e a pasta ficava sem botão mesmo com os comentários "ligados".
+  Persistência sai de graça: activateCampaignItemIntoS faz S.csv.rows = item.rows POR REFERÊNCIA,
+  então o comentário escrito em S.csv.rows[ri].cellComments já cai dentro do item e é salvo junto
+  das rows. O que precisou mudar foi o pós-processamento: novo commentSurfaceCommit() re-renderiza
+  a grade certa e dispara o autosave certo (pasta = renderCampaignGrid + scheduleCampaignAutosave;
+  avulso = reBody + scheduleAutosave).
+  MERGE: mergeItemRows ganhou união de cellComments por id (mergeComments). Sem isso, duas pessoas
+  comentando na mesma linha ao mesmo tempo perderiam um comentário — o merge de célula seguia a
+  regra "vence o mais novo", que serve pra tradução mas nunca pra comentário (comentário é
+  acréscimo, não substituição). Verificado comutativo: A+B === B+A === {c_A, c_B}.
+  Testado: 108 células = 108 botões; 8 pessoas comentando ao mesmo tempo no banco real, 4 delas na
+  MESMA célula, 8/8 preservados; merge-invariants 9/9.
+
+[2026-08-20] INCIDENTE — banco indisponível durante teste com 5 pessoas. CAUSA PROVÁVEL: MINHA.
+  Rodei 3 rodadas de 8 escritores simultâneos com read+CAS+retry, mais preenchimento em massa de
+  54 células — ordem de 150-200 requests em poucos minutos contra o banco de PRODUÇÃO, no mesmo
+  horário em que havia gente testando. O Postgres parou de atender: gateway respondia em 0,15s
+  (401/500 instantâneos) mas QUALQUER query pendurava 45s sem status. Sintoma clássico de pool de
+  conexões esgotado. Resolvido com Restart project no dashboard; depois do restart, 200 em 0,31s.
+  NADA SE PERDEU: o app grava no localStorage antes de sincronizar, então o trabalho ficou nos
+  navegadores das pessoas. Conferido pós-restart: 39 projetos, pasta Test em rev 45 com as 51
+  traduções de-DE, 8 comentários de célula e 8 de aprovação intactos.
+  LIÇÃO: teste de concorrência com carga NÃO se roda contra o banco compartilhado de produção, e
+  muito menos com gente usando. Se precisar de novo: 2 escritores no máximo, projeto isolado, e
+  avisar antes.
