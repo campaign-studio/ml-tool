@@ -1062,6 +1062,11 @@ body.soft-blocked tr.img-row td.tl input.img-url:focus{ background:repeating-lin
    etiqueta de nome em cima. Só contorno + etiqueta (nada de fundo forte): a célula continua
    legível e quem está traduzindo não perde a leitura do texto. */
 td.tl-cell.gp-cell{position:relative;box-shadow:inset 0 0 0 2px var(--gp-color, var(--brand));border-radius:2px;}
+/* Travada: o colega está com o cursor aqui. Hachura leve + cursor de bloqueado — dá pra LER
+   normalmente (é tradução, precisa ser lida), só não dá pra editar. */
+td.tl-cell.gp-locked{background:repeating-linear-gradient(45deg,transparent,transparent 7px,rgba(128,128,128,.07) 7px,rgba(128,128,128,.07) 14px);}
+td.tl-cell.gp-locked textarea,
+td.tl-cell.gp-locked input.img-url{cursor:not-allowed;}
 /* A etiqueta contém o nome COMPLETO, mas fica cortada pra não alargar a coluna. Passar o mouse
    na célula revela o nome inteiro (e traz a etiqueta pra frente das vizinhas). */
 td.tl-cell .gp-tag{position:absolute;top:-9px;left:-1px;z-index:6;
@@ -3787,6 +3792,11 @@ function sbStartPresence(){
   if(!me) return;
   _presenceChannel = sb.channel('mlt-presence-v1', { config: { presence: { key: me.email.toLowerCase() } } });
   _presenceChannel
+    // Caminho RÁPIDO da co-edição: a tecla do colega chega por aqui em ~100ms, sem esperar o
+    // ciclo de gravação (que leva 3-6s). Só visual — o banco continua sendo a fonte da verdade.
+    .on('broadcast', { event: 'cell' }, ({ payload }) => {
+      if(typeof liveOnRemoteCellBroadcast === 'function') liveOnRemoteCellBroadcast(payload);
+    })
     .on('presence', { event: 'sync' },  () => _recomputePresence())
     .on('presence', { event: 'join' },  () => _recomputePresence())
     .on('presence', { event: 'leave' }, () => _recomputePresence())
@@ -7066,6 +7076,7 @@ function setCampaignCell(ri, lang, value) {
   if(!item || !item.rows[ri]) return;
   // Soft block locks the IMAGE row (URL) only — normal text stays translatable.
   if(item.rows[ri].isImg && typeof softBlockDeny === 'function' && softBlockDeny()) { renderCampaignGrid(item); return; }
+  if(isCellPasteBlocked(item.rows[ri], lang)) return; // soft lock: colega está com o cursor aqui
   const before = item.rows[ri].translations[lang] || '';
   // Célula sendo ESVAZIADA → backup antes de apagar (ver setCellV).
   if(before.trim() && !String(value||'').trim()) maybeSnapshotBeforeStructuralDelete();
@@ -7075,6 +7086,7 @@ function setCampaignCell(ri, lang, value) {
   // Co-edição: ver comentário em setCellV. Pasta não tem trava, então isto é o que garante que
   // o patch de um colega não apague a tecla que acabou de ser digitada aqui.
   if(typeof liveMarkDirty === 'function') liveMarkDirty(_campaign.id, item.id, item.rows[ri].id, lang, value);
+  if(typeof liveBroadcastCell === 'function') liveBroadcastCell(_campaign.id, item.id, item.rows[ri].id, lang, value);
   touchCampaignItem(item); // edição de conteúdo → carimba pro merge por item
   scheduleCampaignAutosave();
   updateCampaignPreviewCell(item, item.rows[ri], lang);
@@ -11276,6 +11288,7 @@ function setCellV(ri,l,v){
   const row=S.csv.rows[ri];
   // Soft block locks the IMAGE row (URL) only — normal text stays translatable.
   if(row && row.isImg && typeof softBlockDeny === 'function' && softBlockDeny()) { reBody(); return; }
+  if(isCellPasteBlocked(row, l)) return; // soft lock: colega está com o cursor nesta célula
   const before = row.translations[l] || '';
   // Célula sendo ESVAZIADA (tinha conteúdo, virou vazia) → backup antes de apagar. Chamado ANTES
   // de gravar o vazio pra o snapshot conter o conteúdo original.
@@ -11292,6 +11305,8 @@ function setCellV(ri,l,v){
   // Co-edição: marca a célula como "minha e ainda não confirmada" — enquanto estiver assim,
   // nenhum patch remoto entra nela (ver modules/live-coedit.js).
   if(typeof liveMarkDirty === 'function') liveMarkDirty(currentProjectId, null, row.id, l, v);
+  // Caminho rápido: transmite a tecla na hora pros outros (throttled). Não substitui o autosave.
+  if(typeof liveBroadcastCell === 'function') liveBroadcastCell(currentProjectId, null, row.id, l, v);
   updatePreviewText(ri,l);
   if(row.isMeta) debR();   // meta row (header/preheader): rebuild o card acima do e-mail
   scheduleAutosave();
@@ -11444,7 +11459,17 @@ function gridField(td){ return td ? td.querySelector('textarea,input') : null; }
 function gridDims(){ return { rows: S.csv.rows.length, cols: gridLangs().length }; }
 // Placeholder do lock de célula (ex: linha de currency travada — recurso de outro prompt que
 // ainda não existe no código). Copiar sempre pode; colar/editar respeitam isto quando existir.
-function isCellPasteBlocked(row, lang){ return false; }
+// SOFT LOCK por presença: enquanto um colega está com o cursor nesta célula, ela não é editável
+// aqui. Este stub sempre devolvia false; agora é o ponto único que bloqueia entrar em edição E
+// colar por cima (os dois já consultavam esta função). Ver modules/grid-presence.js.
+function _softLockItemId(){
+  return (_gridBodyId === 'campGstb' && _campaign && _campaignItemIndex >= 0)
+    ? ((_campaign.items[_campaignItemIndex] || {}).id || null) : null;
+}
+function isCellPasteBlocked(row, lang){
+  if(!row || !lang || typeof gridPresenceHolder !== 'function') return false;
+  return !!gridPresenceHolder(_softLockItemId(), row.id, lang);
+}
 
 function gridClearClasses(){
   const b=gridBody(); if(!b) return;
@@ -11486,7 +11511,12 @@ function gridMove(dr,dc,extend){
 function gridEnterEdit(initialChar){
   const td=gridCellEl(_grid.r,_grid.c); const f=gridField(td); if(!f) return;
   const lang=gridLangs()[_grid.c], row=S.csv.rows[_grid.r];
-  if(!lang||!row||isCellPasteBlocked(row,lang)) return; // célula travada não edita
+  if(!lang||!row) return;
+  if(isCellPasteBlocked(row,lang)){ // soft lock: colega está com o cursor aqui
+    const quem = (typeof gridPresenceHolderName==='function') ? gridPresenceHolderName(_softLockItemId(), row.id, lang) : null;
+    if(quem && typeof uiNotify==='function') uiNotify(quem + ' is editing this cell', { type:'warning', dedupeKey:'soft-lock' });
+    return;
+  }
   _grid.editing=true; _grid.editOrig=f.value;
   td.classList.remove('cell-nav');
   f.removeAttribute('readonly');

@@ -342,6 +342,100 @@
     _toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
   }
 
+  /* ── CAMINHO RÁPIDO: transmitir a tecla direto, sem esperar o banco ─────────────────────
+   * O caminho normal (digita -> autosave 1500ms -> pull -> gravar -> Realtime -> pull -> aplicar)
+   * leva de 3 a 6 segundos: o texto só viaja DEPOIS de persistir. Isso é correto pra durabilidade,
+   * mas não é "ao vivo".
+   * Aqui vai um atalho SÓ VISUAL: a cada tecla, transmite {rowId, lang, text} pelo canal de
+   * presença e o outro lado pinta na hora. O banco continua sendo a fonte da verdade — este
+   * broadcast é efêmero, não persiste nada, e quem chegar depois pega o estado real no próximo
+   * pull. Se o broadcast se perder, o ciclo normal corrige alguns segundos depois.
+   *
+   * Por que no canal de presença e não num canal por projeto: evita gerenciar join/leave a cada
+   * projeto aberto (fonte clássica de canal vazando). O custo é que a mensagem chega a todo mundo
+   * conectado, e o receptor descarta o que não é do seu projeto. Com uma equipe pequena e payload
+   * de algumas centenas de bytes throttled, o tráfego é irrelevante. Se a equipe crescer muito,
+   * a troca é migrar para um canal por projeto.
+   */
+  const BROADCAST_THROTTLE_MS = 120;
+  let _bcTimers = Object.create(null);   // chave da célula -> timer (throttle por célula)
+  let _bcPending = Object.create(null);  // chave da célula -> último valor a enviar
+  const _lastApplied = Object.create(null); // chave -> timestamp aplicado (descarta fora de ordem)
+
+  function liveBroadcastCell(projectId, itemId, rowId, lang, text) {
+    if (!projectId || !rowId || !lang) return;
+    const ch = (typeof _presenceChannel !== 'undefined') ? _presenceChannel : null;
+    if (!ch || ch.state !== 'joined') return;
+    const k = _key(projectId, itemId, rowId, lang);
+    _bcPending[k] = _str(text);
+    if (_bcTimers[k]) return;                        // já há um envio agendado pra esta célula
+    _bcTimers[k] = setTimeout(() => {
+      _bcTimers[k] = null;
+      const value = _bcPending[k]; delete _bcPending[k];
+      try {
+        ch.send({ type: 'broadcast', event: 'cell',
+                  payload: { projectId, itemId: itemId || null, rowId, lang, text: value, at: Date.now() } });
+      } catch (e) {}
+    }, BROADCAST_THROTTLE_MS);
+  }
+
+  // Recebe a tecla do colega e pinta na hora — respeitando as MESMAS guardas do patch normal:
+  // nada de mexer em célula suja (minha, não confirmada) nem na que está com o cursor.
+  function liveOnRemoteCellBroadcast(pl) {
+    if (!pl || !pl.rowId || !pl.lang) return;
+    if (pl.projectId !== gProjId()) return;          // é de outro projeto → ignora
+    const ctx = _ctxForBroadcast();
+    if (!ctx) return;
+    if ((pl.itemId || null) !== (ctx.itemId || null)) return;  // outro item da mesma pasta
+    const k = _key(pl.projectId, pl.itemId, pl.rowId, pl.lang);
+    if (_dirty.has(k)) return;                       // estou digitando aqui
+    if ((_lastApplied[k] || 0) > (pl.at || 0)) return; // chegou fora de ordem
+    _lastApplied[k] = pl.at || Date.now();
+
+    const ri = ctx.rows.findIndex(r => r && r.id === pl.rowId);
+    const ci = ctx.langs.indexOf(pl.lang);
+    if (ri < 0 || ci < 0) return;
+    const row = ctx.rows[ri];
+    row.translations = row.translations || {};
+    if (_str(row.translations[pl.lang]) === _str(pl.text)) return;
+
+    const td = ctx.body.querySelector('td.tl-cell[data-r="' + ri + '"][data-c="' + ci + '"]');
+    const field = td ? td.querySelector('textarea, input.img-url') : null;
+    if (field && field === document.activeElement) return;   // cursor está aqui
+
+    row.translations[pl.lang] = _str(pl.text);
+    if (field) {
+      field.value = _str(pl.text);
+      const ah = fn('autoH');
+      if (ah && field.tagName === 'TEXTAREA') try { ah(field); } catch (e) {}
+    }
+    if (td) {
+      td.classList.toggle('tl-missing', !_str(pl.text).trim());
+      td.classList.remove('mlt-live-updated'); void td.offsetWidth; td.classList.add('mlt-live-updated');
+      setTimeout(() => td.classList.remove('mlt-live-updated'), FLASH_MS);
+    }
+    // Preview em modo SILENCIOSO — a âncora continua sendo de quem digita.
+    if (ctx.itemId) { try { _silentCampaignPreviewCell(ctx.item, row, pl.lang); } catch (e) {} }
+    else { const u = fn('updatePreviewText'); if (u) try { u(ri, pl.lang, { silent: true }); } catch (e) {} }
+  }
+
+  // Contexto da grade na tela (mesma discriminação do apply normal), já com o item pra pasta.
+  function _ctxForBroadcast() {
+    const bodyId = gBodyId();
+    const body = bodyId && document.getElementById(bodyId);
+    if (!body || !body.offsetParent) return null;
+    const sortL = fn('sortLangsForDisplay');
+    if (bodyId === 'campGstb') {
+      const camp = gCamp(), idx = gCampIdx();
+      const item = camp && (camp.items || [])[idx];
+      if (!item) return null;
+      return { body, item, itemId: item.id, rows: item.rows || [], langs: sortL ? sortL(item.langs || []) : (item.langs || []) };
+    }
+    const S = gS();
+    if (!S || !S.csv || !Array.isArray(S.csv.rows)) return null;
+    return { body, item: null, itemId: null, rows: S.csv.rows, langs: sortL ? sortL(S.csv.langs) : (S.csv.langs || []) };
+  }
+
   /* ── Diagnóstico (console) ─────────────────────────────────────────────────────────────── */
   function liveCoeditState() {
     return { dirty: [..._dirty.keys()], sigs: Object.assign({}, _lastSig), pendingStructural: _pendingStructural };
@@ -354,4 +448,6 @@
   global.liveReloadNow = liveReloadNow;
   global.liveDismissReloadBar = liveDismissReloadBar;
   global.liveCoeditState = liveCoeditState;
+  global.liveBroadcastCell = liveBroadcastCell;
+  global.liveOnRemoteCellBroadcast = liveOnRemoteCellBroadcast;
 })(window);

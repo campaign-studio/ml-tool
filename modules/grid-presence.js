@@ -100,7 +100,9 @@
   function renderGridPresence() {
     const ctx = _ctx();
     document.querySelectorAll('.gp-cell').forEach(el => {
-      el.classList.remove('gp-cell');
+      el.classList.remove('gp-cell', 'gp-locked');
+      const f0 = el.querySelector('textarea, input.img-url');
+      if (f0) f0.removeAttribute('title');   // readonly é reposto pelo controlador da grade
       el.style.removeProperty('--gp-color');
       const tag = el.querySelector('.gp-tag'); if (tag) tag.remove();
     });
@@ -125,6 +127,10 @@
       const color = colorOf(u);
       td.classList.add('gp-cell');
       td.style.setProperty('--gp-color', color);
+      // Travada: o colega está com o cursor aqui (ver soft lock acima).
+      td.classList.add('gp-locked');
+      const f = td.querySelector('textarea, input.img-url');
+      if (f) { f.readOnly = true; f.title = _fullName(u) + ' is editing this cell'; }
       if (!td.querySelector('.gp-tag')) {
         const tag = document.createElement('span');
         tag.className = 'gp-tag';
@@ -195,9 +201,42 @@
     });
   }
 
+  /* ── SOFT LOCK: a célula onde o colega está fica bloqueada aqui ──────────────────────────
+   * Este é o único ponto em que o merge por célula perde dado: se duas pessoas escrevem na MESMA
+   * célula, vence quem gravar por último e o texto da outra some sem aviso. Em vez de partir pra
+   * CRDT (caríssimo e desproporcional aqui), a presença já diz quem está onde — então basta não
+   * deixar duas pessoas na mesma célula ao mesmo tempo.
+   * É SOFT de propósito: se a presença do colega sumir, ficar velha (rede caiu, aba morreu) ou o
+   * canal cair, a célula libera sozinha. Bloqueio que prende alguém por falha de rede seria pior
+   * que o problema que ele resolve.
+   */
+  const HOLD_STALE_MS = 25000;
+
+  // Quem (se alguém) está com ESTA célula agora. null = livre.
+  function gridPresenceHolder(itemId, rowId, lang) {
+    if (!rowId || !lang) return null;
+    const now = Date.now();
+    for (const u of _peersHere()) {
+      const c = u.cell;
+      if (!c || c.rowId !== rowId || c.lang !== lang) continue;
+      if ((c.itemId || null) !== (itemId || null)) continue;
+      if (now - (u.at || 0) > HOLD_STALE_MS) continue;   // presença velha → não trava
+      return u;
+    }
+    return null;
+  }
+
+  // Nome de quem segura a célula, pra mensagem na interface.
+  function gridPresenceHolderName(itemId, rowId, lang) {
+    const u = gridPresenceHolder(itemId, rowId, lang);
+    return u ? _fullName(u) : null;
+  }
+
   document.addEventListener('focusin', _onFocusIn);
   document.addEventListener('focusout', _onFocusOut);
 
   global.gridPresenceMyCell   = gridPresenceMyCell;
   global.renderGridPresence   = renderGridPresence;
+  global.gridPresenceHolder     = gridPresenceHolder;
+  global.gridPresenceHolderName = gridPresenceHolderName;
 })(window);

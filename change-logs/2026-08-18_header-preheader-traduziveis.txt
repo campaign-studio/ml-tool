@@ -617,3 +617,31 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
   LIÇÃO: teste de concorrência com carga NÃO se roda contra o banco compartilhado de produção, e
   muito menos com gente usando. Se precisar de novo: 2 escritores no máximo, projeto isolado, e
   avisar antes.
+
+[2026-08-20] Co-edição AO VIVO de verdade: broadcast da tecla + soft lock por célula.
+  PROBLEMA 1 — "aparece depois de alguns segundos, não ao vivo". Não era bug: o texto só viajava
+  DEPOIS de persistir. A conta: 1500ms de debounce do autosave + um pull ANTES de gravar +
+  gravação CAS + notificação do Realtime + 250ms de debounce no receptor + OUTRO pull + 150ms do
+  apply = 3 a 6 segundos.
+  Correção: caminho RÁPIDO paralelo. A cada tecla, transmite {rowId, lang, text} por broadcast no
+  canal de presença que já existe (throttle 120ms por célula) e o outro lado pinta na hora. É só
+  visual e efêmero — o banco segue sendo a fonte da verdade pelo ciclo normal, e se um broadcast
+  se perder o pull corrige segundos depois. Medido: 3-6s -> 53ms.
+  Guardas mantidas: não aplica em célula suja nem na que está com o cursor; preview em modo
+  silencioso (âncora continua de quem digita); descarta mensagem fora de ordem por timestamp.
+  Fica no canal de presença (e não num canal por projeto) pra não gerenciar join/leave por
+  projeto, que é fonte clássica de canal vazando; o receptor descarta o que não é do seu projeto.
+
+  PROBLEMA 2 — duas pessoas na MESMA célula. Era o único ponto em que o merge perdia dado (vence
+  quem grava por último, silenciosamente). Em vez de CRDT, a presença já sabe quem está onde:
+  SOFT LOCK. Enquanto o colega está com o cursor na célula, ela fica travada aqui — hachura,
+  cursor bloqueado, readonly, e "Fulano is editing this cell" ao tentar entrar.
+  Aproveitou o gancho isCellPasteBlocked(row,lang), que era um stub `return false` já consultado
+  por gridEnterEdit E pelo paste — um ponto só bloqueia as duas coisas. Guarda REAL também em
+  setCellV/setCampaignCell (console não passa por gridEnterEdit).
+  É SOFT de propósito: presença mais velha que 25s não trava, e sair do canal libera na hora —
+  travar alguém por queda de rede seria pior que o problema.
+
+  Testado: soft lock trava escrita e edição, vizinha continua livre, presença velha não trava,
+  saída do canal libera, minha própria presença não me trava, colega em outro item da pasta não
+  trava (6/6); broadcast entre dois clientes reais no canal em 53ms; merge-invariants 9/9.
