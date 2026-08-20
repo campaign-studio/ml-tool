@@ -3913,17 +3913,41 @@ async function sbOnUsersChanged() {
   if(membersModal && membersModal.style.display !== 'none' && !isEditingList && !_roleBusy) renderDashUserList();
 }
 
-// Um upsert em lote dispara vários eventos; o debounce agrupa num único refresh.
+/* Um upsert em lote dispara vários eventos; agrupamos num único refresh.
+   MUDOU DE DEBOUNCE PARA THROTTLE de propósito: com debounce, edição contínua de várias pessoas
+   empurrava o pull pra frente indefinidamente e a reconciliação podia nunca acontecer. Throttle
+   garante que ela SEMPRE ocorre, no máximo 1x por janela.
+   E a janela cresce muito quando há um editor aberto: ali a tecla do colega já chega em ~50ms
+   pelo BROADCAST, então o pull é só reconciliação/estrutura e pode ser lento. Sem isso, cada
+   gravação de cada pessoa provoca um pull em TODOS os clientes, e cada pull baixa o payload
+   inteiro do projeto — com 8 pessoas isso sozinho passa de 1 MB/s de egress. */
+const SB_REFRESH_FAST_MS = 250, SB_REFRESH_EDITOR_MS = 8000;
+function _sbRefreshDelayMs(){
+  try{
+    // Detecta pela TELA visível, não pelo grid: o #gstb existe no DOM o tempo todo (só escondido),
+    // e checar offsetParent nele dava falso-positivo no dashboard — a janela lenta acabava valendo
+    // onde justamente se quer frescor.
+    // Visibilidade por COMPUTED DISPLAY, nunca por offsetParent: offsetParent é null em
+    // elemento position:fixed (é o caso do #campaignScreen), então a checagem "está visível?"
+    // dava falso-negativo e a janela lenta nunca entrava em vigor. Mesma armadilha que já
+    // tinha pegado a pilha de avatares em grid-presence.js.
+    const vis = (id) => { const e = document.getElementById(id); return !!e && getComputedStyle(e).display !== 'none'; };
+    if(vis('dashboardScreen')) return SB_REFRESH_FAST_MS;             // home → precisa de frescor
+    if(vis('appBody') || vis('campaignScreen')) return SB_REFRESH_EDITOR_MS; // editor → broadcast cobre o vivo
+  }catch(e){}
+  return SB_REFRESH_FAST_MS;
+}
 let _sbRefreshTimer = null;
 function sbOnProjectsChanged() {
-  clearTimeout(_sbRefreshTimer);
+  if(_sbRefreshTimer) return; // já há um refresh agendado nesta janela → absorve o evento
   _sbRefreshTimer = setTimeout(async () => {
+    _sbRefreshTimer = null;
     await ghPullProjects();
     const dash = document.getElementById('dashboardScreen');
     if(dash && dash.style.display !== 'none') renderDashboardIfChanged();
     checkMyLockTakeover(); // se outra pessoa assumiu o projeto que eu tenho aberto, avisa na hora
     checkApprovalEditLockLive(); // se eu tô na Approval View e o dono começou a editar, bloqueia na hora
-  }, 250);
+  }, _sbRefreshDelayMs());
 }
 async function sbOnNotifsChanged() {
   await ghPullNotifications();
@@ -6551,7 +6575,12 @@ async function openCampaignEditor(id) {
   }
 }
 
-async function saveCampaignProject() {
+// opts.skipPull: pula o pull-antes-de-gravar. Seguro no AUTOSAVE de conteúdo porque
+// casWriteProject já relê a linha remota e funde (mergeTwoProjects) antes de escrever, e
+// re-tenta em conflito de rev — o pull daqui era cinto-e-suspensório. Com 8 pessoas ele
+// custava um round-trip + o payload inteiro a CADA tecla-pausa. Ações estruturais (deletar
+// item, mover, aprovar) continuam pullando: ali o custo é irrelevante e o frescor ajuda.
+async function saveCampaignProject(opts) {
   // Captura a referência ANTES do await — se _campaign virar null enquanto essa função
   // está esperando o ghPullProjects() (ex: a pessoa clicou "Dashboard" e goToDashboard()
   // zerou _campaign logo depois de chamar isso sem esperar), o resto da função continuava
@@ -6560,7 +6589,7 @@ async function saveCampaignProject() {
   const camp = _campaign;
   if(!camp) return;
   camp.updatedAt = Date.now();
-  if(ghConfigured()) await ghPullProjects();
+  if(ghConfigured() && !(opts && opts.skipPull)) await ghPullProjects();
   const projects = projGetAll();
   const idx = projects.findIndex(x => x.id === camp.id);
   if(idx === -1) { projects.push(camp); projSaveAll(projects); return; }
@@ -6588,7 +6617,7 @@ function scheduleCampaignAutosave() {
   clearTimeout(_campaignAutosaveTimer);
   // Mesma política do editor solto (AUTOSAVE_DEBOUNCE_MS ~1,5s): junta a rajada de digitação e só
   // grava na pausa. Fechar a aba/trocar de item no meio faz flush imediato (não perde edição).
-  _campaignAutosaveTimer = setTimeout(saveCampaignProject, autosaveDebounceMs());
+  _campaignAutosaveTimer = setTimeout(() => saveCampaignProject({ skipPull: true }), autosaveDebounceMs());
 }
 
 // A barra de cima mostra os 3 TIPOS (Email/In-app/Push) — clicar num tipo mostra

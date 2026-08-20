@@ -668,3 +668,29 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
   Verificado: escala do debounce 0/1/3/5/9 -> 1500/1800/2400/3000/4200ms; canal por projeto criado
   e recebendo (56ms entre dois clientes); ao trocar de projeto o canal antigo SAI e só o novo fica
   (sem vazamento); listener do canal global removido (não aplica duas vezes); merge-invariants 9/9.
+
+[2026-08-20] Escala pra 8 pessoas: cortando o desperdício REAL (o eco, não a gravação).
+  Ao medir, o maior custo com 8 pessoas não era escrever — era o ECO. Cada gravação de cada
+  pessoa dispara um evento do Realtime em TODOS os clientes, e cada um respondia com um pull que
+  baixa o payload INTEIRO do projeto (69KB). Com 8 pessoas isso sozinho passava de 1 MB/s.
+  Dois cortes:
+  1. PULL-ANTES-DE-GRAVAR removido do autosave de conteúdo (saveCampaignProject({skipPull:true})).
+     Era cinto-e-suspensório: casWriteProject já relê a linha remota, funde (mergeTwoProjects) e
+     re-tenta em conflito. Ações estruturais (deletar item, mover, aprovar) seguem pullando —
+     ali o custo é irrelevante.
+  2. O pull do Realtime virou THROTTLE (era debounce) e a janela cresce pra 8s com um editor
+     aberto. Debounce era pior: com várias pessoas digitando sem parar, o pull era empurrado pra
+     frente e a reconciliação podia NUNCA acontecer. Throttle garante que sempre ocorre, no
+     máximo 1x por janela. Medido: 40 eventos -> 2 pulls.
+     Os 8s só valem com editor na tela, onde a tecla do colega já chega em ~50ms pelo broadcast;
+     no dashboard segue 250ms, que é onde frescor importa.
+
+  ARMADILHA (a segunda vez que ela me pega): usei offsetParent pra saber se a tela está visível e
+  deu falso-negativo — offsetParent é null em elemento position:fixed, que é o caso do
+  #campaignScreen. A janela lenta nunca entrava em vigor. Correção: visibilidade por
+  getComputedStyle(el).display !== 'none'. Mesma causa do bug da pilha de avatares em
+  grid-presence.js. Se for checar "está na tela?" neste app, NÃO use offsetParent.
+
+  Verificado: dashboard 250ms / editor 8000ms / volta pro dashboard 250ms; autosave com 7 colegas
+  = 3600ms; autosave pula o pull; canal por projeto ativo; 40 eventos -> 2 pulls;
+  merge-invariants 9/9.
