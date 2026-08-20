@@ -694,3 +694,31 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
   Verificado: dashboard 250ms / editor 8000ms / volta pro dashboard 250ms; autosave com 7 colegas
   = 3600ms; autosave pula o pull; canal por projeto ativo; 40 eventos -> 2 pulls;
   merge-invariants 9/9.
+
+[2026-08-20] Presença ASSIMÉTRICA ("o nome dela apareceu pra mim, o meu não pra ela").
+  Não consegui reproduzir ao vivo (a outra pessoa já tinha saído), então fui pelo código atrás de
+  causas de assimetria — e achei duas reais:
+
+  1. A presença era anunciada UMA ÚNICA VEZ: no SUBSCRIBED do canal e ao trocar de projeto
+     (presenceSetProject). Não havia re-anúncio. Qualquer falha ou perda desse track — erro de
+     rede, socket que reconecta sem re-trackear, aba que dorme e volta — deixava a pessoa
+     invisível para os outros PERMANENTEMENTE. E ela seguia enxergando todo mundo normalmente,
+     porque o estado dos outros chega pelo evento de sync, independente do meu próprio track.
+     É exatamente a assimetria relatada. Pior: o erro era ENGOLIDO (`catch(e){}`), então não havia
+     nem rastro.
+     Correção: HEARTBEAT re-anunciando a cada 20s (presença auto-reparável — qualquer buraco se
+     fecha na batida seguinte) + o catch passou a logar em vez de engolir.
+     Custo: presença é efêmera e não toca o banco; com 10 pessoas dá 0,5 msg/s.
+
+  2. approverOpenProject (abrir projeto como approver pelo dashboard) era o ÚNICO caminho de
+     abertura que não chamava presenceSetProject — quem entrava por ali ficava invisível por
+     construção, embora enxergasse todo mundo. Mesma assimetria, causa diferente.
+
+  Verificado: heartbeat ativo a 20s e disparando sozinho (medido 20s entre dois tracks); track
+  que falha não quebra nada e é reparado no anúncio seguinte; approverOpenProject agora anuncia;
+  merge-invariants 9/9.
+
+  NOTA DE PROCESSO: o painel de automação que eu controlo loga com a MESMA identidade do usuário
+  (a chave de presença é o e-mail), então meu cliente e o navegador dele entram no canal como a
+  mesma pessoa. Não dá pra descartar que isso tenha interferido no teste. Regra daqui pra frente:
+  fico FORA do canal enquanto eles testam com pessoas reais.

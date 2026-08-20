@@ -137,6 +137,10 @@ function approverOpenProject(id) {
   currentProjectId = id;
   _lockTakeoverShown = false;
   claimApprovingPresence(id);
+  // Anuncia a presença AO VIVO também neste caminho. Sem isto, quem abre como approver via
+  // dashboard enxergava todo mundo mas ninguém a enxergava — invisível por construção, porque
+  // este era o único caminho de abrir projeto que não chamava presenceSetProject.
+  if(typeof presenceSetProject === 'function') presenceSetProject(id);
   document.getElementById('dashboardScreen').style.display = 'none';
   document.getElementById('appBody').style.display = '';
   document.getElementById('hdrBar').style.display = '';

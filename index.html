@@ -3795,7 +3795,25 @@ function sbStartPresence(){
     .on('presence', { event: 'sync' },  () => _recomputePresence())
     .on('presence', { event: 'join' },  () => _recomputePresence())
     .on('presence', { event: 'leave' }, () => _recomputePresence())
-    .subscribe(async (status) => { if(status === 'SUBSCRIBED') await _presenceSendTrack(); });
+    .subscribe(async (status) => { if(status === 'SUBSCRIBED'){ await _presenceSendTrack(); _presenceStartHeartbeat(); } });
+}
+
+/* HEARTBEAT DE PRESENÇA.
+   A presença era anunciada UMA vez (ao entrar no canal e ao trocar de projeto). Qualquer falha ou
+   perda desse anúncio — track com erro, socket que reconectou sem re-trackear, aba que dormiu —
+   deixava a pessoa invisível para os outros PERMANENTEMENTE, embora ela continuasse enxergando
+   todo mundo (o estado dos outros chega pelo sync, independente do meu próprio track). É
+   exatamente o sintoma de "o nome dela apareceu pra mim, o meu não apareceu pra ela".
+   Re-anunciar a cada 20s torna a presença auto-reparável: qualquer buraco se fecha na próxima
+   batida. Custo irrelevante — presença é efêmera, não toca o banco; com 10 pessoas dá 0,5 msg/s. */
+const PRESENCE_HEARTBEAT_MS = 20000;
+let _presenceHeartbeat = null, _presenceLastOk = 0;
+function _presenceStartHeartbeat(){
+  if(_presenceHeartbeat) return;
+  _presenceHeartbeat = setInterval(() => {
+    if(!_presenceChannel || _presenceChannel.state !== 'joined') return;
+    _presenceSendTrack();
+  }, PRESENCE_HEARTBEAT_MS);
 }
 
 async function _presenceSendTrack(){
@@ -3812,7 +3830,13 @@ async function _presenceSendTrack(){
       cell: (typeof gridPresenceMyCell === 'function') ? gridPresenceMyCell() : null,
       at: Date.now()
     });
-  }catch(e){}
+    _presenceLastOk = Date.now();
+  }catch(e){
+    // NÃO engolir: antes um track falho deixava a pessoa invisível PARA SEMPRE (ela seguia vendo
+    // todo mundo, mas ninguém a via) e nada reparava isso. Hoje o heartbeat re-anuncia sozinho;
+    // o log fica pra dar rastro quando alguém reclamar.
+    console.warn('presence track falhou (re-tenta no heartbeat):', (e && e.message) || e);
+  }
 }
 
 function _recomputePresence(){
