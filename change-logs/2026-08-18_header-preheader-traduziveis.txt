@@ -645,3 +645,26 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
   Testado: soft lock trava escrita e edição, vizinha continua livre, presença velha não trava,
   saída do canal libera, minha própria presença não me trava, colega em outro item da pasta não
   trava (6/6); broadcast entre dois clientes reais no canal em 53ms; merge-invariants 9/9.
+
+[2026-08-20] Escala pra ~10 pessoas simultâneas: 3 ajustes.
+  Números medidos ANTES (payload da pasta = 69KB, cada save faz pull + write do payload INTEIRO):
+  com 10 pessoas a 1,5s -> 6,7 saves/s, ~0,9 MB/s, 3,2 GB/hora (queima 5GB de egress em ~95min).
+  Pior que o tráfego é a CONTENÇÃO: os 10 escrevem na MESMA linha, cada conflito de rev re-lê e
+  re-grava, e isso se amplifica sozinho. É o padrão que provavelmente derrubou o banco.
+
+  1. DEBOUNCE ADAPTATIVO do autosave (autosaveDebounceMs): 1500ms + 300ms por pessoa presente,
+     teto 5s. 0 pessoas=1,5s / 3=2,4s / 9=4,2s. Só é possível PORQUE o "ao vivo" deixou de
+     depender da gravação — a tecla chega em ~50ms pelo broadcast, então salvar menos vezes não
+     muda a percepção, só corta tráfego e conflito (~3x com 10 pessoas). Flush imediato ao sair
+     da tela/fechar aba continua valendo.
+  2. THROTTLE ADAPTATIVO do broadcast: 120ms + 20ms por pessoa, teto 320ms. Fixo em 120ms, 10
+     pessoas digitando dariam ~80 msg/s — perto do teto usual de 100/s do Realtime. Agora ~33/s.
+     Custo: a letra do colega aparece em ~300ms em vez de ~120ms (era 8s antes).
+  3. CANAL POR PROJETO ('mlt-cells-<id>') no lugar do canal global de presença. Antes a tecla de
+     quem estava no projeto A chegava (e era descartada) em quem estava no B. Um ponto único
+     entra/sai (liveCellChannelSet), pendurado em presenceSetProject, que o app já chama ao abrir
+     e ao sair — evita canal vazando na troca de projeto.
+
+  Verificado: escala do debounce 0/1/3/5/9 -> 1500/1800/2400/3000/4200ms; canal por projeto criado
+  e recebendo (56ms entre dois clientes); ao trocar de projeto o canal antigo SAI e só o novo fica
+  (sem vazamento); listener do canal global removido (não aplica duas vezes); merge-invariants 9/9.

@@ -3792,11 +3792,6 @@ function sbStartPresence(){
   if(!me) return;
   _presenceChannel = sb.channel('mlt-presence-v1', { config: { presence: { key: me.email.toLowerCase() } } });
   _presenceChannel
-    // Caminho RÁPIDO da co-edição: a tecla do colega chega por aqui em ~100ms, sem esperar o
-    // ciclo de gravação (que leva 3-6s). Só visual — o banco continua sendo a fonte da verdade.
-    .on('broadcast', { event: 'cell' }, ({ payload }) => {
-      if(typeof liveOnRemoteCellBroadcast === 'function') liveOnRemoteCellBroadcast(payload);
-    })
     .on('presence', { event: 'sync' },  () => _recomputePresence())
     .on('presence', { event: 'join' },  () => _recomputePresence())
     .on('presence', { event: 'leave' }, () => _recomputePresence())
@@ -3862,6 +3857,8 @@ function _isPresentInProject(email, projectId){
 // Declara em qual projeto estou agora (null = saí do editor). Efêmero.
 function presenceSetProject(projectId){
   _myPresenceProjectId = projectId || null;
+  // Canal de células (broadcast da tecla ao vivo) segue o projeto aberto — ver live-coedit.js.
+  if(typeof liveCellChannelSet === 'function') liveCellChannelSet(projectId || null);
   renderPresenceUI(); // atualiza o badge pro projeto novo já, sem esperar o próximo sync
   if(!_presenceChannel){ sbStartPresence(); return; }
   _presenceSendTrack();
@@ -6591,7 +6588,7 @@ function scheduleCampaignAutosave() {
   clearTimeout(_campaignAutosaveTimer);
   // Mesma política do editor solto (AUTOSAVE_DEBOUNCE_MS ~1,5s): junta a rajada de digitação e só
   // grava na pausa. Fechar a aba/trocar de item no meio faz flush imediato (não perde edição).
-  _campaignAutosaveTimer = setTimeout(saveCampaignProject, AUTOSAVE_DEBOUNCE_MS);
+  _campaignAutosaveTimer = setTimeout(saveCampaignProject, autosaveDebounceMs());
 }
 
 // A barra de cima mostra os 3 TIPOS (Email/In-app/Push) — clicar num tipo mostra
@@ -12116,10 +12113,31 @@ function insertMention(name) {
 // (beforeunload / goToDashboard / troca de item). É a camada 1 (autosave); a camada 2 é o snapshot
 // de histórico (a cada 60s, só se mudou — ver maybeAutoSnapshot).
 const AUTOSAVE_DEBOUNCE_MS = 1500;
+
+/* Debounce ADAPTATIVO: cresce com o nº de pessoas no mesmo projeto.
+   Por que dá pra fazer isso agora: o "ao vivo" deixou de depender da gravação. A tecla do colega
+   chega em ~50ms pelo broadcast, então salvar com menos frequência não muda NADA na percepção —
+   só reduz tráfego e, principalmente, a CONTENÇÃO do CAS.
+   O problema que isto resolve: todos escrevem na MESMA linha do banco. Cada save faz um pull do
+   payload inteiro + um write do payload inteiro; com 10 pessoas a 1,5s isso dá ~6,7 saves/s e
+   ~0,9 MB/s, e os conflitos de rev se amplificam sozinhos (cada conflito re-lê e re-grava).
+   Com 10 pessoas o intervalo vai a 4,2s: ~3x menos tráfego e muito menos conflito.
+   A durabilidade não piora de forma relevante: sair da tela/fechar a aba continua fazendo flush
+   imediato (ver beforeunload e goToDashboard). */
+const AUTOSAVE_DEBOUNCE_MAX_MS = 5000;
+function autosaveDebounceMs(){
+  let outros = 0;
+  try{
+    if(typeof currentProjectId !== 'undefined' && currentProjectId && typeof presenceFor === 'function'){
+      outros = presenceFor(currentProjectId).length;
+    }
+  }catch(e){}
+  return Math.min(AUTOSAVE_DEBOUNCE_MAX_MS, AUTOSAVE_DEBOUNCE_MS + outros * 300);
+}
 let _autosaveTimer = null;
 function scheduleAutosave() {
   clearTimeout(_autosaveTimer);
-  _autosaveTimer = setTimeout(autosaveProject, AUTOSAVE_DEBOUNCE_MS);
+  _autosaveTimer = setTimeout(autosaveProject, autosaveDebounceMs());
 }
 
 // Salva imediatamente (sem esperar o debounce) se a pessoa fechar/recarregar a aba

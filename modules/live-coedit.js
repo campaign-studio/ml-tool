@@ -357,14 +357,49 @@
    * de algumas centenas de bytes throttled, o tráfego é irrelevante. Se a equipe crescer muito,
    * a troca é migrar para um canal por projeto.
    */
-  const BROADCAST_THROTTLE_MS = 120;
+  /* Throttle ADAPTATIVO do broadcast. Fixo em 120ms, cada pessoa digitando gera ~8 msg/s; com 10
+   * no mesmo projeto dá ~80 msg/s no canal, perto do teto usual de 100/s do Realtime. Crescendo o
+   * intervalo com o nº de pessoas presentes, 10 digitando ficam em ~33 msg/s.
+   * Custo perceptual: ~300ms em vez de ~120ms pra letra do colega aparecer — imperceptível perto
+   * dos 8s de antes, e o ganho é não estourar o canal justamente quando há mais gente. */
+  const BROADCAST_THROTTLE_MIN_MS = 120, BROADCAST_THROTTLE_MAX_MS = 320;
+  function _broadcastThrottleMs() {
+    let outros = 0;
+    try {
+      const pf = fn('presenceFor'), pid = gProjId();
+      if (pf && pid) outros = pf(pid).length;
+    } catch (e) {}
+    return Math.min(BROADCAST_THROTTLE_MAX_MS, BROADCAST_THROTTLE_MIN_MS + outros * 20);
+  }
   let _bcTimers = Object.create(null);   // chave da célula -> timer (throttle por célula)
   let _bcPending = Object.create(null);  // chave da célula -> último valor a enviar
   const _lastApplied = Object.create(null); // chave -> timestamp aplicado (descarta fora de ordem)
 
+  /* CANAL POR PROJETO. Antes o broadcast pegava carona no canal GLOBAL de presença, então a
+   * tecla de quem está no projeto A chegava (e era descartada) em quem está no projeto B — puro
+   * desperdício, e conta pro teto de mensagens do canal. Agora cada projeto tem o seu
+   * 'mlt-cells-<id>'.
+   * O risco dessa abordagem é canal vazando ao trocar de projeto, então há UM ponto só que
+   * entra/sai (liveCellChannelSet), chamado de presenceSetProject — que o app já chama ao abrir
+   * e ao sair de um projeto. */
+  let _cellChannel = null, _cellChannelProjectId = null;
+
+  function liveCellChannelSet(projectId) {
+    if (projectId === _cellChannelProjectId) return;
+    const sb = fn('sbClient') ? global.sbClient() : null;
+    if (_cellChannel) { try { _cellChannel.unsubscribe(); } catch (e) {} _cellChannel = null; }
+    _cellChannelProjectId = projectId || null;
+    if (!projectId || !sb) return;
+    _cellChannel = sb.channel('mlt-cells-' + projectId);
+    _cellChannel
+      .on('broadcast', { event: 'cell' }, ({ payload }) => { try { liveOnRemoteCellBroadcast(payload); } catch (e) {} })
+      .subscribe();
+  }
+
   function liveBroadcastCell(projectId, itemId, rowId, lang, text) {
     if (!projectId || !rowId || !lang) return;
-    const ch = (typeof _presenceChannel !== 'undefined') ? _presenceChannel : null;
+    if (projectId !== _cellChannelProjectId) liveCellChannelSet(projectId); // rede de segurança
+    const ch = _cellChannel;
     if (!ch || ch.state !== 'joined') return;
     const k = _key(projectId, itemId, rowId, lang);
     _bcPending[k] = _str(text);
@@ -376,7 +411,7 @@
         ch.send({ type: 'broadcast', event: 'cell',
                   payload: { projectId, itemId: itemId || null, rowId, lang, text: value, at: Date.now() } });
       } catch (e) {}
-    }, BROADCAST_THROTTLE_MS);
+    }, _broadcastThrottleMs());
   }
 
   // Recebe a tecla do colega e pinta na hora — respeitando as MESMAS guardas do patch normal:
@@ -449,5 +484,6 @@
   global.liveDismissReloadBar = liveDismissReloadBar;
   global.liveCoeditState = liveCoeditState;
   global.liveBroadcastCell = liveBroadcastCell;
+  global.liveCellChannelSet = liveCellChannelSet;
   global.liveOnRemoteCellBroadcast = liveOnRemoteCellBroadcast;
 })(window);
