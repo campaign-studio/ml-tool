@@ -12378,7 +12378,7 @@ function checkApprovalEditLockLive() {
 }
 
 // Update text in the iframe DOM directly — no reload, no flicker
-function updatePreviewText(ri, lang) {
+function updatePreviewText(ri, lang, opts) {
   const row = S.csv.rows[ri]; if(!row) return;
   const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
   // Determine which lang the viewer is showing
@@ -12391,7 +12391,8 @@ function updatePreviewText(ri, lang) {
   const oldText = lang ? (row.translations[lang]||row.src) : row.src; // same — we just highlight
   const iframe = document.getElementById('vf');
   if(iframe && iframe.contentWindow)
-    iframe.contentWindow.postMessage({type:'braze-update', ri, text: newText, src: row.src, tid: row.id}, '*');
+    iframe.contentWindow.postMessage({type:'braze-update', ri, text: newText, src: row.src, tid: row.id,
+      silent: !!(opts && opts.silent)}, '*'); // silent = edição de outra pessoa: não move realce nem rola
 }
 // Backup ANTES de uma deleção ESTRUTURAL no CSV builder (linha/coluna). Coalescido: 1 backup por
 // rajada de 60s por projeto — apagar várias linhas seguidas guarda o estado de ANTES da 1ª (esse
@@ -12692,7 +12693,11 @@ function refreshViewer(){
   // Keep a map of ri → {node, origSrc} so we can update the same node every keystroke
   var nodeMap = {};
 
-  function updateText(ri, src, newText, tid){
+  // silent=true => só troca o TEXTO. Não move o realce e não rola.
+  // A âncora do preview pertence a QUEM ESTÁ DIGITANDO: quando a edição vem de outra pessoa
+  // (co-edição ao vivo manda braze-update com silent), mexer no realce/scroll faria o preview
+  // de todo mundo pular pro ponto onde o colega está — cada um tem que manter a própria vista.
+  function updateText(ri, src, newText, tid, silent){
     var container = tid ? document.querySelector('[data-tid="'+tid+'"]') : null;
     if(container){
       // Image row: braze-img-wrap span contains the <img>
@@ -12700,8 +12705,10 @@ function refreshViewer(){
         var img = container.querySelector('img');
         if(img){
           img.src = newText||src;
-          clearHL(); curEl=img; img.classList.add('braze-hl');
-          img.scrollIntoView({behavior:'smooth',block:'center'});
+          if(!silent){
+            clearHL(); curEl=img; img.classList.add('braze-hl');
+            img.scrollIntoView({behavior:'smooth',block:'center'});
+          }
           return;
         }
       }
@@ -12710,14 +12717,14 @@ function refreshViewer(){
       var node=walker.nextNode();
       if(node){ node.textContent = newText||src; }
       else { container.textContent = newText||src; }
-      clearHL(); curEl=container; container.classList.add('braze-hl');
+      if(!silent){ clearHL(); curEl=container; container.classList.add('braze-hl'); }
       return;
     }
     // Fallback: nodeMap by ri
     if(nodeMap[ri] && nodeMap[ri].node.isConnected){
       nodeMap[ri].node.textContent = newText || nodeMap[ri].origSrc;
       var el = nodeMap[ri].node.parentElement;
-      if(el){ clearHL(); curEl=el; el.classList.add('braze-hl'); }
+      if(el && !silent){ clearHL(); curEl=el; el.classList.add('braze-hl'); }
       return;
     }
   }
@@ -12732,7 +12739,7 @@ function refreshViewer(){
   window.addEventListener('message',function(e){
     if(!e.data) return;
     if(e.data.type==='braze-find') highlight(e.data.text, e.data.ri);
-    if(e.data.type==='braze-update') updateText(e.data.ri, e.data.src, e.data.text, e.data.tid);
+    if(e.data.type==='braze-update') updateText(e.data.ri, e.data.src, e.data.text, e.data.tid, e.data.silent);
   });
 })();
 ` + scEnd;

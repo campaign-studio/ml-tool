@@ -503,3 +503,34 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
   Verificado: 13/13 no avulso com espião em uiNotify/showNotif/uiAlert/showSyncWarning —
   todos os bloqueios ativos e ZERO avisos capturados, sem faixa e sem tooltip; contraprova sem
   soft block devolve botões de excluir linha, Edit Tagged HTML e Upload; merge-invariants 9/9.
+
+[2026-08-19] Previewer: a ÂNCORA passa a ser de quem digita, não de todo mundo.
+  Bug (introduzido junto com a co-edição ao vivo): quando o patch de um colega chegava, o preview
+  de QUEM ESTAVA OLHANDO pulava pro ponto onde o outro estava trabalhando. A causa estava em
+  updateText(), dentro do script injetado no iframe do preview avulso — ele fazia duas coisas
+  além de trocar o texto:
+    1. clearHL() + add('braze-hl')  -> roubava o realce da MINHA célula pra do colega
+    2. em linha de IMAGEM, scrollIntoView() -> rolava o preview fisicamente
+  Como live-coedit chama updatePreviewText() a cada célula que chega do remoto, todo mundo era
+  arrastado junto. O handler da PASTA (camp-update) já era limpo — o problema era só o avulso.
+
+  Correção: braze-update ganhou modo SILENT. updatePreviewText(ri, lang, {silent:true}) troca só
+  o texto; não mexe no realce e não rola. live-coedit passa silent:true em todo patch remoto —
+  a âncora pertence a quem está digitando, e cada pessoa mantém a própria vista.
+  Digitação LOCAL continua ancorando igual (sendHL/switchAndHL não mudaram).
+
+  Pasta: live-coedit deixou de chamar updateCampaignPreviewCell e passou a usar um
+  _silentCampaignPreviewCell próprio. Motivo: aquela função RECONSTRÓI o iframe quando a chave
+  carregada não bate, e reconstruir reseta o scroll — ou seja, seria outro pulo causado pela
+  edição alheia. Agora, se o preview certo não estiver carregado, simplesmente não faz nada
+  (fica correto na próxima vez que a pessoa abrir). Push segue redesenhando: é DOM puro, não tem
+  scroll pra perder.
+
+  Verificado no localhost, logado, com store espelhado (nada tocou produção):
+    - âncora LOCAL preservada: foco+digitação em id29 rolou o preview pra 938px
+    - patch remoto em id4: scroll ficou em 938 e o realce ficou em id29 (não pulou)
+    - PROVA do bug: mesma chamada SEM silent moveu o realce id29 -> id4
+    - linha de IMAGEM: sem silent o scroll pulou 918 -> 833; com silent ficou em 918
+    - pasta: iframe NÃO reconstruído (marca no documento sobreviveu) e o texto do colega
+      apareceu mesmo assim
+    - merge-invariants 9/9

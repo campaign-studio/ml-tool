@@ -158,7 +158,10 @@
     const langs = fn('sortLangsForDisplay') ? global.sortLangsForDisplay(S.csv.langs) : (S.csv.langs || []);
     const n = _patchCells({
       body, rows: S.csv.rows, langs, remote, projectId, itemId: null,
-      onCell: (ri, lang) => { const u = fn('updatePreviewText'); if (u) try { u(ri, lang); } catch (e) {} }
+      // silent: the preview anchor belongs to whoever is TYPING. A teammate's edit must refresh
+      // the text without stealing the highlight or scrolling — otherwise everyone's preview jumps
+      // to wherever the other person happens to be working.
+      onCell: (ri, lang) => { const u = fn('updatePreviewText'); if (u) try { u(ri, lang, { silent: true }); } catch (e) {} }
     });
     _checkStructural(projectId, S.csv.rows, langs, remote);
     if (n) _afterPatch(body, n);
@@ -194,10 +197,7 @@
     const langs = fn('sortLangsForDisplay') ? global.sortLangsForDisplay(item.langs || []) : (item.langs || []);
     const n = _patchCells({
       body, rows: item.rows, langs, remote, projectId: camp.id, itemId: item.id,
-      onCell: (ri, lang) => {
-        const u = fn('updateCampaignPreviewCell');
-        if (u) try { u(item, item.rows[ri], lang); } catch (e) {}
-      }
+      onCell: (ri, lang) => { try { _silentCampaignPreviewCell(item, item.rows[ri], lang); } catch (e) {} }
     });
     _checkStructural(camp.id, item.rows, langs, remote);
     if (n) _afterPatch(body, n);
@@ -242,6 +242,28 @@
       });
     });
     return applied;
+  }
+
+  // Same idea as the loose silent path, for a folder item. Deliberately does NOT call
+  // updateCampaignPreviewCell: that one rebuilds the iframe whenever the loaded key doesn't match,
+  // and a rebuild resets the scroll position — a jump caused by someone else's edit. If the right
+  // preview isn't already loaded we simply skip; it will be correct the next time the user opens it.
+  function _silentCampaignPreviewCell(item, row, lang) {
+    const viewLang = item._activeLang || (item.langs && item.langs[0]) || null;
+    if (lang !== viewLang) return;                       // not the language on screen → nothing to do
+    if (item.type === 'push') {                          // push preview is plain DOM, nothing scrolls
+      const r = fn('renderCampaignPreview');
+      if (r) r(item, viewLang);
+      return;
+    }
+    const iframe = document.getElementById('campaignPreviewFrame');
+    const key = item.id + '::' + (viewLang || '');
+    const loaded = (typeof _campPreviewLoadedKey !== 'undefined') ? _campPreviewLoadedKey : null;
+    if (!iframe || !iframe.contentWindow || loaded !== key) return; // would need a rebuild → skip
+    iframe.contentWindow.postMessage({
+      type: 'camp-update', tid: row.id,
+      text: ((row.translations || {})[lang]) || row.src, src: row.src
+    }, '*');
   }
 
   function _afterPatch(body, n) {
