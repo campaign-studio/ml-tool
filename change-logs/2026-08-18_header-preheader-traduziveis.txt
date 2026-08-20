@@ -534,3 +534,32 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
     - pasta: iframe NÃO reconstruído (marca no documento sobreviveu) e o texto do colega
       apareceu mesmo assim
     - merge-invariants 9/9
+
+[2026-08-19] Presença POR CÉLULA na grade (estilo Google Sheets) — modules/grid-presence.js.
+  Antes só existia um badge "N pessoas aqui". Não dava pra saber ONDE cada uma estava, então a
+  co-edição era invisível: a tradução mudava sozinha e ninguém sabia de quem foi. Agora:
+    - a célula em que cada colega está fica contornada na COR dele + etiqueta com o nome
+    - pilha de avatares no topo mostra quem está no mesmo item, com tooltip "Nome · linha · idioma"
+    - hover na célula revela o nome completo (a etiqueta nasce cortada pra não alargar a coluna)
+  Anda de carona no canal 'mlt-presence-v1' que já existia: só acrescentei o campo `cell` ao
+  payload do track(). Presence (e não broadcast) porque é auto-curável — se a aba cai, o Supabase
+  remove o membro e a célula libera sozinha; broadcast exigiria heartbeat/timeout próprio.
+  Granularidade é FOCO, não tecla — é o comportamento do Sheets e mantém o tráfego mínimo.
+
+  Dois bugs encontrados e corrigidos durante o teste:
+    1. COR: avColorForEmail tem paleta de 8 e faz hash — com 4 pessoas na sala saíam só 2 cores
+       distintas, o que anula o propósito de cor por pessoa. Agora a cor do hash é a PREFERIDA e,
+       se já estiver tomada, cai na próxima livre; peers são ordenados por e-mail antes, então
+       todo mundo resolve a colisão igual e vê as mesmas cores. (5 pessoas -> 5 cores.)
+    2. PILHA DE AVATARES não aparecia nunca: o host nasce display:none, e eu decidia a
+       visibilidade pelo offsetParent DELE — ovo-e-galinha. Agora mede pela TELA que o contém
+       (#appBody / #campaignScreen), o que também impede o avatar duplicado quando os dois
+       toolbars estão montados.
+
+  Não mexe no preview: a âncora continua sendo de quem digita (modo silent do braze-update).
+
+  Testado com simulação de 5 editores ao vivo no localhost (presença injetada no mesmo formato do
+  canal + edições entrando por liveApplyRemote — os caminhos reais, store espelhado, nada tocou
+  produção): 5 células pintadas, 5 cores distintas, 5 avatares, tooltip "Helena Carbonari · id37 ·
+  es-AR", hover da etiqueta 74px -> 103px, e o soft block sumindo com Edit Tagged HTML/Upload/
+  Re-scan/× enquanto os colegas seguiam editando em volta.

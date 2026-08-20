@@ -1056,6 +1056,35 @@ body.soft-blocked tr.img-row td.tl input.img-url{ cursor:not-allowed;color:var(-
 body.soft-blocked tr.img-row td.tl input.img-url:hover,
 body.soft-blocked tr.img-row td.tl input.img-url:focus{ background:repeating-linear-gradient(45deg,transparent,transparent 6px,rgba(128,128,128,.06) 6px,rgba(128,128,128,.06) 12px); }
 .soft-blocked-noop{}/* soft block has no banner/notice on purpose — see modules/soft-block.js */
+
+/* ── PRESENÇA POR CÉLULA NA GRADE (modules/grid-presence.js) ─────────────────────────────────
+   Estilo Google Sheets: a célula em que o colega está fica contornada na COR dele, com uma
+   etiqueta de nome em cima. Só contorno + etiqueta (nada de fundo forte): a célula continua
+   legível e quem está traduzindo não perde a leitura do texto. */
+td.tl-cell.gp-cell{position:relative;box-shadow:inset 0 0 0 2px var(--gp-color, var(--brand));border-radius:2px;}
+/* A etiqueta contém o nome COMPLETO, mas fica cortada pra não alargar a coluna. Passar o mouse
+   na célula revela o nome inteiro (e traz a etiqueta pra frente das vizinhas). */
+td.tl-cell .gp-tag{position:absolute;top:-9px;left:-1px;z-index:6;
+  font-size:9px;font-weight:800;line-height:1;color:#fff;padding:2px 5px;border-radius:3px 3px 3px 0;
+  font-family:var(--sans);white-space:nowrap;pointer-events:none;letter-spacing:.02em;
+  box-shadow:0 1px 3px rgba(0,0,0,.25);
+  max-width:74px;overflow:hidden;text-overflow:ellipsis;transition:max-width .14s ease;}
+td.tl-cell.gp-cell:hover .gp-tag{max-width:260px;z-index:9;}
+/* Pilha de avatares de quem está no mesmo item agora. */
+.gp-stack{display:inline-flex;align-items:center;margin-left:8px;vertical-align:middle;}
+.gp-stack .gp-av{position:relative;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
+  border-radius:50%;font-size:10px;font-weight:800;color:#fff;font-family:var(--sans);
+  border:2px solid var(--surface);margin-left:-6px;flex-shrink:0;cursor:default;}
+.gp-stack .gp-av:hover{z-index:5;}
+/* Tooltip do avatar: nome completo + onde a pessoa está. Próprio, em vez do title nativo, que
+   demora ~1s pra aparecer e não dá pra ler junto com a cor. */
+.gp-stack .gp-av::after{content:attr(data-name) " · " attr(data-where);
+  position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);
+  background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:7px;
+  padding:5px 9px;font-size:11px;font-weight:700;white-space:nowrap;font-family:var(--sans);
+  box-shadow:0 4px 14px rgba(0,0,0,.22);opacity:0;pointer-events:none;transition:opacity .12s;z-index:60;}
+.gp-stack .gp-av:hover::after{opacity:1;}
+.gp-stack .gp-more{font-size:10px;font-weight:800;color:var(--text3);margin-left:4px;}
 /* "Approve by Locale": cada ITEM (e-mail/in-app/push) vira UM card branco contendo o PAR
    origem + tradução — quem aprova compara original e traduzido dentro da mesma moldura, em
    vez de caçar os dois soltos no canvas. E-mail: par lado a lado. Push/in-app: empilhado. */
@@ -1512,6 +1541,7 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
           <span class="ph-t" id="campaignItemLabel">Item</span>
           <div class="ph-a">
             <span class="presence-badge" style="display:none;"></span>
+            <span class="gp-stack" style="display:none;" title="Who is editing in here right now"></span>
             <button class="tbtn primary" onclick="openCampaignApprovalView()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
               Approve copies
@@ -2336,6 +2366,7 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
           <span class="ph-t">Translations CSV</span>
           <div class="ph-a" id="edToolbar">
             <span class="presence-badge" style="display:none;"></span>
+            <span class="gp-stack" style="display:none;" title="Who is editing in here right now"></span>
             <button class="tbtn html" id="btnDlHtml" onclick="openHtmlModal()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
               Copy Tagged HTML
@@ -3771,6 +3802,9 @@ async function _presenceSendTrack(){
       email: me.email,
       name: (typeof authorName === 'function' ? authorName(me.email) : me.email),
       projectId: _myPresenceProjectId,
+      // Célula em que estou AGORA (foco), pra pintar na grade dos outros — ver
+      // modules/grid-presence.js. null quando não estou em nenhuma célula.
+      cell: (typeof gridPresenceMyCell === 'function') ? gridPresenceMyCell() : null,
       at: Date.now()
     });
   }catch(e){}
@@ -3783,13 +3817,14 @@ function _recomputePresence(){
     Object.keys(state).forEach(k => {
       (state[k] || []).forEach(m => {
         if(!m || !m.projectId) return;
-        (map[m.projectId] = map[m.projectId] || []).push({ email: m.email, name: m.name, at: m.at });
+        (map[m.projectId] = map[m.projectId] || []).push({ email: m.email, name: m.name, at: m.at, cell: m.cell || null });
       });
     });
   }catch(e){}
   _presenceState = map;
   _presenceReady = true; // já recebemos um estado real do canal — dá pra confiar em "quem está presente"
   renderPresenceUI();
+  if(typeof renderGridPresence === 'function') renderGridPresence(); // pinta a célula de cada colega
   // A trava de edição ("X is editing") no Dashboard passa a confiar na presença ao vivo (ver
   // projIsLocked): quando alguém sai/cai, o pill precisa sumir mesmo sem um novo pull. Re-render
   // debounced do Dashboard quando ele está visível.
@@ -6947,6 +6982,7 @@ function renderCampaignGrid(item) {
   _gridBodyId = 'campGstb';
   _gridWrite = setCampaignCell;
   if(typeof softBlockApplyUi === 'function') softBlockApplyUi(); // soft block: hide structural controls
+  if(typeof renderGridPresence === 'function') renderGridPresence(); // repinta a presença dos colegas
   wireGridController('campaignItemTable');
   gridReapplyHighlight();
   setTimeout(() => syncAllRowHeights('campGstb') , 0);
@@ -11076,6 +11112,7 @@ function buildTable() {
     + `<tbody id="gstb">${rowsHTML()}</tbody>`;
   wireGridController();       // liga navegação/paste estilo planilha (uma vez, delegado no #gst)
   if(typeof softBlockApplyUi === 'function') softBlockApplyUi(); // soft block: hide structural controls
+  if(typeof renderGridPresence === 'function') renderGridPresence(); // repinta a presença dos colegas
   gridReapplyHighlight();     // re-aplica o realce da célula selecionada após re-render
   setTimeout(syncAllRowHeights, 0);
   openPendingCommentTarget();
@@ -13353,5 +13390,8 @@ window.addEventListener('message', function(e){
 <!-- Soft block (see modules/soft-block.js) — third sharing role: translates normally, but can't
      touch images, add/delete rows, edit the origin HTML, upload a CSV or restore a version. -->
 <script src="modules/soft-block.js"></script>
+<!-- Presença por CÉLULA na grade, estilo Google Sheets (ver modules/grid-presence.js): mostra
+     em qual célula cada colega está agora. Depois dos outros: usa avColorForEmail (approval-canvas). -->
+<script src="modules/grid-presence.js"></script>
 </body>
 </html>
