@@ -563,3 +563,28 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
   produção): 5 células pintadas, 5 cores distintas, 5 avatares, tooltip "Helena Carbonari · id37 ·
   es-AR", hover da etiqueta 74px -> 103px, e o soft block sumindo com Edit Tagged HTML/Upload/
   Re-scan/× enquanto os colegas seguiam editando em volta.
+
+[2026-08-19] TESTE REAL CONTRA O BANCO (pasta "Test", descartável) — co-edição + presença.
+  Duas abas logadas, backend REAL (nada neutralizado), Realtime real.
+  A) Escrita e propagação: Tab 2 digitou em id10/de-DE pelo caminho normal (setCampaignCell +
+     saveCampaignProject) -> gravou no Supabase (rev 10). Tab 1, SEM eu chamar nada, recebeu pelo
+     Realtime: texto no modelo e no DOM, toast "1 translation updated by a teammate", e o mais
+     importante — scroll do preview 1800 -> 1800, scroll da grade 1013 -> 1013 e a minha célula de
+     presença intacta. A âncora ficou com quem digitou.
+  B) Presença pelo canal REAL: um peer sintético ("Ana Tradutora") entrou em mlt-presence-v1 e a
+     Tab 1 pintou a célula dela (contorno roxo + etiqueta + avatar + tooltip "id10 · de-DE").
+     ACHADO: sb.channel(topico) devolve o canal JÁ existente, então não dá pra ter duas identidades
+     de presença no mesmo cliente — foi preciso criar um segundo supabase client (socket novo).
+     Vale pra qualquer teste futuro de presença.
+  C) Soft block no banco: papel gravado com um e-mail de teste, lido de volta como 'softblock'
+     (rev 12), sobrevivendo ao round-trip e ao merge. A ENFORCEMENT do outro lado não foi testada:
+     precisa de uma segunda conta de verdade (não posso logar como outra pessoa).
+
+  Limitação do harness anotada: com a janela em segundo plano, document.hasFocus() é false e
+  .focus() programático NÃO dispara focusin — por isso a presença por célula parecia não registrar.
+  Disparando o focusin sintético, registra na hora. Não é bug do produto.
+
+  Limpeza: peer sintético removido do canal, e-mail de teste tirado das 3 listas, texto de teste
+  apagado pelo caminho real (a 1ª tentativa escreveu direto no objeto e o MERGE restaurou o texto —
+  esvaziar exige o tombstone de clearedCells que só setCampaignCell grava; lição registrada).
+  Estado final da pasta: rev 14, 0 traduções preenchidas, softBlocked [], dono intacto.
