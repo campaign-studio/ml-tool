@@ -722,3 +722,27 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
   (a chave de presença é o e-mail), então meu cliente e o navegador dele entram no canal como a
   mesma pessoa. Não dá pra descartar que isso tenha interferido no teste. Regra daqui pra frente:
   fico FORA do canal enquanto eles testam com pessoas reais.
+
+[2026-08-20] Diagnóstico de presença SEM pedir nada a quem testa.
+  Problema de processo: diagnosticar presença dependia de o usuário pedir a cada pessoa que
+  abrisse o console e colasse um comando. Inviável no meio de um teste com gente. Duas peças:
+
+  1. INDICADOR "LIVE" na barra do editor. Verde = canal ligado + projeto anunciado + anúncio
+     recente (ou seja, "os outros te veem"). Âmbar = alguma das três falhou. Um clique abre um
+     resumo em português (conexão, segundos desde o último anúncio, se o projeto ABERTO bate com
+     o ANUNCIADO, se o navegador tem o código novo, quem está vendo) e já copia pra área de
+     transferência. Nenhum tester precisa de F12.
+     O pill se re-renderiza a cada 5s por conta própria: ele mostra "há quantos segundos foi o
+     último anúncio", que envelhece sem nenhum evento chegar — senão ficaria verde para sempre.
+
+  2. TELEMETRIA em tabela própria (presence_diag): cada cliente grava o próprio estado a cada 90s
+     enquanto tem editor aberto. Aí a pergunta "por que fulano não apareceu?" se responde por
+     consulta, depois, sem depender de ninguém ter guardado nada.
+     Cuidado com carga (o banco já caiu por excesso de escrita): 1 linha/90s/pessoa, só com editor
+     aberto, linha minúscula sem payload de projeto — com 8 pessoas dá 0,09 escritas/s.
+     À prova de falha: se a tabela não existir, o insert devolve PGRST205/42P01, a telemetria se
+     desliga pela sessão inteira e o app segue normal. Verificado de verdade: com a tabela ainda
+     inexistente o erro veio como PGRST205 e nada quebrou.
+
+  A tabela NÃO pode ser criada pelo app (o cliente só tem a chave publishable, e é assim que tem
+  que ser). O SQL está em sql/presence_diag.sql pra rodar no SQL Editor do Supabase.

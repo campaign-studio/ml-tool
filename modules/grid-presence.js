@@ -232,11 +232,115 @@
     return u ? _fullName(u) : null;
   }
 
+  /* ── INDICADOR "LIVE" + DIAGNÓSTICO EM UM CLIQUE ────────────────────────────────────────
+   * Quando a presença falha, a pergunta "os outros me veem?" só tinha resposta pelo console —
+   * inviável pra quem está testando. Este pill responde de relance e, num clique, abre tudo que
+   * eu preciso pra diagnosticar, com botão de copiar. Sem F12, sem colar comando.
+   */
+  function _liveStatus() {
+    const ch = (typeof _presenceChannel !== 'undefined') ? _presenceChannel : null;
+    const desdeTrack = (typeof _presenceLastOk !== 'undefined' && _presenceLastOk)
+      ? Math.round((Date.now() - _presenceLastOk) / 1000) : null;
+    const pid = gProjId();
+    const meuProj = (typeof _myPresenceProjectId !== 'undefined') ? _myPresenceProjectId : null;
+    // "Os outros me veem" = canal ligado + projeto anunciado + anúncio recente (heartbeat = 20s).
+    const ok = !!(ch && ch.state === 'joined' && meuProj && desdeTrack !== null && desdeTrack < 45);
+    return { ok, canal: ch ? ch.state : 'sem canal', desdeTrack, projetoAberto: pid, projetoAnunciado: meuProj,
+             peers: _peersHere().map(u => ({ nome: _fullName(u), projOk: true,
+               celula: u.cell ? (u.cell.rowId + ' · ' + u.cell.lang) : null,
+               seg: Math.round((Date.now() - (u.at || 0)) / 1000) })) };
+  }
+
+  function renderLiveStatus() {
+    const host = document.querySelector('.live-status:not([hidden])') || document.querySelector('.live-status');
+    document.querySelectorAll('.live-status').forEach(h => {
+      const screen = h.closest('#appBody, #campaignScreen');
+      if (!screen || getComputedStyle(screen).display === 'none') { h.innerHTML = ''; return; }
+      const st = _liveStatus();
+      const n = st.peers.length;
+      h.innerHTML = `<button type="button" class="live-pill ${st.ok ? 'ok' : 'warn'}" onclick="liveStatusOpen()"
+          title="${st.ok ? 'You are visible to the others' : 'You may NOT be visible to the others — click for details'}">
+          <span class="live-dot"></span>${st.ok ? 'Live' : 'Live?'}${n ? ' · ' + n : ''}</button>`;
+    });
+  }
+
+  function liveStatusOpen() {
+    const st = _liveStatus();
+    const linhas = [
+      (st.ok ? '✅ Você ESTÁ visível para os outros' : '⚠️ Você pode NÃO estar visível para os outros'),
+      '',
+      'Conexão: ' + st.canal,
+      'Último anúncio: ' + (st.desdeTrack === null ? 'nunca' : st.desdeTrack + 's atrás') + ' (o normal é < 20s)',
+      'Projeto aberto: ' + (st.projetoAberto || '—'),
+      'Projeto anunciado: ' + (st.projetoAnunciado || '—') +
+        ((st.projetoAberto && st.projetoAnunciado && st.projetoAberto !== st.projetoAnunciado) ? '  ← DIFERENTE, é o problema' : ''),
+      'Código novo: ' + (typeof gridPresenceHolder === 'function' ? 'sim' : 'NÃO — dê Ctrl+Shift+R'),
+      '',
+      'Quem eu vejo aqui (' + st.peers.length + '):',
+      ...(st.peers.length ? st.peers.map(p => '  • ' + p.nome + (p.celula ? ' — ' + p.celula : '') + '  (' + p.seg + 's)')
+                          : ['  (ninguém)'])
+    ].join('\n');
+    const txt = linhas + '\n\n---\n' + JSON.stringify(st);
+    if (fn('uiAlert')) global.uiAlert(linhas);
+    try { navigator.clipboard.writeText(txt); } catch (e) {}
+  }
+
+  /* ── TELEMETRIA DE PRESENÇA ──────────────────────────────────────────────────────────────
+   * Diagnosticar presença dependia de pedir pra alguém abrir o console e colar um comando —
+   * inviável com gente testando. Aqui cada cliente grava o próprio estado numa tabela, sozinho,
+   * e a gente consulta depois: quem estava conectado, em qual projeto, vendo quem.
+   * Cuidados (o banco já caiu uma vez por excesso de escrita):
+   *   - 1 linha a cada 90s por cliente, e SÓ com um editor aberto. Com 8 pessoas = 0,09 escritas/s.
+   *   - Linha minúscula (algumas centenas de bytes), sem payload de projeto.
+   *   - Se a tabela não existir, desliga de vez na sessão e NUNCA quebra o app.
+   */
+  const DIAG_EVERY_MS = 90000;
+  let _diagTimer = null, _diagOff = false;
+
+  function _diagTableMissing(e) {
+    const m = ((e && (e.code || e.message)) || '') + '';
+    return m.includes('42P01') || /presence_diag.*does not exist/i.test(m) || m.includes('PGRST205');
+  }
+
+  async function _diagWrite() {
+    if (_diagOff) return;
+    try {
+      const sb = fn('sbClient') ? global.sbClient() : null;
+      if (!sb) return;
+      const st = _liveStatus();
+      if (!st.projetoAberto) return;                 // fora de editor não interessa
+      const me = fn('authCurrentUser') && global.authCurrentUser();
+      const { error } = await sb.from('presence_diag').insert({
+        email: me ? me.email : null,
+        project_open: st.projetoAberto,
+        project_announced: st.projetoAnunciado,
+        channel_state: st.canal,
+        secs_since_track: st.desdeTrack,
+        has_new_code: typeof gridPresenceHolder === 'function',
+        peers: st.peers,
+        ua: String(navigator.userAgent || '').slice(0, 120)
+      });
+      if (error) {
+        if (_diagTableMissing(error)) { _diagOff = true; return; }  // tabela ainda não existe
+        console.warn('presence_diag:', error.message || error);
+      }
+    } catch (e) { /* telemetria nunca pode quebrar o app */ }
+  }
+
+  function liveDiagStart() {
+    if (_diagTimer) return;
+    _diagWrite();                                    // uma na entrada, pra registrar o join
+    _diagTimer = setInterval(_diagWrite, DIAG_EVERY_MS);
+  }
+
   document.addEventListener('focusin', _onFocusIn);
   document.addEventListener('focusout', _onFocusOut);
 
   global.gridPresenceMyCell   = gridPresenceMyCell;
   global.renderGridPresence   = renderGridPresence;
+  global.renderLiveStatus     = renderLiveStatus;
+  global.liveStatusOpen       = liveStatusOpen;
+  global.liveDiagStart        = liveDiagStart;
   global.gridPresenceHolder     = gridPresenceHolder;
   global.gridPresenceHolderName = gridPresenceHolderName;
 })(window);

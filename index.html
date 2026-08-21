@@ -1090,6 +1090,17 @@ td.tl-cell.gp-cell:hover .gp-tag{max-width:260px;z-index:9;}
   box-shadow:0 4px 14px rgba(0,0,0,.22);opacity:0;pointer-events:none;transition:opacity .12s;z-index:60;}
 .gp-stack .gp-av:hover::after{opacity:1;}
 .gp-stack .gp-more{font-size:10px;font-weight:800;color:var(--text3);margin-left:4px;}
+/* Indicador "Live": responde de relance a pergunta "os outros me veem?", sem console. Verde =
+   canal ligado, projeto anunciado e anúncio recente. Âmbar = alguma dessas três falhou. */
+.live-status{display:inline-flex;align-items:center;margin-left:8px;vertical-align:middle;}
+.live-pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:20px;
+  padding:4px 11px;font-size:11px;font-weight:800;font-family:var(--sans);cursor:pointer;
+  background:var(--s2);color:var(--text2);}
+.live-pill .live-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.live-pill.ok .live-dot{background:var(--green);box-shadow:0 0 0 3px var(--grn-bg);}
+.live-pill.warn{border-color:var(--acc-bd);color:var(--accent);}
+.live-pill.warn .live-dot{background:var(--accent);box-shadow:0 0 0 3px var(--acc-bg);}
+.live-pill:hover{border-color:var(--brand);}
 /* "Approve by Locale": cada ITEM (e-mail/in-app/push) vira UM card branco contendo o PAR
    origem + tradução — quem aprova compara original e traduzido dentro da mesma moldura, em
    vez de caçar os dois soltos no canvas. E-mail: par lado a lado. Push/in-app: empilhado. */
@@ -1547,6 +1558,7 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
           <div class="ph-a">
             <span class="presence-badge" style="display:none;"></span>
             <span class="gp-stack" style="display:none;" title="Who is editing in here right now"></span>
+            <span class="live-status"></span>
             <button class="tbtn primary" onclick="openCampaignApprovalView()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
               Approve copies
@@ -2372,6 +2384,7 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
           <div class="ph-a" id="edToolbar">
             <span class="presence-badge" style="display:none;"></span>
             <span class="gp-stack" style="display:none;" title="Who is editing in here right now"></span>
+            <span class="live-status"></span>
             <button class="tbtn html" id="btnDlHtml" onclick="openHtmlModal()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
               Copy Tagged HTML
@@ -3814,6 +3827,12 @@ function _presenceStartHeartbeat(){
     if(!_presenceChannel || _presenceChannel.state !== 'joined') return;
     _presenceSendTrack();
   }, PRESENCE_HEARTBEAT_MS);
+  // O pill "Live" mostra há quanto tempo foi o último anúncio, então precisa envelhecer sozinho
+  // mesmo sem nenhum evento de presença chegando — senão ficaria verde para sempre.
+  setInterval(() => { if(typeof renderLiveStatus === 'function') { try{ renderLiveStatus(); }catch(e){} } }, 5000);
+  // Telemetria de presença: grava o próprio estado a cada 90s (ver modules/grid-presence.js).
+  // Se a tabela presence_diag não existir, ela se desliga sozinha e nada acontece.
+  if(typeof liveDiagStart === 'function') liveDiagStart();
 }
 
 async function _presenceSendTrack(){
