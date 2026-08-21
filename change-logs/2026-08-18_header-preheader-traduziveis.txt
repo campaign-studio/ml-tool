@@ -778,3 +778,35 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
        O(linhas × idiomas). Numa grade de 80 linhas × 11 idiomas isso sai de 880 para 91 entradas.
   Verificado: 200 eventos em rajada enfileiram em 0ms e produzem 1 render; 8 peers -> 8 células,
   8 etiquetas, coordenadas distintas; limpeza volta a zero; merge-invariants 9/9.
+
+[2026-08-20] Presença SEGURA: interruptor + lock que falha pro lado aberto.
+  Motivação: a presença causou 3 incidentes em produção no mesmo dia (trava eterna, assimetria,
+  congelamento) e em TODOS o único conserto era deploy + hard refresh de todo mundo. O padrão
+  comum: "quem está aqui", "onde está" e "travar a célula" viajavam no MESMO payload com o MESMO
+  tempo de vida, então consertar um quebrava o outro — e a parte perigosa (o lock) herdava o
+  tempo de vida da inofensiva (o avatar).
+
+  1. INTERRUPTOR em 3 camadas (presenceEnabled), da mais imediata pra mais ampla:
+       ?presence=off na URL  -> vale para aquele carregamento; não depende de nada, funciona até
+                                com o banco fora. É o "apaga o incêndio agora".
+       localStorage          -> desliga no navegador e sobrevive a reload; liga/desliga pelo
+                                próprio indicador Live, sem console.
+       presenceOff no projeto-> o dono desliga para a equipe inteira (sincroniza como qualquer
+                                campo do projeto).
+     Desligada: não anuncia, não pinta e NÃO TRAVA CÉLULA. Co-edição ao vivo, autosave e merge
+     seguem funcionando — some só a camada de presença.
+
+  2. LOCK COM EXPIRAÇÃO POR OCIOSIDADE. Antes bastava a aba estar visível e focada; uma aba
+     parada (pessoa saiu pra almoçar) segurava a célula para sempre, porque o heartbeat renovava
+     o anúncio a cada 20s. Agora a reserva exige INTERAÇÃO recente (60s) e só teclado/mouse a
+     renovam — nunca um timer. Some junto com as guardas anteriores (aba escondida / janela sem
+     foco), e todas falham pro lado ABERTO: qualquer dúvida, libera.
+
+  3. gridPresenceHolder devolve null com a presença desligada — o lock nunca sobrevive ao
+     interruptor.
+
+  Verificado: ligada trava e pinta; desligada não trava, limpa a pintura, mostra "Presence off"
+  no pill e para de anunciar; religar volta a travar e pintar; reserva morre após 2min parado;
+  ?presence=off reconhecido; merge-invariants 9/9.
+  (Uma falha inicial no teste de "religar" era artefato do harness: religar dispara um track real,
+  o app reconstrói _presenceState do canal e apaga o peer sintético injetado. Não era bug.)

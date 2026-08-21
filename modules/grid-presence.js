@@ -28,6 +28,46 @@
 (function (global) {
   'use strict';
 
+  /* ═══ INTERRUPTOR DE PRESENÇA ═══════════════════════════════════════════════════════════
+   * A presença já causou três incidentes em produção (trava eterna, assimetria, congelamento) e,
+   * em todos, o único conserto disponível era deploy + hard refresh de todo mundo. Isso é uma
+   * falha OPERACIONAL, não só de código: quem está no meio de um teste com gente precisa poder
+   * desligar em segundos.
+   * Três camadas, da mais imediata pra mais ampla:
+   *   1. ?presence=off na URL  — vale só para aquele carregamento. Não depende de nada, funciona
+   *                              até com o banco fora. É o "apaga o incêndio agora".
+   *   2. localStorage          — desliga naquele navegador e sobrevive a reload (ligado/desligado
+   *                              pelo próprio indicador Live).
+   *   3. presenceOff no projeto— o DONO desliga para a equipe inteira; sincroniza como qualquer
+   *                              outro campo do projeto.
+   * Desligada, a presença não anuncia, não pinta e — o que mais importa — NÃO TRAVA CÉLULA.
+   * Tudo o mais (co-edição ao vivo, autosave, merge) segue funcionando. */
+  const PRESENCE_OFF_KEY = 'mlt_presence_off';
+  let _urlOff = null;
+  function _urlPresenceOff() {
+    if (_urlOff === null) {
+      try { _urlOff = /(^|[?&])presence=off(&|$)/.test(location.search); } catch (e) { _urlOff = false; }
+    }
+    return _urlOff;
+  }
+  function presenceEnabled() {
+    try {
+      if (_urlPresenceOff()) return false;
+      if (localStorage.getItem(PRESENCE_OFF_KEY) === '1') return false;
+      const pid = (typeof currentProjectId !== 'undefined') ? currentProjectId : null;
+      if (pid && fn('projGetAll')) {
+        const p = global.projGetAll().find(x => x.id === pid);
+        if (p && p.presenceOff) return false;   // desligada para a equipe pelo dono
+      }
+    } catch (e) { /* na dúvida, LIGADA — mas todo caminho abaixo falha para o lado aberto */ }
+    return true;
+  }
+  function presenceSetLocalOff(off) {
+    try { off ? localStorage.setItem(PRESENCE_OFF_KEY, '1') : localStorage.removeItem(PRESENCE_OFF_KEY); } catch (e) {}
+    try { renderGridPresence(); } catch (e) {}
+    const s = fn('_presenceSendTrack'); if (s) s();   // some/reaparece para os outros na hora
+  }
+
   const gS       = () => (typeof S !== 'undefined' ? S : null);
   const gCamp    = () => (typeof _campaign !== 'undefined' ? _campaign : null);
   const gCampIdx = () => (typeof _campaignItemIndex !== 'undefined' ? _campaignItemIndex : -1);
@@ -100,9 +140,20 @@
    * a trava eterna. Bug real, visto em produção: uma aba minha esquecida travou uma célula para
    * outra pessoa.
    * Regra: aba escondida ou janela sem foco => não seguro célula nenhuma. */
+  /* Além de aba visível + janela com foco, exige INTERAÇÃO RECENTE. Sem isto, uma aba aberta e
+   * focada mas parada (pessoa foi almoçar) segura a célula indefinidamente, porque o heartbeat
+   * renova o anúncio a cada 20s. A reserva tem que morrer por ociosidade — e só teclado/mouse
+   * dentro da grade a renovam, nunca um timer. */
+  const IDLE_RELEASE_MS = 60000;
+  let _lastInteraction = Date.now();
+  ['keydown','mousedown','paste'].forEach(ev =>
+    document.addEventListener(ev, () => { _lastInteraction = Date.now(); }, true));
+
   function gridPresenceMyCell() {
-    if (document.visibilityState === 'hidden') return null;
-    if (typeof document.hasFocus === 'function' && !document.hasFocus()) return null;
+    if (!presenceEnabled()) return null;                                   // interruptor
+    if (document.visibilityState === 'hidden') return null;                // aba de fundo
+    if (typeof document.hasFocus === 'function' && !document.hasFocus()) return null; // janela sem foco
+    if (Date.now() - _lastInteraction > IDLE_RELEASE_MS) return null;      // parado há mais de 1min
     return _myCell;
   }
 
@@ -144,7 +195,7 @@
   }
 
   function _renderGridPresenceNow() {
-    const ctx = _ctx();
+    const ctx = presenceEnabled() ? _ctx() : null;   // desligada => limpa tudo e não pinta nada
     // Limpa SÓ o que foi pintado da última vez (antes: querySelectorAll no documento inteiro).
     _paintedTds.forEach(el => {
       if (!el || !el.isConnected) return;
@@ -263,6 +314,7 @@
 
   // Quem (se alguém) está com ESTA célula agora. null = livre.
   function gridPresenceHolder(itemId, rowId, lang) {
+    if (!presenceEnabled()) return null;   // desligada => NUNCA trava (falha pro lado aberto)
     if (!rowId || !lang) return null;
     const now = Date.now();
     for (const u of _peersHere()) {
@@ -305,6 +357,11 @@
     document.querySelectorAll('.live-status').forEach(h => {
       const screen = h.closest('#appBody, #campaignScreen');
       if (!screen || getComputedStyle(screen).display === 'none') { h.innerHTML = ''; return; }
+      if (!presenceEnabled()) {   // desligada: o pill diz isso e permite religar num clique
+        h.innerHTML = `<button type="button" class="live-pill off" onclick="liveStatusOpen()"
+            title="Live presence is OFF — click to turn it back on"><span class="live-dot"></span>Presence off</button>`;
+        return;
+      }
       const st = _liveStatus();
       const n = st.peers.length;
       h.innerHTML = `<button type="button" class="live-pill ${st.ok ? 'ok' : 'warn'}" onclick="liveStatusOpen()"
@@ -313,7 +370,18 @@
     });
   }
 
-  function liveStatusOpen() {
+  async function liveStatusOpen() {
+    if (!presenceEnabled()) {   // desligada: oferece religar
+      const urlOff = _urlPresenceOff();
+      const msg = 'Live presence está DESLIGADA neste navegador.\n\n' +
+        (urlOff ? 'Foi desligada pela URL (?presence=off) — recarregue sem esse parâmetro para religar.'
+                : 'Ninguém aparece e nenhuma célula é travada. Traduzir e salvar seguem normais.');
+      if (!urlOff && fn('uiConfirm')) {
+        if (await global.uiConfirm(msg + '\n\nReligar agora?', { title: 'Presence off', okLabel: 'Religar' }))
+          presenceSetLocalOff(false);
+      } else if (fn('uiAlert')) global.uiAlert(msg);
+      return;
+    }
     const st = _liveStatus();
     const linhas = [
       (st.ok ? '✅ Você ESTÁ visível para os outros' : '⚠️ Você pode NÃO estar visível para os outros'),
@@ -330,8 +398,13 @@
                           : ['  (ninguém)'])
     ].join('\n');
     const txt = linhas + '\n\n---\n' + JSON.stringify(st);
-    if (fn('uiAlert')) global.uiAlert(linhas);
     try { navigator.clipboard.writeText(txt); } catch (e) {}
+    // Oferece DESLIGAR aqui mesmo: é exatamente onde a pessoa está quando algo parece errado.
+    if (fn('uiConfirm')) {
+      const off = await global.uiConfirm(linhas + '\n\n(copiado para a área de transferência)', {
+        title: 'Live presence', okLabel: 'Desligar presença', cancelLabel: 'Fechar', danger: true });
+      if (off) presenceSetLocalOff(true);
+    } else if (fn('uiAlert')) global.uiAlert(linhas);
   }
 
   /* ── TELEMETRIA DE PRESENÇA ──────────────────────────────────────────────────────────────
@@ -356,6 +429,7 @@
     try {
       const sb = fn('sbClient') ? global.sbClient() : null;
       if (!sb) return;
+      if (!presenceEnabled()) return;
       const st = _liveStatus();
       if (!st.projetoAberto) return;                 // fora de editor não interessa
       const me = fn('authCurrentUser') && global.authCurrentUser();
@@ -390,6 +464,8 @@
   global.renderLiveStatus     = renderLiveStatus;
   global.liveStatusOpen       = liveStatusOpen;
   global.liveDiagStart        = liveDiagStart;
+  global.presenceEnabled      = presenceEnabled;
+  global.presenceSetLocalOff  = presenceSetLocalOff;
   global.gridPresenceHolder     = gridPresenceHolder;
   global.gridPresenceHolderName = gridPresenceHolderName;
 })(window);
