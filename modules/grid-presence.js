@@ -92,8 +92,30 @@
     _trackTimer = setTimeout(() => { const s = fn('_presenceSendTrack'); if (s) s(); }, 120);
   }
 
-  // Read by _presenceSendTrack in index.html when building the tracked payload.
-  function gridPresenceMyCell() { return _myCell; }
+  /* Read by _presenceSendTrack when building the tracked payload.
+   * IMPORTANTE — só reivindica a célula se a pessoa está REALMENTE ali. O heartbeat re-anuncia a
+   * cada 20s; sem esta checagem ele ressuscita para sempre uma reserva feita há horas numa aba
+   * de fundo, e a célula fica travada para todo mundo sem ninguém estar editando. Antes do
+   * heartbeat a reserva morria sozinha em 25s (HOLD_STALE_MS); o heartbeat, sem querer, tornou
+   * a trava eterna. Bug real, visto em produção: uma aba minha esquecida travou uma célula para
+   * outra pessoa.
+   * Regra: aba escondida ou janela sem foco => não seguro célula nenhuma. */
+  function gridPresenceMyCell() {
+    if (document.visibilityState === 'hidden') return null;
+    if (typeof document.hasFocus === 'function' && !document.hasFocus()) return null;
+    return _myCell;
+  }
+
+  // Largar a célula na hora quando a pessoa troca de aba/janela — sem esperar o heartbeat.
+  function _releaseOnLeave() {
+    if (!_myCell) return;
+    const s = fn('_presenceSendTrack');
+    if (s) s();                       // re-anuncia; gridPresenceMyCell() devolverá null agora
+    try { renderGridPresence(); } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', _releaseOnLeave);
+  global.addEventListener('blur', _releaseOnLeave);
+  global.addEventListener('focus', () => { const s = fn('_presenceSendTrack'); if (s) s(); });
 
   /* ── Paint where everyone else is ──────────────────────────────────────────────────────── */
 

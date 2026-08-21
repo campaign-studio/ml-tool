@@ -746,3 +746,18 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
 
   A tabela NÃO pode ser criada pelo app (o cliente só tem a chave publishable, e é assim que tem
   que ser). O SQL está em sql/presence_diag.sql pra rodar no SQL Editor do Supabase.
+
+[2026-08-20] BUG (meu, achado em produção): heartbeat tornou o soft lock ETERNO.
+  Sintoma real: "o nome Hiago travou uma célula lá no começo e eu estou mexendo em outra aba".
+  Causa: gridPresenceMyCell() devolvia a última célula focada, e o heartbeat (criado horas antes,
+  pra consertar a presença assimétrica) re-anuncia esse payload a cada 20s. Resultado: uma reserva
+  feita numa aba de FUNDO, onde ninguém está editando, era ressuscitada para sempre e travava a
+  célula para as outras pessoas. Antes do heartbeat a reserva morria sozinha em 25s
+  (HOLD_STALE_MS); o heartbeat, sem querer, removeu a única coisa que a expirava.
+  Correção: só reivindico célula se estou REALMENTE ali — document.visibilityState === 'visible'
+  E document.hasFocus(). Além disso, largo a célula na hora em visibilitychange e no blur da
+  janela (sem esperar a próxima batida), e re-anuncio no focus ao voltar.
+  Verificado nos 3 estados: com foco+visível reivindica; sem foco não; aba escondida não.
+
+  NOTA: quem estava travando era o MEU painel de automação, logado com a identidade do usuário.
+  Reforça a regra que já tinha ficado: enquanto eles testam com pessoas, eu fico fora do canal.
