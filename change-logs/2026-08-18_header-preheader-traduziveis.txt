@@ -761,3 +761,20 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
 
   NOTA: quem estava travando era o MEU painel de automação, logado com a identidade do usuário.
   Reforça a regra que já tinha ficado: enquanto eles testam com pessoas, eu fico fora do canal.
+
+[2026-08-20] BUG (meu): editor TRAVAVA com muita gente editando.
+  Relato: "deu bug no editor, quando muitas pessoas mexeram, travou".
+  Causa: renderGridPresence() era chamado a CADA evento do canal de presença (_recomputePresence),
+  e cada chamada varria o documento inteiro (querySelectorAll('.gp-cell')) e montava um mapa de
+  TODAS as linhas × TODOS os idiomas. Como cada troca de célula de cada pessoa vira um sync em
+  todos os clientes, 8 pessoas navegando geram dezenas de eventos por segundo — dezenas de
+  renders síncronos por segundo. Medido: ~10,6ms por render, ou seja 200 eventos = ~2,1s de
+  thread bloqueada. Com eventos contínuos, congela.
+  Correção em duas frentes:
+    1. COALESCÊNCIA: no máximo 1 render por frame e nunca mais que 1 a cada 200ms. Presença não
+       precisa de 60fps. Medido: 200 eventos -> 1 render.
+    2. CUSTO POR RENDER: guarda a lista de células pintadas pra limpar só elas (em vez de varrer
+       o documento) e indexa linhas e idiomas SEPARADAMENTE — O(linhas + idiomas) no lugar de
+       O(linhas × idiomas). Numa grade de 80 linhas × 11 idiomas isso sai de 880 para 91 entradas.
+  Verificado: 200 eventos em rajada enfileiram em 0ms e produzem 1 render; 8 peers -> 8 células,
+  8 etiquetas, coordenadas distintas; limpeza volta a zero; merge-invariants 9/9.

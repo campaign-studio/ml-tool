@@ -119,50 +119,77 @@
 
   /* ── Paint where everyone else is ──────────────────────────────────────────────────────── */
 
+  /* Renderizar a presença custa caro e era chamado a CADA evento do canal. Com 8 pessoas
+   * trocando de célula, cada troca vira um sync em todos os clientes — dezenas de renders por
+   * segundo, cada um varrendo o documento inteiro e montando um mapa de TODAS as linhas × TODOS
+   * os idiomas. Foi isso que travou o editor no teste com muita gente.
+   * Duas correções:
+   *   - coalescência: no máximo 1 render por frame e nunca mais que 1 a cada 200ms (presença não
+   *     precisa de 60fps);
+   *   - custo por render: guarda as células pintadas pra limpar só elas (em vez de varrer o
+   *     documento), e indexa linhas e idiomas separadamente — O(linhas + idiomas) no lugar de
+   *     O(linhas × idiomas).
+   */
+  const RENDER_MIN_MS = 200;
+  let _paintedTds = [], _renderPending = false, _lastRenderAt = 0;
+
   function renderGridPresence() {
+    if (_renderPending) return;                 // já há um render agendado → absorve
+    _renderPending = true;
+    const espera = Math.max(0, RENDER_MIN_MS - (Date.now() - _lastRenderAt));
+    setTimeout(() => requestAnimationFrame(() => {
+      _renderPending = false; _lastRenderAt = Date.now();
+      try { _renderGridPresenceNow(); } catch (e) {}
+    }), espera);
+  }
+
+  function _renderGridPresenceNow() {
     const ctx = _ctx();
-    document.querySelectorAll('.gp-cell').forEach(el => {
+    // Limpa SÓ o que foi pintado da última vez (antes: querySelectorAll no documento inteiro).
+    _paintedTds.forEach(el => {
+      if (!el || !el.isConnected) return;
       el.classList.remove('gp-cell', 'gp-locked');
-      const f0 = el.querySelector('textarea, input.img-url');
-      if (f0) f0.removeAttribute('title');   // readonly é reposto pelo controlador da grade
       el.style.removeProperty('--gp-color');
+      const f0 = el.querySelector('textarea, input.img-url');
+      if (f0) f0.removeAttribute('title');      // readonly é reposto pelo controlador da grade
       const tag = el.querySelector('.gp-tag'); if (tag) tag.remove();
     });
+    _paintedTds = [];
+    try { renderLiveStatus(); } catch (e) {}
     if (!ctx) { _renderStack([]); return; }
 
-    const peers = _peersHere(ctx.itemId);
+    const peers = _peersHere();
     const colors = _assignColors(peers);
     const colorOf = (u) => colors.get(String(u.email).toLowerCase()) || '#888';
     _renderStack(peers, colorOf);
+    if (!peers.length) return;
 
-    // rowId|lang -> {r, c}, built once per render.
-    const pos = Object.create(null);
-    ctx.rows.forEach((row, r) => { if (row && row.id) ctx.langs.forEach((lang, c) => { pos[row.id + '|' + lang] = { r, c }; }); });
+    // Índices SEPARADOS: O(linhas + idiomas), não O(linhas × idiomas).
+    const linhaIdx = new Map();
+    ctx.rows.forEach((r, i) => { if (r && r.id != null && !linhaIdx.has(r.id)) linhaIdx.set(r.id, i); });
+    const idiomaIdx = new Map();
+    ctx.langs.forEach((l, i) => idiomaIdx.set(l, i));
 
     peers.forEach(u => {
       const cell = u.cell; if (!cell || !cell.rowId || !cell.lang) return;
-      // In a folder, only paint if they are on the SAME item I have open.
-      if ((cell.itemId || null) !== (ctx.itemId || null)) return;
-      const at = pos[cell.rowId + '|' + cell.lang]; if (!at) return;
-      const td = ctx.body.querySelector('td.tl-cell[data-r="' + at.r + '"][data-c="' + at.c + '"]');
+      if ((cell.itemId || null) !== (ctx.itemId || null)) return;   // outro item da mesma pasta
+      const r = linhaIdx.get(cell.rowId), c = idiomaIdx.get(cell.lang);
+      if (r === undefined || c === undefined) return;
+      const td = ctx.body.querySelector('td.tl-cell[data-r="' + r + '"][data-c="' + c + '"]');
       if (!td) return;
       const color = colorOf(u);
-      td.classList.add('gp-cell');
+      td.classList.add('gp-cell', 'gp-locked');
       td.style.setProperty('--gp-color', color);
-      // Travada: o colega está com o cursor aqui (ver soft lock acima).
-      td.classList.add('gp-locked');
       const f = td.querySelector('textarea, input.img-url');
       if (f) { f.readOnly = true; f.title = _fullName(u) + ' is editing this cell'; }
       if (!td.querySelector('.gp-tag')) {
         const tag = document.createElement('span');
         tag.className = 'gp-tag';
         tag.style.background = color;
-        // Nome COMPLETO no texto; o CSS corta com reticências e o hover revela inteiro. Assim o
-        // nome está sempre no DOM (leitor de tela / title) sem alargar a coluna no estado normal.
         tag.textContent = _fullName(u);
         td.appendChild(tag);
       }
-      td.setAttribute('title', _fullName(u) + ' is editing this cell');
+      _paintedTds.push(td);
     });
   }
 
