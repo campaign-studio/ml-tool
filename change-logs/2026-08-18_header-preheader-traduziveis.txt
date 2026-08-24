@@ -810,3 +810,15 @@ REVISÃO (mesmo dia) — box da galeria: push/in-app menores e IGUAIS (não deix
   ?presence=off reconhecido; merge-invariants 9/9.
   (Uma falha inicial no teste de "religar" era artefato do harness: religar dispara um track real,
   o app reconstrói _presenceState do canal e apaga o peer sintético injetado. Não era bug.)
+
+[2026-08-20] Renomear asset DENTRO do editor da pasta (todos os tipos).
+  Relato: "estou passando o mouse em cima do nome e não aparece o lápis".
+  Causa: não era hover quebrado — era ausência de botão naquela tela. O lápis só existia no card
+  da GALERIA (.camp-item-card:hover .proj-rename-btn). Mas o link que o usuário usou tem
+  &item=<id>, e o roteador (routeFromUrl) chama openCampaignItemEdit direto: abre o EDITOR do
+  asset, pulando a galeria. No cabeçalho do editor o nome era texto puro, sem ação nenhuma.
+  Correção: botão "Rename" ao lado do nome no cabeçalho do editor, para e-mail, in-app e push —
+  reusando openRenameCampaignItemModal (a mesma função da galeria, então os dois caminhos nunca
+  divergem); só o rótulo do modal muda por tipo, via CAMP_ASSET_LABEL. Escondido em _approverMode.
+  SEMPRE VISÍVEL, não hover: é um botão único num cabeçalho, e ação escondida atrás de hover já
+  gerou dois "não apareceu" hoje (esta e o lápis da pasta na home).

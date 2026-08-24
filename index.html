@@ -701,7 +701,9 @@ tr.meta-row .src textarea{background:transparent;}
    visíveis (não escondidas no hover), pra "Remove from folder" e "Delete" ficarem evidentes. */
 .camp-item-foot{display:flex;flex-direction:column;gap:12px;padding:14px 16px;border-top:1px solid var(--border);background:var(--surface);}
 .camp-item-info{display:flex;align-items:center;gap:10px;min-width:0;}
-.camp-item-name{flex:1;min-width:0;font-size:14px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.camp-item-name{flex:1;min-width:0;font-size:14px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px;}
+.camp-item-name > span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.camp-item-card:hover .proj-rename-btn{opacity:1;}
 .camp-item-progress{flex-shrink:0;}
 .camp-item-actions{display:flex;gap:7px;flex-wrap:wrap;}
 .camp-item-actions .tbtn{flex-shrink:0;}
@@ -726,6 +728,14 @@ tr.meta-row .src textarea{background:transparent;}
 .proj-row:hover .proj-rename-btn{opacity:1;}
 .folder-card:hover .proj-rename-btn{opacity:1;}
 .proj-rename-btn:hover{background:var(--s2);color:var(--accent);}
+/* Renomear asset dentro da pasta, no cabeçalho do editor. Discreto, mas SEMPRE visível — o
+   equivalente da galeria só aparece no hover, e ação escondida atrás de hover já se provou
+   difícil de achar. */
+.item-rename-btn{display:inline-flex;align-items:center;gap:5px;margin-left:8px;padding:4px 10px;
+  border:1px solid var(--border);border-radius:7px;background:var(--s2);color:var(--text2);
+  font-size:11px;font-weight:700;font-family:var(--sans);cursor:pointer;vertical-align:middle;
+  transition:border-color .12s,color .12s;}
+.item-rename-btn:hover{border-color:var(--brand);color:var(--accent);}
 .proj-meta{font-size:12px;color:var(--text3);letter-spacing:.005em;margin-top:6px;}
 .proj-folder-tag{display:inline-flex;align-items:center;gap:5px;flex-shrink:0;background:var(--brand-soft);border:none;border-radius:999px;padding:5px 13px;font-size:10.5px;font-weight:700;letter-spacing:.01em;color:var(--brand);white-space:nowrap;}
 .proj-badges{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:13px;}
@@ -1557,6 +1567,15 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
           <span class="ph-t" id="campaignItemLabel">Item</span>
+          <!-- Renomear o asset SEM voltar pra galeria. Vale pra e-mail, in-app e push: a função
+               é a mesma (openRenameCampaignItemModal), só o rótulo do modal muda por tipo.
+               Sempre visível (não é hover como o da galeria): é um botão só num cabeçalho, e
+               esconder ação atrás de hover já nos custou "não apareceu" antes. -->
+          <button class="item-rename-btn" id="campaignItemRenameBtn" style="display:none;"
+                  onclick="openRenameCampaignItemModal(_campaignItemIndex)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+            <span id="campaignItemRenameLbl">Rename</span>
+          </button>
           <div class="ph-a">
             <span class="presence-badge" style="display:none;"></span>
             <span class="gp-stack" style="display:none;" title="Who is editing in here right now"></span>
@@ -6771,6 +6790,13 @@ function renderCampaignMain() {
     bodyEl.style.display = 'block';
     activateCampaignItemIntoS(item);
     document.getElementById('campaignItemLabel').textContent = item.name;
+    const rnBtn = document.getElementById('campaignItemRenameBtn');
+    if(rnBtn){
+      rnBtn.style.display = _approverMode ? 'none' : '';   // approver não renomeia
+      rnBtn.title = 'Rename this ' + (CAMP_ASSET_LABEL[item.type] || 'item');
+      const lbl = document.getElementById('campaignItemRenameLbl');
+      if(lbl) lbl.textContent = 'Rename';
+    }
     renderCampaignGrid(item);
     renderCampaignLangBar(item);
     renderCampaignPreview(item, item._activeLang || (item.langs && item.langs[0]) || null);
@@ -6823,7 +6849,10 @@ function renderCampaignGallery(pairs) {
       <div class="camp-item-preview${(it.type==='push'||it.type==='inapp')?' appmsg':''}" id="campAssetPreview-${idx}"></div>
       <div class="camp-item-foot">
         <div class="camp-item-info">
-          <div class="camp-item-name">${escHtml(it.name)}</div>
+          <div class="camp-item-name">
+            <span>${escHtml(it.name)}</span>
+            ${_approverMode ? '' : `<button class="proj-rename-btn" title="Rename this ${CAMP_ASSET_LABEL[it.type] || 'item'}" onclick="event.stopPropagation();openRenameCampaignItemModal(${idx})">✎</button>`}
+          </div>
           <div class="camp-item-progress">${translationProgressBadgeHtml(campaignItemTranslationStats(it), 'font-size:10px;padding:2px 8px;')}</div>
         </div>
         <div class="camp-item-actions">
@@ -9226,11 +9255,13 @@ function campToggleLocaleApproval(idx) {
 }
 
 let _renameProjectId = null;
+let _renameItemIdx = null; // índice do item dentro de _campaign.items sendo renomeado (null = está renomeando projeto/folder)
 
 function openRenameProjectModal(id) {
   const p = projGetAll().find(x => x.id === id);
   if(!p) return;
   _renameProjectId = id;
+  _renameItemIdx = null;
   // Pasta (campanha) é um registro em projGetAll também — o MESMO modal serve; só troca o rótulo.
   const isFolder = p.kind === 'campaign';
   const modal = document.getElementById('renameProjectModal');
@@ -9242,15 +9273,51 @@ function openRenameProjectModal(id) {
   setTimeout(() => { input?.focus(); input?.select(); }, 0);
 }
 
+// Renomear um ITEM (email/in-app/push) DE DENTRO da folder aberta. Reusa o mesmo modal do rename
+// de projeto/folder — só troca rótulos e ativa o branch de item no save. Não mexe em nenhum outro
+// campo do item (rows/traduções/aprovação/langs continuam intactos). O saveCampaignProject faz
+// merge por-item usando updatedAt, então touchCampaignItem garante que o rename ganhe do remoto se
+// alguém estiver editando ao mesmo tempo.
+function openRenameCampaignItemModal(idx) {
+  if(!_campaign || !_campaign.items || !_campaign.items[idx]) return;
+  const it = _campaign.items[idx];
+  _renameProjectId = null;
+  _renameItemIdx = idx;
+  const modal = document.getElementById('renameProjectModal');
+  const typeLabel = CAMP_ASSET_LABEL[it.type] || 'item';
+  const title = modal.querySelector('h1'); if(title) title.textContent = 'Rename ' + typeLabel;
+  const label = modal.querySelector('label'); if(label) label.textContent = 'Name';
+  const input = document.getElementById('renameProjectInput');
+  if(input){ input.value = it.name || ''; input.placeholder = 'Name'; }
+  modal.style.display = 'flex';
+  setTimeout(() => { input?.focus(); input?.select(); }, 0);
+}
+
 function closeRenameProjectModal() {
   _renameProjectId = null;
+  _renameItemIdx = null;
   document.getElementById('renameProjectModal').style.display = 'none';
 }
 
 async function saveRenameProjectModal() {
-  if(!_renameProjectId) return;
   const newName = (document.getElementById('renameProjectInput')?.value || '').trim();
   if(!newName) { closeRenameProjectModal(); return; }
+
+  // Branch: renomeando um ITEM dentro de uma folder aberta.
+  if(_renameItemIdx != null && _campaign && _campaign.items && _campaign.items[_renameItemIdx]) {
+    const it = _campaign.items[_renameItemIdx];
+    if(it.name === newName) { closeRenameProjectModal(); return; }
+    it.name = newName;
+    touchCampaignItem(it);              // carimba updatedAt no item — vence o merge remoto
+    await saveCampaignProject();        // já faz pull+merge item-a-item e persiste
+    closeRenameProjectModal();
+    // Re-renderiza a folder aberta (galeria + label do editor, se aberto).
+    if(typeof renderCampaignMain === 'function') renderCampaignMain();
+    return;
+  }
+
+  // Branch clássico: renomeando um PROJETO/FOLDER na dashboard.
+  if(!_renameProjectId) { closeRenameProjectModal(); return; }
   if(ghConfigured()) await ghPullProjects(); // ver comentário em confirmAssignFolder
   const projects = projGetAll();
   const p = projects.find(x => x.id === _renameProjectId);

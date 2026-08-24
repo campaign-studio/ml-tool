@@ -1,0 +1,35 @@
+2026-08-24 — Rename de item (email/in-app/push) dentro de uma folder
+
+O QUE MUDOU
+- Dá pra renomear cada item (email, in-app, push) que está dentro da folder aberta,
+  sem sair pra dashboard e sem tocar em nada mais do item.
+- Aparece um ✎ discreto ao lado do nome no card da galeria (só no hover, mesma UX
+  dos renames existentes de projeto/folder). Não aparece no approver-mode.
+- Reusa o mesmo modal do rename de projeto/folder (renameProjectModal) — muda só o
+  título ("Rename email" / "Rename in-app message" / "Rename push") e o rótulo.
+
+COMO FUNCIONA POR BAIXO
+- Nova função openRenameCampaignItemModal(idx) abre o modal em "modo item" via
+  _renameItemIdx = idx (novo estado ao lado de _renameProjectId).
+- saveRenameProjectModal ganhou um branch: quando _renameItemIdx está setado,
+  muta it.name, chama touchCampaignItem(it) pra carimbar updatedAt no item, e
+  chama saveCampaignProject() — que já faz pull+merge item-a-item antes de salvar.
+- O touchCampaignItem no rename é essencial: mergeCampaignItems escolhe o item com
+  updatedAt mais novo pra CONTEÚDO (name entra em conteúdo, junto com rows/rawHtml
+  /langs), então sem esse carimbo um rename local podia perder pra uma versão
+  remota mais antiga que estivesse sendo puxada no meio.
+- Aprovação/tombstones/deletedItemIds continuam intocados (merge segue as regras
+  existentes: união pra aprovação, tombstone se ganha).
+
+O QUE NÃO MUDA
+- Editor solto (rename de projeto avulso) e rename de folder na dashboard: mesma
+  função de save, sem regressão — o branch novo só dispara quando _renameItemIdx
+  está setado, que só o novo botão liga.
+- Nenhuma mudança em folders.js (o módulo Folders é puro sobre listagem/plano).
+
+ARQUIVOS
+- index.html — três hunks:
+  1) CSS .camp-item-name virou flex com truncate no span interno + hover mostra ✎
+  2) renderCampaignGallery — botão ✎ ao lado do nome (só fora do approver-mode)
+  3) let _renameItemIdx + openRenameCampaignItemModal + branch em
+     saveRenameProjectModal
