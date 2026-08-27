@@ -1,0 +1,103 @@
+2026-08-27 — EDITOR DE CSV: UMA SUPERFÍCIE SÓ PROS DOIS EDITORES
+================================================================================
+
+PEDIDO
+"O editor de CSV dentro da pasta precisa ser o MESMO. Previewer, tudo. Quando eu
+clico em editar um projeto, ou editar um item dentro da pasta, preciso que seja
+modularizado o MESMO csv, com as MESMAS funcionalidades, vindo do MESMO arquivo
+para que não haja disparidades entre um e outro."
+Complemento: "A barra de funcionalidades acima do editor de CSV também deveria
+ser idêntica."
+
+O QUE JÁ ERA COMPARTILHADO (antes desta mudança)
+  - Estado: activateCampaignItemIntoS() carrega o item da pasta dentro do MESMO
+    S.csv/S.rawHtml do editor avulso. Nunca houve dois modelos de dados.
+  - Grade: buildGridHead + renderTranslationGridBody (translation-engine.js).
+  - HTML do preview: buildPreviewHtml.
+Ou seja: um modelo de dados só, com DOIS caminhos de apresentação em cima dele.
+
+A RAIZ DA DISPARIDADE
+switchAndHL / _sendHL / highlightFromTable tinham '#gstb' e '#vf' ESCRITOS NA MÃO
+— os ids do editor avulso. Elas quebrariam na grade da pasta. Por isso
+renderCampaignGrid foi obrigada a passar liveHL:false e onclickHighlight:false, e
+o preview da pasta ganhou um script paralelo de 20 linhas
+(injectCampaignLiveUpdateScript) contra as ~105 do avulso.
+Ninguém DECIDIU desligar esses recursos na pasta — eles nunca chegaram lá.
+
+O QUE A PASTA NÃO TINHA E AGORA TEM
+  - Âncora/realce no preview ao focar uma célula
+  - Clicar na coluna Origin e o preview pular pro trecho
+  - Busca no preview (braze-find) + scroll pedido ao container pai
+  - Revelar o ramo If/Else automaticamente ao focar uma linha escondida nele
+  - Re-scan
+  - Download em XLSX (só tinha CSV)
+  - Notificação de menção abrir a célula comentada  ← era BUG: openPendingCommentTarget
+    tinha '#gstb' fixo, então a menção abria o item e não achava a linha; e
+    renderCampaignGrid nem chamava a função.
+
+ARQUIVO NOVO: modules/csv-editor.js
+O ÚNICO lugar do código autorizado a saber que existem dois pontos de montagem.
+  - CSV_EDITOR_SURFACES — descritor por superfície (tbody, table, iframe, lbar,
+    scrollWrap, viewLang/setViewLang, refreshPreview, rerenderGrid, scheduleSave,
+    setRawHtml). Chaveado por _gridBodyId, que já era o contrato do controlador de
+    grade — em vez de inventar um segundo conceito de "qual editor está aberto"
+    que pudesse discordar do primeiro.
+  - buildPreviewScript / injectPreviewScript — UM script, injetado nos dois.
+  - switchAndHL, sendHL, _sendHL, highlightFromTable, clearPreviewHighlight,
+    editorSelectRow, editorSyncLangTab — agora leem a superfície ativa.
+  - CSV_EDITOR_TOOLBAR + renderEditorToolbars — a barra dos dois editores vem de
+    UMA lista. Onde a ação legitimamente difere (baixar o projeto x baixar o item),
+    a diferença mora num mapa {loose, folder} pequeno e explícito, em vez de dois
+    blocos de HTML que ninguém garante que continuam iguais.
+
+MUDANÇAS DE APOIO
+  - injectCampaignLiveUpdateScript: APAGADO.
+  - Protocolo do preview da pasta: 'camp-update' -> 'braze-update' (com ri e
+    silent). 'camp-height' -> 'braze-height'. Um protocolo só.
+  - braze-height / braze-scrollto resolvem a superfície por e.source, não por id:
+    os dois iframes coexistem no DOM (o avulso fica escondido, não removido), então
+    getElementById acertaria o iframe errado.
+  - renderCampaignPreview: height:560px fixa -> min-height. Com altura travada, um
+    e-mail mais alto ficava cortado e o scroll do realce não alcançava o trecho.
+    Ganhou também o onload + _pendingHL (realce depois do rebuild), com o mesmo
+    token de geração do refreshViewer.
+  - rescanMissedLines: gravava sempre em S.rawHtml + buildTable + scheduleAutosave.
+    Agora usa a superfície ativa — na pasta o HTML tageado precisa ir pro ITEM
+    (item.rawHtml), senão o autosave perderia as tags novas.
+  - dlItemXLSX(): criado, espelhando dlItemCSV (mesma fonte de texto:
+    curlifyApostrophes + csvSourceText, pra planilha e CSV nunca divergirem).
+  - toggleDlDropdown/closeDlDropdown: a barra agora existe duas vezes, então havia
+    dois #dlDropdownMenu e getElementById pegava sempre o do avulso — o botão da
+    pasta abria o menu do editor escondido. Passaram a operar por classe, e o
+    toggle age no menu do botão clicado.
+
+O QUE CONTINUA SEPARADO (de propósito)
+  - Preview de PUSH: não tem HTML nem iframe, é DOM montado à mão. Grade
+    unificada, preview não — forçar iframe ali seria inventar um documento que
+    não existe.
+  - Chrome de navegação de cada tela (voltar pra galeria, renomear item).
+
+O QUE FOI VERIFICADO NO LOCALHOST
+  - Grade da pasta: 4/4 células com switchAndHL, 2/2 origins com
+    highlightFromTable (antes: 0 e 0).
+  - Realce ponta a ponta na pasta: focar célula -> trecho certo realçado no iframe.
+  - silent PRESERVADO: edição remota troca o texto e a âncora NÃO se move; edição
+    local move. (Era o risco de regressão nº 1 desta mudança.)
+  - Troca de idioma na pasta: rebuild do iframe + realce aplicado depois do load
+    via _pendingHL; aba de idioma sincronizada.
+  - Editor avulso sem regressão: realce ok, braze-height via e.source aplicou
+    600px no iframe certo.
+  - Barras: idênticas botão a botão; ações corretamente diferentes; soft block
+    esconde os MESMOS 3 botões (Edit Tagged HTML, Re-scan, Update from CSV/XLSX)
+    nos dois.
+  - Item REAL de produção (Eligible - Phase 3 / Email 1 - Non WH+, 32 linhas,
+    10 idiomas): superfície 'folder', script completo ativo, realce ancorado.
+
+NOTA DE INCIDENTE (meu erro, já corrigido)
+Durante o teste criei um projeto sintético {id:'c', name:'P'} sem owner. Eu havia
+neutralizado sbClient.from antes de cada rodada, mas o caminho de gravação não
+passa só por ali: o projeto foi persistido e chegou ao banco REAL. Ele quebrava o
+renderDashboard de qualquer pessoa que o puxasse (p.owner.toLowerCase() lançava).
+Removido pelo fluxo de delete do próprio app; confirmado 0 projetos sem owner e
+console limpo depois. Os 44 projetos reais nunca foram tocados.
+Lição: neutralizar sbClient.from NÃO é suficiente pra garantir teste sem escrita.

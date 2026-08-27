@@ -260,9 +260,14 @@
     const key = item.id + '::' + (viewLang || '');
     const loaded = (typeof _campPreviewLoadedKey !== 'undefined') ? _campPreviewLoadedKey : null;
     if (!iframe || !iframe.contentWindow || loaded !== key) return; // would need a rebuild → skip
+    // MESMO protocolo do avulso agora (braze-update) — o preview da pasta passou a injetar o
+    // script completo. silent:true é o ponto todo desta função: a edição é de OUTRA pessoa, então
+    // troca o texto sem mexer no realce nem rolar a tela de quem está aqui.
+    const ri = (typeof S !== 'undefined' && S.csv && S.csv.rows)
+      ? S.csv.rows.findIndex(r => r.id === row.id) : -1;
     iframe.contentWindow.postMessage({
-      type: 'camp-update', tid: row.id,
-      text: ((row.translations || {})[lang]) || row.src, src: row.src
+      type: 'braze-update', ri, tid: row.id,
+      text: ((row.translations || {})[lang]) || row.src, src: row.src, silent: true
     }, '*');
   }
 

@@ -1576,31 +1576,13 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
             <span id="campaignItemRenameLbl">Rename</span>
           </button>
-          <div class="ph-a">
+          <div class="ph-a" id="campItemToolbar">
             <span class="presence-badge" style="display:none;"></span>
             <span class="gp-stack" style="display:none;" title="Who is editing in here right now"></span>
             <span class="live-status"></span>
-            <button class="tbtn primary" onclick="openCampaignApprovalView()">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
-              Approve copies
-            </button>
-            <button class="tbtn upload" onclick="openItemCsvModal()" title="Upload a filled-in CSV/XLSX to update the translations already in this item">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V3m0 0l-4 4m4-4l4 4"/></svg>
-              Upload CSV/XLSX
-            </button>
-            <button class="tbtn csv" onclick="dlItemCSV()">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-              Download CSV
-            </button>
-            <button class="tbtn html" onclick="openHtmlModal()" title="Export to Braze — copy the subject, the tagged HTML, and download the translations CSV, step by step">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
-              Copy Tagged HTML
-            </button>
-            <button class="tbtn" onclick="openTaggedHtmlEditorForCampaignItem()" title="Manually fix a specific error in the already-tagged HTML — for emergency corrections, does not re-run extraction and does not affect approval">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
-              Edit Tagged HTML
-            </button>
-            <button class="tbtn" onclick="openVersionHistory()" data-i18n-title="versionHistory.historyBtnTitle" title="Version history — restore an earlier point or save a backup"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg><span data-i18n="versionHistory.historyBtn">History</span></button><button class="tbtn" onclick="saveManualBackup()" data-i18n-title="versionHistory.saveBackupBtnTitle" title="Save a backup — mark a restore point you can always come back to"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><span data-i18n="versionHistory.saveBackupBtn">Save backup</span></button>
+            <!-- MESMA lista do editor avulso (ver modules/csv-editor.js) — a barra da pasta não
+                 pode mais ficar para trás quando um botão novo entra no outro lado. -->
+            <span class="ed-tools"></span>
           </div>
         </div>
         <div class="tscroll" style="flex:1;">
@@ -2406,42 +2388,11 @@ function toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('da
             <span class="presence-badge" style="display:none;"></span>
             <span class="gp-stack" style="display:none;" title="Who is editing in here right now"></span>
             <span class="live-status"></span>
-            <button class="tbtn html" id="btnDlHtml" onclick="openHtmlModal()">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
-              Copy Tagged HTML
-            </button>
-            <button class="tbtn" onclick="openTaggedHtmlEditorForCurrentProject()" title="Manually fix a specific error in the already-tagged HTML — for emergency corrections, does not re-run extraction and does not affect approval">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
-              Edit Tagged HTML
-            </button>
-            <button class="tbtn" onclick="openVersionHistory()" data-i18n-title="versionHistory.historyBtnTitle" title="Version history — restore an earlier point or save a backup"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg><span data-i18n="versionHistory.historyBtn">History</span></button><button class="tbtn" onclick="saveManualBackup()" data-i18n-title="versionHistory.saveBackupBtnTitle" title="Save a backup — mark a restore point you can always come back to"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><span data-i18n="versionHistory.saveBackupBtn">Save backup</span></button>
-            <button class="tbtn" onclick="rescanMissedLines()" title="Re-scan the original HTML for translatable lines that weren’t captured, and add any missing ones at the end (won’t touch existing lines)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Re-scan</button>
-            <div class="dl-dropdown-wrap">
-              <button class="tbtn csv" onclick="event.stopPropagation();toggleDlDropdown()">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                Download
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg>
-              </button>
-              <div class="dl-dropdown-menu" id="dlDropdownMenu" style="display:none;">
-                <button onclick="closeDlDropdown();dlCSV()">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                  Download as CSV
-                </button>
-                <button onclick="closeDlDropdown();dlXLSX()">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
-                  Download as XLSX
-                </button>
-              </div>
-            </div>
-            <button class="tbtn upload" onclick="document.getElementById('editorCsvInput').click()" title="Upload a filled-in CSV/XLSX to update the translations already in this project">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V3m0 0l-4 4m4-4l4 4"/></svg>
-              Update from CSV/XLSX
-            </button>
+            <!-- Botões gerados por renderEditorToolbars() a partir de UMA lista compartilhada
+                 (CSV_EDITOR_TOOLBAR, em modules/csv-editor.js). O markup à mão que existia aqui
+                 tinha divergido do da pasta: Re-scan e XLSX só existiam neste lado. -->
+            <span class="ed-tools"></span>
             <input type="file" id="editorCsvInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="onEditorCsvUpload(this.files[0])">
-            <button class="tbtn primary" id="btnApprove" onclick="openApprovalView()">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
-              Approve copies
-            </button>
           </div>
         </div>
         <div class="tscroll" id="tscroll">
@@ -7096,8 +7047,10 @@ function renderCampaignGrid(item) {
     originLang: origLangName,
     pendingImgIds: [], // "imagem pendente pós-aprovação" é um conceito só do projeto avulso
     write: 'setCampaignCell',
-    liveHL: false,       // avulso sincroniza o preview clássico (#vf) por foco/tecla; campanha
-                          // já tem seu próprio caminho de preview (updateCampaignPreviewCell)
+    // liveHL/onclickHighlight LIGADOS: eram false porque switchAndHL/highlightFromTable tinham
+    // '#gstb' e '#vf' escritos na mão e quebrariam aqui. Agora leem a superfície ativa
+    // (modules/csv-editor.js), então a pasta tem realce e âncora igual ao avulso.
+    liveHL: true,
     // wrapInner precisa ser TRUE junto com commentsEnabled: o botão de comentário só é emitido
     // dentro do .tl-inner (ver translationCellTd) — com wrapInner:false ele era descartado em
     // silêncio e a pasta ficava sem o botão mesmo com os comentários ligados.
@@ -7105,7 +7058,7 @@ function renderCampaignGrid(item) {
     commentsEnabled: true, // comentário por célula vale nas DUAS grades (ver commentSurfaceCommit)
     delRowFn: 'campDelRow',
     idLabel: row => row.label || row.id,
-    onclickHighlight: false,
+    onclickHighlight: true,
     srcEditable: () => originEditable,
     srcWrite: 'setCampaignOrigin',
   });
@@ -7114,11 +7067,15 @@ function renderCampaignGrid(item) {
   // <table> persiste entre re-renders; só o innerHTML troca, então a delegação sobrevive).
   _gridBodyId = 'campGstb';
   _gridWrite = setCampaignCell;
+  renderEditorToolbars(); // MESMA lista do avulso — depois de _gridBodyId, que resolve a superfície
   if(typeof softBlockApplyUi === 'function') softBlockApplyUi(); // soft block: hide structural controls
   if(typeof renderGridPresence === 'function') renderGridPresence(); // repinta a presença dos colegas
   wireGridController('campaignItemTable');
   gridReapplyHighlight();
   setTimeout(() => syncAllRowHeights('campGstb') , 0);
+  // Menção numa célula deste item: abre o comentário direto, igual ao editor avulso faz no
+  // buildTable(). Faltava aqui — clicar na notificação abria a pasta e não acontecia nada.
+  openPendingCommentTarget();
 }
 
 // Remove um idioma inteiro do item de pasta — espelha delLang() do editor avulso, mas escopado
@@ -7211,34 +7168,10 @@ function setCampaignActiveLang(lang) {
   renderCampaignPreview(item, lang);
 }
 
-// Injeta um listener leve de "atualiza esse texto aí" no HTML do preview — sem isso,
-// cada tecla digitada reconstruía o <iframe> inteiro do zero (srcdoc novo = navegação
-// completa do iframe = piscada branca a cada letra). Com o listener, só o PRIMEIRO
-// render de um item/idioma cria o iframe; toda tecla depois só manda um postMessage
-// pra trocar o texto de um <span data-tid="..."> já existente, sem recarregar nada —
-// mesmo truque que o editor clássico já usa há tempos (updatePreviewText/'vf').
-function injectCampaignLiveUpdateScript(html) {
-  const sc = '<scr' + 'ipt>', scEnd = '</scr' + 'ipt>';
-  const script = sc + `(function(){
-    function reportHeight(){ var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight,300); window.parent.postMessage({type:'camp-height',height:h},'*'); }
-    window.addEventListener('load', function(){ setTimeout(reportHeight, 60); });
-    window.addEventListener('message', function(e){
-      if(!e.data || e.data.type!=='camp-update') return;
-      var el = document.querySelector('[data-tid="'+e.data.tid+'"]');
-      if(!el) return;
-      if(el.classList.contains('braze-img-wrap')){
-        var img = el.querySelector('img');
-        if(img){ img.src = e.data.text || e.data.src; return; }
-      }
-      var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
-      var node = walker.nextNode();
-      if(node) node.textContent = e.data.text || e.data.src;
-      else el.textContent = e.data.text || e.data.src;
-      setTimeout(reportHeight, 30);
-    });
-  })();` + scEnd;
-  return html.includes('</body>') ? html.replace('</body>', script + '</body>') : html + script;
-}
+/* injectCampaignLiveUpdateScript foi APAGADO. Era um resumo de 20 linhas do script do preview
+   avulso: sabia trocar texto e reportar altura, e mais nada. Por isso a pasta nunca teve
+   realce, âncora, busca no preview nem revelar ramo If/Else. Os dois editores agora injetam
+   o script completo (injectPreviewScript, em modules/csv-editor.js). */
 
 let _campPreviewLoadedKey = null; // identifica QUAL item+idioma está carregado no iframe persistente agora
 
@@ -7255,7 +7188,12 @@ function updateCampaignPreviewCell(item, row, lang) {
     renderCampaignPreview(item, viewLang); // primeira vez pra esse item/idioma — precisa montar o iframe uma vez
     return;
   }
-  iframe.contentWindow.postMessage({ type: 'camp-update', tid: row.id, text: row.translations[lang] || row.src, src: row.src }, '*');
+  // MESMO protocolo do avulso (braze-update): o script do preview agora é um só. silent fica
+  // FALSO aqui de propósito — isto é a pessoa digitando na própria tela, então a âncora deve
+  // seguir o que ela está editando. Edição vinda de colega usa silent:true (live-coedit.js).
+  const ri = (S.csv.rows || []).findIndex(r => r.id === row.id);
+  iframe.contentWindow.postMessage({ type:'braze-update', ri, tid: row.id,
+    text: row.translations[lang] || row.src, src: row.src, silent:false }, '*');
 }
 
 // Ícone do PUSH no preview/approval — a imagem da marca no lugar do sino genérico, no mesmo
@@ -7290,12 +7228,28 @@ function renderCampaignPreview(item, lang) {
   }
   if(!S.rawHtml) { _campPreviewLoadedKey = null; wrap.innerHTML = `<p style="text-align:center;color:var(--text3);font-size:12px;margin-top:40px;">No HTML uploaded.</p>`; return; }
   renderCondBranchToggle(); // toggle If/Else no preview da pasta (igual ao avulso)
-  const html = injectCampaignLiveUpdateScript(buildPreviewHtml(lang));
+  const html = injectPreviewScript(buildPreviewHtml(lang)); // MESMO script do avulso
   const srcdoc = html.replace(/"/g, '&quot;');
   const isInapp = item.type === 'inapp';
   const vw = _campVSize === 'mobile' ? '375px' : '100%'; // Full/Mobile do preview da pasta
-  wrap.innerHTML = `<iframe id="campaignPreviewFrame" style="width:${vw};max-width:100%;margin:0 auto;height:560px;border:none;border-radius:12px;background:${isInapp ? 'transparent' : '#fff'};${isInapp ? '' : 'box-shadow:0 2px 12px rgba(0,0,0,.08);'}" srcdoc="${srcdoc}"></iframe>`;
+  // min-height em vez de height fixa: o braze-height CRESCE o iframe até o conteúdo caber (o
+  // avulso funciona igual). Com height:560px travada, um e-mail mais alto ficava cortado e o
+  // scrollto do realce não conseguia alcançar o trecho.
+  wrap.innerHTML = `<iframe id="campaignPreviewFrame" style="width:${vw};max-width:100%;margin:0 auto;min-height:560px;border:none;border-radius:12px;background:${isInapp ? 'transparent' : '#fff'};${isInapp ? '' : 'box-shadow:0 2px 12px rgba(0,0,0,.08);'}" srcdoc="${srcdoc}"></iframe>`;
   _campPreviewLoadedKey = item.id + '::' + (lang || '');
+
+  // Realce pendente: o documento acabou de ser reconstruído (troca de idioma ou de ramo If/Else),
+  // então o data-tid do alvo só passa a existir depois do load. MESMO mecanismo de token de
+  // geração do refreshViewer avulso — um refresh mais novo invalida o realce do mais antigo.
+  const frame = document.getElementById('campaignPreviewFrame');
+  const seq = ++_vfLoadSeq;
+  const targetHL = _pendingHL;
+  _pendingHL = null;
+  if(frame && targetHL) frame.onload = function(){
+    frame.onload = null;
+    if(seq !== _vfLoadSeq) return; // obsoleto — uma chamada mais nova assumiu o preview
+    _sendHL(targetHL.ri, targetHL.lang);
+  };
 }
 
 // ── Content — modal único com 3 abas, lista o que já existe de cada tipo e
@@ -7697,6 +7651,27 @@ function dlItemCSV() {
   a.download = item.name.replace(/[^a-z0-9]+/gi, '_') + '.csv';
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+// XLSX do item de pasta — existia só no editor avulso (dlXLSX). Mesmas colunas e MESMA fonte de
+// texto do dlItemCSV acima (curlifyApostrophes + csvSourceText), pra planilha e CSV do mesmo item
+// nunca saírem com texto diferente — foi exatamente esse bug que já mordeu o dlCSV do avulso.
+function dlItemXLSX() {
+  const item = _campaign && _campaign.items[_campaignItemIndex];
+  if(!item) return;
+  if(typeof XLSX === 'undefined'){ uiAlert('SheetJS not loaded.'); return; }
+  const langs = sortLangsForDisplay(item.langs || []);
+  if(!langs.length){ uiAlert('No language configured.'); return; }
+  const rows = [
+    [item.name, ...Array(langs.length + 1).fill('')],
+    ['', 'Translation tags', ...langs.map(l => toBrazeLang(l))],
+    ...(item.rows || []).map(r => [r.id, curlifyApostrophes(csvSourceText(r)),
+      ...langs.map(l => curlifyApostrophes(r.translations[l] || ''))])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Translations');
+  XLSX.writeFile(wb, `${item.name.replace(/[^a-z0-9]+/gi,'_')}_translations.xlsx`);
 }
 
 // Markup de UM card de membro (sem o índice — todos os handlers identificam por e-mail).
@@ -11214,9 +11189,13 @@ async function rescanMissedLines(){
   // data.html = S.rawHtml (sem as tags novas) e, ao reabrir, o load reconstrói do HTML tagueado
   // → as linhas somem. buildTaggedHtml ancora todas as linhas (inclusive as novas) e é o mesmo
   // artefato do export, então S.rawHtml passa a conter {%translation idN%} das linhas adicionadas.
-  S.rawHtml = buildTaggedHtml(true);
-  buildTable();
-  try { scheduleAutosave(); } catch(e){}
+  // Grava o HTML tageado, re-renderiza e salva pela SUPERFÍCIE ATIVA. Antes isto era fixo no
+  // caminho do avulso (S.rawHtml + buildTable + scheduleAutosave), então o Re-scan simplesmente
+  // não podia existir na barra da pasta: gravaria no lugar errado e o item perderia as tags.
+  const sf = editorSurface();
+  sf.setRawHtml(buildTaggedHtml(true));
+  sf.rerenderGrid();
+  sf.scheduleSave();
   uiNotify(`Added ${missing.length} line(s) at the end — fill in the translations (saves automatically).`, {type:'success'});
 }
 
@@ -11272,6 +11251,7 @@ function _copyFallback(txt, done){
 
 function buildTable() {
   _gridBodyId = 'gstb'; _gridWrite = null; // contexto do controlador = editor avulso (default)
+  renderEditorToolbars(); // barra vinda da lista compartilhada (modules/csv-editor.js)
   // Update mail chrome subject with template name
   const subj = document.getElementById('mailSubject');
   if(subj) subj.textContent = S.csv.name || 'Wellhub';
@@ -11305,7 +11285,10 @@ function openPendingCommentTarget() {
   const ri = S.csv.rows.findIndex(r => r.id === rowId);
   if(ri === -1) return;
   setTimeout(() => {
-    const rowEl = document.querySelectorAll('#gstb tr')[ri];
+    // Grade da superfície ATIVA — com '#gstb' fixo aqui, uma menção numa célula DENTRO de uma
+    // pasta abria o item e não achava a linha (o tbody de lá é #campGstb), então o comentário
+    // simplesmente não abria. Ver modules/csv-editor.js.
+    const rowEl = editorGridRows()[ri];
     if(rowEl) rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     // Abre o popover na célula correta (com o idioma da menção, ou o primeiro idioma disponível).
     // Notificações antigas guardaram o "lang" no formato cru do CSV daquele momento (ex: "fr_fr"),
@@ -12644,15 +12627,16 @@ function checkApprovalEditLockLive() {
 function updatePreviewText(ri, lang, opts) {
   const row = S.csv.rows[ri]; if(!row) return;
   const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
-  // Determine which lang the viewer is showing
-  const viewLang = S.vLang;
+  // Determine which lang the viewer is showing — na superfície ATIVA (avulso: S.vLang;
+  // pasta: item._activeLang). Ver modules/csv-editor.js.
+  const viewLang = editorSurface().viewLang();
   const isOrig = !viewLang || viewLang === origLang;
   // Only update if the edited cell matches what the viewer is showing
   if(lang && lang !== viewLang) return; // editing a different lang than viewer
   if(!lang && !isOrig) return;          // editing src but viewer shows translation
   const newText = lang ? (row.translations[lang]||row.src) : row.src;
   const oldText = lang ? (row.translations[lang]||row.src) : row.src; // same — we just highlight
-  const iframe = document.getElementById('vf');
+  const iframe = editorPreviewFrame();
   if(iframe && iframe.contentWindow)
     iframe.contentWindow.postMessage({type:'braze-update', ri, text: newText, src: row.src, tid: row.id,
       silent: !!(opts && opts.silent)}, '*'); // silent = edição de outra pessoa: não move realce nem rola
@@ -12896,118 +12880,8 @@ function refreshViewer(){
   renderCondBranchToggle();  // (re)desenha o toggle de ramo conforme o nº de vias do HTML atual
   let html = buildPreviewHtml(S.vLang);
 
-  // Inject hover-highlight script into iframe (tag split to avoid parser issues)
-  const sc = '<scr'+'ipt>';
-  const scEnd = '</scr'+'ipt>';
-  const highlightScript = sc + `
-(function(){
-  var st = document.createElement('style');
-  st.textContent = '.braze-hl{outline:2px solid rgba(59,130,246,.6)!important;background-color:rgba(59,130,246,.08)!important;border-radius:3px;transition:outline .2s,background-color .2s;}.braze-img-wrap{display:block;line-height:0;font-size:0;}.braze-img-wrap img{display:block;}';
-  (document.head||document.documentElement).appendChild(st);
-
-  var curEl = null;
-
-  function findEl(text){
-    if(!text||text.length<2) return null;
-    var search=text.trim();
-    var walker=document.createTreeWalker(document.body||document.documentElement,NodeFilter.SHOW_TEXT,null);
-    var node;
-    while((node=walker.nextNode())){
-      var t=node.textContent.trim();
-      if(t&&t.includes(search)){
-        var el=node.parentElement;
-        if(!el||el.tagName==='HTML'||el.tagName==='BODY') continue;
-        return {node:node, el:el};
-      }
-    }
-    return null;
-  }
-
-  function clearHL(){
-    if(curEl){curEl.classList.remove('braze-hl');curEl=null;}
-  }
-
-  function highlight(text, tid){
-    clearHL();
-    if(!tid) return;
-    var el = document.querySelector('[data-tid="'+tid+'"]');
-    if(el){
-      // img-wrap span: highlight the <img> inside it directly
-      var img = el.classList.contains('braze-img-wrap') ? el.querySelector('img') : null;
-      var target = img || el;
-      curEl=target;
-      target.classList.add('braze-hl');
-      // Este iframe não tem scroll interno — ele é redimensionado pra caber todo o
-      // conteúdo (ver 'braze-height' abaixo), quem realmente rola é o .mail-body-wrap
-      // no documento PAI. scrollIntoView() daqui dentro não tem efeito nenhum, então
-      // mandamos a posição do alvo pro pai rolar o container certo.
-      // IMPORTANTE: reporta a altura ANTES de pedir o scroll — logo após um reload
-      // (troca de idioma), o pai ainda não recebeu a altura nova (só chega 100ms
-      // depois do load), então o .mail-body-wrap ainda tem o tamanho do conteúdo
-      // ANTERIOR e o scroll pedido fica limitado (clampado) perto do topo.
-      // postMessage preserva a ordem de entrega, então mandando a altura primeiro
-      // garantimos que o container já cresceu quando o scrollto chegar.
-      reportHeight();
-      var rect = target.getBoundingClientRect();
-      window.parent.postMessage({type:'braze-scrollto', top: rect.top + rect.height/2}, '*');
-    }
-  }
-
-  // Keep a map of ri → {node, origSrc} so we can update the same node every keystroke
-  var nodeMap = {};
-
-  // silent=true => só troca o TEXTO. Não move o realce e não rola.
-  // A âncora do preview pertence a QUEM ESTÁ DIGITANDO: quando a edição vem de outra pessoa
-  // (co-edição ao vivo manda braze-update com silent), mexer no realce/scroll faria o preview
-  // de todo mundo pular pro ponto onde o colega está — cada um tem que manter a própria vista.
-  function updateText(ri, src, newText, tid, silent){
-    var container = tid ? document.querySelector('[data-tid="'+tid+'"]') : null;
-    if(container){
-      // Image row: braze-img-wrap span contains the <img>
-      if(container.classList.contains('braze-img-wrap')){
-        var img = container.querySelector('img');
-        if(img){
-          img.src = newText||src;
-          if(!silent){
-            clearHL(); curEl=img; img.classList.add('braze-hl');
-            img.scrollIntoView({behavior:'smooth',block:'center'});
-          }
-          return;
-        }
-      }
-      // Text row — update text node
-      var walker=document.createTreeWalker(container,NodeFilter.SHOW_TEXT,null);
-      var node=walker.nextNode();
-      if(node){ node.textContent = newText||src; }
-      else { container.textContent = newText||src; }
-      if(!silent){ clearHL(); curEl=container; container.classList.add('braze-hl'); }
-      return;
-    }
-    // Fallback: nodeMap by ri
-    if(nodeMap[ri] && nodeMap[ri].node.isConnected){
-      nodeMap[ri].node.textContent = newText || nodeMap[ri].origSrc;
-      var el = nodeMap[ri].node.parentElement;
-      if(el && !silent){ clearHL(); curEl=el; el.classList.add('braze-hl'); }
-      return;
-    }
-  }
-
-  function reportHeight(){
-    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, 600);
-    window.parent.postMessage({type:'braze-height', height:h},'*');
-  }
-  // Report once after load + one deferred check — no resize/mutation to avoid feedback loop
-  window.addEventListener('load', function(){ setTimeout(reportHeight, 100); });
-
-  window.addEventListener('message',function(e){
-    if(!e.data) return;
-    if(e.data.type==='braze-find') highlight(e.data.text, e.data.ri);
-    if(e.data.type==='braze-update') updateText(e.data.ri, e.data.src, e.data.text, e.data.tid, e.data.silent);
-  });
-})();
-` + scEnd;
-  if(html.includes('</body>')) html=html.replace('</body>',highlightScript+'</body>');
-  else html+=highlightScript;
+  // Script do preview: MESMO dos dois editores (ver modules/csv-editor.js).
+  html = injectPreviewScript(html);
 
   const iframe=document.getElementById('vf');
   // Load-generation token: se outra troca de idioma/refresh acontecer antes deste
@@ -13237,20 +13111,31 @@ function copyTaggedHtml() {
   }).catch(()=>{ /* fallback */ });
 }
 
-function toggleDlDropdown() {
-  const menu = document.getElementById('dlDropdownMenu');
+// A barra agora é montada nos DOIS editores a partir da mesma lista, então existem dois
+// .dl-dropdown-menu no DOM. getElementById devolveria sempre o primeiro (o do avulso), fazendo o
+// botão da pasta abrir o menu do editor escondido. Estas três funções passam a trabalhar em
+// TODOS os menus, e o toggle no que pertence ao botão clicado.
+function _dlMenus(){ return Array.from(document.querySelectorAll('.dl-dropdown-menu')); }
+function toggleDlDropdown(ev) {
+  const btn  = ev && ev.currentTarget ? ev.currentTarget : (window.event && window.event.currentTarget);
+  const wrap = btn ? btn.closest('.dl-dropdown-wrap') : null;
+  const menu = wrap ? wrap.querySelector('.dl-dropdown-menu')
+                    : _dlMenus().find(m => m.closest('.ph-a') && getComputedStyle(m.closest('.ph-a')).display !== 'none');
   if(!menu) return;
-  menu.style.display = menu.style.display === 'none' ? '' : 'none';
+  const opening = menu.style.display === 'none';
+  _dlMenus().forEach(m => m.style.display = 'none'); // nunca deixa os dois abertos
+  menu.style.display = opening ? '' : 'none';
 }
 function closeDlDropdown() {
-  const menu = document.getElementById('dlDropdownMenu');
-  if(menu) menu.style.display = 'none';
+  _dlMenus().forEach(m => m.style.display = 'none');
 }
 document.addEventListener('click', (e) => {
-  const wrap = document.querySelector('.dl-dropdown-wrap');
-  const menu = document.getElementById('dlDropdownMenu');
-  if(!wrap || !menu || menu.style.display === 'none') return;
-  if(!wrap.contains(e.target)) menu.style.display = 'none';
+  _dlMenus().forEach(menu => {
+    if(menu.style.display === 'none') return;
+    const wrap = menu.closest('.dl-dropdown-wrap');
+    if(wrap && !wrap.contains(e.target)) menu.style.display = 'none';
+  });
+
 });
 
 function dlXLSX(){
@@ -13425,110 +13310,10 @@ async function downloadApprovalFramePng(key) {
 let _selRow = -1;
 let _selLang = null;
 
-// Called on focus of a translation cell — switch viewer lang and highlight
-function switchAndHL(ri, lang) {
-  _selRow = ri; _selLang = lang;
-
-  // Highlight table row
-  document.querySelectorAll('tr.table-sel').forEach(r=>r.classList.remove('table-sel'));
-  const trs = document.querySelectorAll('#gstb tr');
-  if(trs[ri]) trs[ri].classList.add('table-sel');
-
-  // Se este id vive no ramo inativo de uma condicional, troca o toggle If/Else pra revelá-lo.
-  const branchSwitched = S.csv.rows[ri] ? revealCondBranchForRow(S.csv.rows[ri].id) : false;
-
-  // Switch viewer to this lang if needed
-  if(S.vLang !== lang) {
-    S.vLang = lang;
-    // Update lang tab UI
-    document.querySelectorAll('.ltab').forEach(b=>{
-      const match = b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+lang+"'");
-      b.classList.toggle('active', !!match);
-    });
-    // refreshViewer() consome _pendingHL com um token de geração — mesmo que outro
-    // refresh seja disparado antes deste iframe terminar de carregar, o highlight nunca
-    // é aplicado no documento errado (a chamada obsoleta simplesmente não faz nada).
-    _pendingHL = { ri, lang };
-    refreshViewer();
-  } else if(branchSwitched) {
-    // Trocou de ramo mas não de idioma — precisa re-renderizar o preview no ramo novo antes
-    // de destacar (o data-tid só existe no ramo que agora está ativo).
-    _pendingHL = { ri, lang };
-    refreshViewer();
-  } else {
-    _sendHL(ri, lang);
-  }
-}
-
-// Called on each keystroke — just re-send highlight (viewer already on right lang)
-function sendHL(ri, lang) {
-  if(S.vLang !== lang) return; // don't spam if lang mismatch
-  _sendHL(ri, lang);
-}
-
-function _sendHL(ri, lang) {
-  const row = S.csv.rows[ri]; if(!row) return;
-  const text = row.translations[lang] || row.src;
-  if(!text) return;
-  const iframe = document.getElementById('vf');
-  if(iframe && iframe.contentWindow)
-    iframe.contentWindow.postMessage({type:'braze-find', text, ri: row.id}, '*');
-}
-
-function highlightFromTable(ri, lang) {
-  const prevRow = _selRow;
-  // Deselect table row
-  document.querySelectorAll('tr.table-sel').forEach(r=>r.classList.remove('table-sel'));
-
-  // Toggle off if same row+lang
-  if(_selRow===ri && _selLang===lang){ _selRow=-1; _selLang=null; clearPreviewHighlight(); return; }
-  _selRow = ri; _selLang = lang;
-
-  // Highlight row in table
-  const trs = document.querySelectorAll('#gstb tr');
-  if(trs[ri]) trs[ri].classList.add('table-sel');
-
-  const row = S.csv.rows[ri];
-  if(!row) return;
-
-  // If clicking a translation column, switch the viewer to that language
-  const origLang = S.allC.find(c=>c.code===S.origin)?.lang||null;
-  const targetLang = lang && lang !== origLang ? lang : origLang;
-
-  // Se este id vive no ramo inativo de uma condicional, troca o toggle If/Else pra revelá-lo.
-  const branchSwitched = revealCondBranchForRow(row.id);
-
-  // Switch viewer lang tab silently if needed
-  if(targetLang && S.vLang !== targetLang) {
-    S.vLang = targetLang;
-    // Update tab UI
-    document.querySelectorAll('.ltab').forEach(b=>b.classList.remove('active'));
-    const matchTab = Array.from(document.querySelectorAll('.ltab')).find(b=>b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+targetLang+"'"));
-    if(matchTab) matchTab.classList.add('active');
-    // refreshViewer() consome _pendingHL com um token de geração — mesmo que outro
-    // refresh seja disparado antes deste iframe terminar de carregar, o highlight nunca
-    // é aplicado no documento errado (a chamada obsoleta simplesmente não faz nada).
-    _pendingHL = { ri, lang: targetLang };
-    refreshViewer();
-    return;
-  }
-
-  if(branchSwitched) {
-    // Trocou de ramo (mesmo idioma) — re-renderiza no ramo novo antes de destacar.
-    _pendingHL = { ri, lang: targetLang };
-    refreshViewer();
-    return;
-  }
-
-  // Same lang — just highlight, no reload
-  _sendHL(ri, targetLang);
-}
-
-function clearPreviewHighlight() {
-  const iframe = document.getElementById('vf');
-  if(iframe && iframe.contentWindow)
-    iframe.contentWindow.postMessage({type:'braze-find', text:null}, '*');
-}
+/* switchAndHL / sendHL / _sendHL / highlightFromTable / clearPreviewHighlight foram pro
+   modules/csv-editor.js. Tinham '#gstb' e '#vf' escritos na mão, o que obrigava o editor
+   de pasta a desligar o realce (liveHL:false). Agora leem a superfície ativa e servem aos
+   dois editores. _selRow/_selLang seguem aqui: são lidos por identificador de lá. */
 
 window.addEventListener('message', function(e){
   if(e.data && e.data.type === 'braze-img-pick'){
@@ -13537,8 +13322,14 @@ window.addEventListener('message', function(e){
   }
   if(!e.data) return;
 
+  // braze-height / braze-scrollto valem pros DOIS previews (avulso e pasta) — os dois têm o
+  // mesmo modelo: o iframe cresce até a altura do conteúdo e quem rola é o container pai.
+  // A superfície é resolvida por e.source, não pelo id do elemento: os dois iframes coexistem
+  // no DOM (o avulso fica escondido, não removido, com uma pasta aberta), então procurar por id
+  // acertaria o iframe errado. Ver editorSurfaceForSource em modules/csv-editor.js.
   if(e.data.type === 'braze-height'){
-    const iframe = document.getElementById('vf');
+    const sf = editorSurfaceForSource(e.source);
+    const iframe = sf ? document.getElementById(sf.iframe) : null;
     if(iframe){
       const current = parseInt(iframe.style.height) || 0;
       if(e.data.height > current) iframe.style.height = e.data.height + 'px';
@@ -13547,7 +13338,8 @@ window.addEventListener('message', function(e){
   }
 
   if(e.data.type === 'braze-scrollto'){
-    const wrap = document.querySelector('.mail-body-wrap');
+    const sf = editorSurfaceForSource(e.source);
+    const wrap = sf ? document.querySelector(sf.scrollWrap) : null;
     if(wrap) wrap.scrollTop = e.data.top - wrap.clientHeight/2;
     return;
   }
@@ -13571,12 +13363,6 @@ window.addEventListener('message', function(e){
 
   if(e.data.type === 'av-selection'){
     onFrameSelection(e.data); // data.key resolve o frame dentro de onFrameSelection
-    return;
-  }
-
-  if(e.data.type === 'camp-height'){
-    const iframe = document.getElementById('campaignPreviewFrame');
-    if(iframe) iframe.style.height = Math.max(e.data.height, 300) + 'px';
     return;
   }
 
@@ -13605,6 +13391,10 @@ window.addEventListener('message', function(e){
      em runtime. Carregado DEPOIS do script inline (referências só acontecem em runtime). -->
 <script src="modules/strings.js"></script>
 <script src="modules/translation-engine.js"></script>
+<!-- SUPERFÍCIE ÚNICA do editor de CSV (ver modules/csv-editor.js): o único arquivo que sabe que
+     existem dois pontos de montagem (projeto avulso e item de pasta). Realce, âncora e o script
+     do preview vivem aqui e servem aos dois — recurso novo entra num lugar só. -->
+<script src="modules/csv-editor.js"></script>
 <script src="modules/approval-canvas.js"></script>
 <!-- Módulo "Pasta/Folder" — ISOLADO (ver modules/folders.js). Carregado DEPOIS do script inline
      pra poder chamar os globais do app (projGetAll, parseSavedProjectHtml, etc.) em runtime. -->
