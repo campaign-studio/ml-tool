@@ -368,7 +368,8 @@ const CSV_EDITOR_ICONS = {
   history: '<path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/>',
   bookmark:'<path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/>',
   rescan:  '<path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>',
-  caret:   '<path d="M6 9l6 6 6-6"/>'
+  caret:   '<path d="M6 9l6 6 6-6"/>',
+  more:    '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'
 };
 function csvEditorIcon(name, size){
   const s = size || 11;
@@ -414,12 +415,12 @@ function csvEditorAct(act, key){
 // Monta o HTML dos botões pra UMA superfície. Não toca nos elementos de presença
 // (.presence-badge/.gp-stack/.live-status): eles são estáticos e vivem antes do wrapper.
 function buildEditorToolbarHtml(surfaceKey){
-  return CSV_EDITOR_TOOLBAR.map(b => {
+  return CSV_EDITOR_TOOLBAR.map((b, bi) => {
     if(b.kind === 'dropdown'){
       const items = b.items.map(it =>
         `<button onclick="closeDlDropdown();${csvEditorAct(it.act, surfaceKey)}">${csvEditorIcon(it.icon, 13)}${it.label}</button>`
       ).join('');
-      return `<div class="dl-dropdown-wrap">
+      return `<div class="dl-dropdown-wrap" data-tb="${b.key}" data-tb-i="${bi}">
         <button class="${b.cls}" onclick="event.stopPropagation();toggleDlDropdown(event)">
           ${csvEditorIcon(b.icon)}${b.label}${csvEditorIcon('caret', 9)}
         </button>
@@ -429,9 +430,65 @@ function buildEditorToolbarHtml(surfaceKey){
     const t  = b.title ? ` title="${String(b.title).replace(/"/g,'&quot;')}"` : '';
     const i1 = b.i18nTitle ? ` data-i18n-title="${b.i18nTitle}"` : '';
     const i2 = b.i18n ? ` data-i18n="${b.i18n}"` : '';
-    return `<button class="${b.cls}"${t}${i1} onclick="${csvEditorAct(b.act, surfaceKey)}">`
+    return `<button class="${b.cls}" data-tb="${b.key}" data-tb-i="${bi}"${t}${i1} onclick="${csvEditorAct(b.act, surfaceKey)}">`
          + `${csvEditorIcon(b.icon)}<span${i2}>${b.label}</span></button>`;
   }).join('');
+}
+
+/* ── CABER NA LARGURA DISPONÍVEL ─────────────────────────────────────────────────────────────
+ * O painel da grade dentro de uma pasta é mais estreito que o do editor avulso (o preview come
+ * 42% da tela lá). Com a barra completa, .ph-a quebrava em três linhas e empurrava a grade pra
+ * baixo. A saída NÃO é a pasta ter menos botões — seria voltar ao problema que esta refatoração
+ * resolveu. É a MESMA barra recolher o excedente num menu "More", pela mesma regra nos dois:
+ * quem sobra é sempre o de menor prioridade, então em larguras iguais as duas ficam idênticas.
+ *
+ * A ordem de sacrifício é a inversa desta lista — 'rescan' sai primeiro, 'approve' (o CTA)
+ * nunca sai.                                                                                  */
+const CSV_EDITOR_KEEP_ORDER = ['approve','download','upload','html','editHtml','history','backup','rescan'];
+
+function fitEditorToolbar(host){
+  const slot = host && host.querySelector('.ed-tools');
+  if(!slot) return;
+  const more     = slot.querySelector('.ed-more');
+  const moreMenu = slot.querySelector('.ed-more-menu');
+  if(!more || !moreMenu) return;
+  const ph = host.closest('.ph') || host;
+
+  // Devolve tudo pra barra antes de medir: sem isto a decisão anterior vira entrada da próxima
+  // e a barra só sabe encolher, nunca voltar a crescer quando a janela abre.
+  // Reinserido na ORDEM DECLARADA (data-tb-i), não na ordem em que saiu — senão cada ciclo de
+  // recolher/restaurar embaralhava a barra.
+  Array.from(moreMenu.children).forEach(el => slot.insertBefore(el, more));
+  const idx = el => parseInt(el.getAttribute('data-tb-i') || '0', 10);
+  Array.from(slot.children)
+    .filter(el => el !== more)
+    .sort((a, b) => idx(a) - idx(b))
+    .forEach(el => slot.insertBefore(el, more));
+  more.style.display = 'none';
+
+  // Mede o TRANSBORDO REAL em vez de estimar a largura livre. A primeira versão calculava
+  // "espaço da .ph menos o que os irmãos ocupam" e errava: a própria .ph já estava transbordando
+  // (scrollWidth 877 > clientWidth 811), então a conta dava folga onde não havia e o botão
+  // "Approve copies" saía cortado na borda. scrollWidth > clientWidth é a pergunta direta, e
+  // se corrige sozinha a cada item retirado.
+  const cabe = () => ph.scrollWidth <= ph.clientWidth + 1;
+  if(cabe()) return;
+
+  more.style.display = '';
+  const porChave = {};
+  Array.from(slot.children).forEach(el => { porChave[el.getAttribute('data-tb') || ''] = el; });
+  // Ordem de sacrifício = inversa da prioridade; 'approve' (o CTA) nunca sai.
+  for(const chave of CSV_EDITOR_KEEP_ORDER.slice().reverse()){
+    if(cabe()) return;
+    if(chave === 'approve') continue;
+    const el = porChave[chave];
+    if(!el) continue;
+    // Entra no menu na ORDEM DECLARADA, não na ordem de sacrifício — senão o menu abria de trás
+    // pra frente (Re-scan no topo, Copy Tagged HTML lá embaixo), que não é como a barra lê.
+    const meu = idx(el);
+    const depois = Array.from(moreMenu.children).find(x => idx(x) > meu);
+    moreMenu.insertBefore(el, depois || null);
+  }
 }
 
 // Redesenha as DUAS barras a partir da mesma lista. Chamado quando cada editor abre; barrado
@@ -442,6 +499,57 @@ function renderEditorToolbars(){
     const host = document.getElementById(id);
     if(!host) return;
     const slot = host.querySelector('.ed-tools');
-    if(slot) slot.innerHTML = buildEditorToolbarHtml(key);
+    if(!slot) return;
+    slot.innerHTML = buildEditorToolbarHtml(key)
+      + `<div class="dl-dropdown-wrap ed-more" style="display:none;">
+           <button class="tbtn" title="More actions" onclick="event.stopPropagation();toggleEdMore(event)">
+             ${csvEditorIcon('more')}
+           </button>
+           <div class="dl-dropdown-menu ed-more-menu" style="display:none;right:0;left:auto;"></div>
+         </div>`;
+    fitEditorToolbar(host);
+    observeEditorToolbar(host);
   });
+}
+
+function toggleEdMore(ev){
+  const wrap = ev.currentTarget.closest('.ed-more');
+  const menu = wrap && wrap.querySelector('.ed-more-menu');
+  if(!menu) return;
+  const abrindo = menu.style.display === 'none';
+  document.querySelectorAll('.ed-more-menu').forEach(m => m.style.display = 'none');
+  menu.style.display = abrindo ? '' : 'none';
+}
+document.addEventListener('click', e => {
+  document.querySelectorAll('.ed-more-menu').forEach(menu => {
+    if(menu.style.display === 'none') return;
+    const wrap = menu.closest('.ed-more');
+    if(wrap && !wrap.contains(e.target)) menu.style.display = 'none';
+  });
+});
+/* Recalcular na hora certa. Um simples listener de window.resize NÃO basta: renderEditorToolbars
+ * roda de dentro de buildTable/renderCampaignGrid, que podem executar com o painel ainda
+ * ESCONDIDO. Aí clientWidth é 0, "cabe()" responde que sim, nada é recolhido — e a barra estoura
+ * assim que o painel aparece, sem nenhum resize de janela pra corrigir.
+ * O ResizeObserver cobre os três casos de uma vez: painel virando visível (0 -> largura real),
+ * janela redimensionada, e o divisor grade/preview mudando de proporção. */
+let _tbFitting = false;
+const _tbObserver = (typeof ResizeObserver !== 'undefined') ? new ResizeObserver(() => {
+  if(_tbFitting) return;           // fit muda o layout do próprio elemento observado — sem esta
+  _tbFitting = true;               // trava, o observer se realimentaria em loop
+  requestAnimationFrame(() => {
+    try {
+      ['edToolbar','campItemToolbar'].forEach(id => {
+        const h = document.getElementById(id);
+        if(h && h.clientWidth > 0) fitEditorToolbar(h);
+      });
+    } finally { _tbFitting = false; }
+  });
+}) : null;
+
+function observeEditorToolbar(host){
+  if(!_tbObserver || !host || host._tbObserved) return;
+  host._tbObserved = true;
+  const ph = host.closest('.ph') || host;
+  _tbObserver.observe(ph);
 }

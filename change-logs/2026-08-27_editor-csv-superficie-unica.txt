@@ -101,3 +101,55 @@ renderDashboard de qualquer pessoa que o puxasse (p.owner.toLowerCase() lançava
 Removido pelo fluxo de delete do próprio app; confirmado 0 projetos sem owner e
 console limpo depois. Os 44 projetos reais nunca foram tocados.
 Lição: neutralizar sbClient.from NÃO é suficiente pra garantir teste sem escrita.
+
+================================================================================
+CORREÇÃO NO MESMO DIA — A BARRA UNIFICADA NÃO CABIA NA PASTA
+================================================================================
+
+Reportado: "Aqui não tá legal" (print com a barra quebrada em TRÊS linhas dentro
+do editor de pasta, empurrando a grade pra baixo).
+
+CAUSA
+Unificar a barra deu 8 botões à pasta, mas o painel da grade lá é bem mais
+estreito que o do editor avulso (o preview ocupa 42% da tela). Com
+.ph-a{flex-wrap:wrap}, o excedente empilhava em vez de sumir.
+
+A saída NÃO foi dar menos botões à pasta — seria voltar exatamente ao problema
+que esta refatoração resolveu. É a MESMA barra recolher o excedente num menu
+"More" (⋯), pela mesma regra nos dois editores: sai sempre o de menor prioridade
+(ordem: approve > download > upload > html > editHtml > history > backup >
+rescan), e 'approve' (o CTA) nunca sai. Em larguras iguais as duas barras ficam
+idênticas; onde há menos espaço, recolhe mais.
+
+DOIS ERROS MEUS NO CAMINHO (achados no teste, corrigidos)
+ 1. Estimava a largura livre como "espaço da .ph menos o que os irmãos ocupam".
+    Errado: a própria .ph já estava transbordando (scrollWidth 877 > clientWidth
+    811), então a conta dava folga onde não havia e "Approve copies" saía CORTADO
+    na borda. Passou a medir o transbordo REAL (scrollWidth > clientWidth) e a
+    retirar um item por vez até caber — se corrige sozinho e não depende de
+    estimativa.
+ 2. Restaurar os itens na barra os reinseria no fim, então cada ciclo de
+    recolher/expandir EMBARALHAVA a ordem (saiu "download, approve, html…").
+    Agora cada item carrega data-tb-i (índice declarado) e volta ordenado.
+
+OUTROS DETALHES
+ - ResizeObserver em vez de window.resize: renderEditorToolbars roda de dentro de
+   buildTable/renderCampaignGrid, que podem executar com o painel ESCONDIDO
+   (clientWidth 0 -> "cabe" -> não recolhe nada -> estoura ao aparecer, sem
+   nenhum resize de janela pra corrigir). O observer cobre painel virando
+   visível, janela redimensionada e divisor grade/preview mudando de proporção.
+   Guarda de reentrância porque o fit altera o layout do próprio elemento
+   observado.
+ - O menu abre na ordem DECLARADA, não na ordem de sacrifício (senão abria de
+   trás pra frente: Re-scan no topo).
+ - Dentro do dropdown as cores de destaque (primary/html/upload) são
+   neutralizadas — empilhadas num menu ficavam berrantes.
+ - nowrap escopado a #edToolbar/#campItemToolbar, NÃO ao .ph-a genérico (o header
+   do "Approve copies" também usa a classe e deve continuar com wrap).
+
+VERIFICADO
+ - Pasta a 1100 / 1512 / 1800 / 1900px: sempre UMA linha (56px), nunca
+   transbordando, nada cortado.
+ - Encolher e expandir devolve exatamente a mesma barra, na mesma ordem.
+ - Editor avulso a 1900px: 6 botões inline + 2 no menu, sem transbordo.
+ - .ph-a genérico continua com flex-wrap: wrap.

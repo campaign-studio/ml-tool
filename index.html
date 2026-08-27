@@ -339,6 +339,19 @@ body{background:var(--bg);font-family:var(--sans);font-size:14px;color:var(--tex
 .ph{min-height:56px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:10px 18px;gap:10px;flex-shrink:0;position:relative;z-index:30;box-shadow:0 1px 3px rgba(20,20,40,.03);}
 .ph-t{font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;}
 .ph-a{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-left:auto;}
+/* nowrap SÓ nas duas barras do editor — .ph-a é classe genérica (o header do Approve copies
+   também a usa) e não deve mudar de comportamento por causa disto. */
+#edToolbar,#campItemToolbar{flex-wrap:nowrap;min-width:0;}
+/* Barra do editor: NUNCA quebra em várias linhas — o excedente vai pro menu "More"
+   (fitEditorToolbar, em modules/csv-editor.js). Com wrap, o painel estreito da pasta
+   empilhava a barra em 3 linhas e empurrava a grade pra baixo. */
+.ed-tools{display:flex;flex-wrap:nowrap;gap:8px;align-items:center;min-width:0;}
+.ed-more-menu .tbtn,.ed-more-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:8px 10px;border:none;background:none;border-radius:7px;font-size:12px;font-weight:600;color:var(--text2);cursor:pointer;font-family:var(--sans);white-space:nowrap;}
+.ed-more-menu .tbtn:hover{background:var(--s2);color:var(--text);}
+/* Dentro do dropdown os botões viram itens de lista: as cores de destaque que fazem sentido na
+   barra (primary vermelho, html, upload) ficariam berrantes empilhadas num menu. */
+.ed-more-menu .tbtn,.ed-more-menu .tbtn.html,.ed-more-menu .tbtn.upload,.ed-more-menu .tbtn.csv,.ed-more-menu .tbtn.primary{background:none;border:none;color:var(--text2);box-shadow:none;font-weight:600;}
+.ed-more-menu .tbtn.html:hover,.ed-more-menu .tbtn.upload:hover,.ed-more-menu .tbtn.csv:hover,.ed-more-menu .tbtn.primary:hover{background:var(--s2);color:var(--text);}
 /* .tbtn = botão de toolbar. Redefinido pra spec do .btn do Ditto (core/shared.css) — assim TODO
    toolbar (dashboard, editor de CSV, campanha) usa o componente Ditto de verdade. */
 .tbtn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:12.5px;font-weight:600;cursor:pointer;color:var(--text);font-family:var(--sans);white-space:nowrap;transition:background var(--dur) var(--ease-out),border-color var(--dur) var(--ease-out),color var(--dur) var(--ease-out),box-shadow var(--dur);}
